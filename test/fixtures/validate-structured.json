@@ -1,0 +1,17 @@
+{
+  "session_id": "sess-fixture-0001",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__plugin_onesource_onesource__onesource_validate",
+  "tool_input": { "identifiers": { "email": "FAKE-INPUT-MARKER" }, "max_credits": 1 },
+  "tool_response": {
+    "content": [{ "type": "text", "text": "FAKE-SUMMARY-MARKER\n{\"cost\":{\"quoted_credits\":1,\"charged_credits\":1}}" }],
+    "structuredContent": {
+      "id": null,
+      "email": "FAKE-OUTPUT-MARKER",
+      "email_validation": { "status": "valid" },
+      "backend": { "request_id": "req-fixture-0001" },
+      "cost": { "quoted_credits": 1, "charged_credits": 1 },
+      "summary": "FAKE-SUMMARY-MARKER"
+    }
+  }
+}

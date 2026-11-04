@@ -1,0 +1,17 @@
+{
+  "description": "Log every OneSource tool call (tool, request id, credits; never inputs) to ~/.onesource/usage.jsonl.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*onesource.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/log-usage.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

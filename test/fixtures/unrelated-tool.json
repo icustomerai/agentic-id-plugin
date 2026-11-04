@@ -1,0 +1,7 @@
+{
+  "session_id": "sess-fixture-0005",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__some_other_server__search",
+  "tool_input": { "q": "FAKE-INPUT-MARKER" },
+  "tool_response": { "cost": { "quoted_credits": 9, "charged_credits": 9 } }
+}

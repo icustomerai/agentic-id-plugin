@@ -1,0 +1,26 @@
+{
+  "name": "icustomer-onesource",
+  "owner": {
+    "name": "iCustomer",
+    "url": "https://icustomer.ai"
+  },
+  "metadata": {
+    "description": "iCustomer OneSource for Claude Code: B2B email validation, identity resolution, enrichment and contact discovery.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "onesource",
+      "source": "./plugins/onesource",
+      "description": "Validate, resolve, enrich, find and discover B2B contacts and accounts with the five OneSource tools, with credit-aware skills, a lead-qualification agent and a local usage log.",
+      "version": "0.1.0",
+      "author": {
+        "name": "iCustomer",
+        "url": "https://icustomer.ai"
+      },
+      "license": "MIT",
+      "keywords": ["onesource", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm"],
+      "category": "sales"
+    }
+  ]
+}

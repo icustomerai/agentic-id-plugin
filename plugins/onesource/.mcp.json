@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "onesource": {
+      "type": "http",
+      "url": "${ONESOURCE_MCP_URL:-https://mcp-onesource-development.icustomer.ai/mcp}",
+      "headersHelper": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/api-key-headers.mjs\""
+    }
+  }
+}

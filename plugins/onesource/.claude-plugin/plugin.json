@@ -1,0 +1,12 @@
+{
+  "name": "onesource",
+  "version": "0.1.0",
+  "description": "Validate, resolve, enrich, find and discover B2B contacts and accounts with the five OneSource tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
+  "author": {
+    "name": "iCustomer",
+    "url": "https://icustomer.ai"
+  },
+  "homepage": "https://icustomer.ai",
+  "license": "MIT",
+  "keywords": ["onesource", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm", "mcp"]
+}

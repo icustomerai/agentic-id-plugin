@@ -1,0 +1,19 @@
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Dependencies and test scratch
+node_modules/
+*.log
+.tmp/
+
+# Never commit credentials or local OneSource state
+.env
+.env.*
+*.key
+api-key
+usage.jsonl
+.onesource/
+mcp.local.json
