@@ -129,18 +129,18 @@ test('usage summary prints credits per tool and recent calls', () => {
   assert.match(empty.stdout, /No OneSource usage logged yet/);
 });
 
-test('headers helper: no key -> {} (OAuth), env key or key file -> x-api-key', () => {
+test('headers helper: no key -> client label only (OAuth), env key or key file -> x-api-key', () => {
   const run = (env) => spawnSync(process.execPath, [helper], { env: cleanEnv(env), encoding: 'utf8' });
   const none = run({ ONESOURCE_CONFIG_DIR: tmp() });
   assert.equal(none.status, 0);
-  assert.deepEqual(JSON.parse(none.stdout), {});
+  assert.deepEqual(JSON.parse(none.stdout), { 'x-onesource-client': 'plugin/0.1.0' });
 
   const fromEnv = run({ ONESOURCE_CONFIG_DIR: tmp(), ONESOURCE_API_KEY: 'dummy-test-value' });
-  assert.deepEqual(JSON.parse(fromEnv.stdout), { 'x-api-key': 'dummy-test-value' });
+  assert.deepEqual(JSON.parse(fromEnv.stdout), { 'x-onesource-client': 'plugin/0.1.0', 'x-api-key': 'dummy-test-value' });
 
   const dir = tmp();
   writeFileSync(join(dir, 'api-key'), '  dummy-file-value  \n');
   chmodSync(join(dir, 'api-key'), 0o600);
   const fromFile = run({ ONESOURCE_CONFIG_DIR: dir });
-  assert.deepEqual(JSON.parse(fromFile.stdout), { 'x-api-key': 'dummy-file-value' });
+  assert.deepEqual(JSON.parse(fromFile.stdout), { 'x-onesource-client': 'plugin/0.1.0', 'x-api-key': 'dummy-file-value' });
 });

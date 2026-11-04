@@ -13,8 +13,8 @@
 //   2. The file <ONESOURCE_CONFIG_DIR or ~/.onesource>/api-key (first line, trimmed).
 //      This is the path that works for the plugin. Keep it chmod 600.
 //
-// The helper never fails the connection: on any problem it prints `{}` and exits 0, which
-// falls back to OAuth. It never prints the key anywhere except its JSON output on stdout.
+// The helper never fails the connection: on any problem it prints only the client label and exits
+// 0, which falls back to OAuth. It never prints the key anywhere except its JSON output on stdout.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -40,5 +40,11 @@ try {
   key = '';
 }
 
-process.stdout.write(JSON.stringify(key ? { 'x-api-key': key } : {}));
+// The client label is not a credential: it only tells the OneSource console that a call came
+// from this plugin, and is sent with OAuth sign-in too.
+const headers = { 'x-onesource-client': 'plugin/0.1.0' };
+
+if (key) headers['x-api-key'] = key;
+
+process.stdout.write(JSON.stringify(headers));
 process.exit(0);

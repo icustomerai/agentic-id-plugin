@@ -64,8 +64,9 @@ and the credits charged. Do not call any other tool."
 echo "== e2e: mode=$MODE url=$ONESOURCE_MCP_URL tools=${PREFIX}{${VERBS[*]}}"
 cd "$ROOT"
 set +e
-ONESOURCE_CONFIG_DIR="$CFG" ONESOURCE_MCP_URL="$ONESOURCE_MCP_URL" \
-  claude "${args[@]}" "$PROMPT" > "$TMP/out.txt" 2>&1
+# --allowedTools takes several values and would swallow a trailing prompt, so it goes on stdin.
+printf "%s" "$PROMPT" | ONESOURCE_CONFIG_DIR="$CFG" ONESOURCE_MCP_URL="$ONESOURCE_MCP_URL" \
+  claude "${args[@]}" > "$TMP/out.txt" 2>&1
 status=$?
 set -e
 
