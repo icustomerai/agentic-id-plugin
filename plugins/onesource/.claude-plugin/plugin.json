@@ -1,7 +1,7 @@
 {
   "name": "onesource",
   "version": "0.1.0",
-  "description": "Validate, resolve, enrich, find and discover B2B contacts and accounts with the five OneSource tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
+  "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then enrich, find, discover and validate with the five OneSource tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
   "author": {
     "name": "iCustomer",
     "url": "https://icustomer.ai"
