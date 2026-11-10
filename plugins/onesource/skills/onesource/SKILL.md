@@ -6,9 +6,9 @@ description: Guide to the five OneSource tools - validate (B2B email deliverabil
 # OneSource
 
 OneSource is iCustomer's B2B identity and enrichment service. Its MCP server exposes exactly five
-tools. In Claude Code they appear as `mcp__plugin_onesource_onesource__onesource_<verb>` (or
-`mcp__<server>__onesource_<verb>` when the server is configured by hand). This guide calls them by
-their short names.
+tools. Each agent adds its own prefix to the tool names (in Claude Code, for example,
+`mcp__plugin_onesource_onesource__onesource_<verb>`). This guide calls them by their short names,
+`onesource_<verb>`; use whichever tool in your list ends with that name.
 
 ## Which tool, when
 

@@ -54,7 +54,9 @@ if node -e '
   const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
   for (const s of Object.values(c.mcpServers)) if (s.headers) process.exit(1);
 ' "$PLUGIN/.mcp.json"; then pass ".mcp.json has no static headers"; else fail ".mcp.json must not carry static headers"; fi
-if grep -RInE --exclude-dir=.git '(x-api-key"?\s*[:=]\s*"[A-Za-z0-9_-]{16,})|(sk-[A-Za-z0-9]{20,})|(os_(live|test)_[A-Za-z0-9]{8,})' "$ROOT" >/dev/null; then
+# A value that is only an UPPER_SNAKE env var name (Codex env_http_headers) is a reference, not a key.
+if grep -RInE --exclude-dir=.git '(x-api-key"?\s*[:=]\s*"[A-Za-z0-9_-]{16,})|(sk-[A-Za-z0-9]{20,})|(os_(live|test)_[A-Za-z0-9]{8,})' "$ROOT" \
+  | grep -vE 'x-api-key"?\s*[:=]\s*"[A-Z][A-Z0-9_]*"' | grep -q .; then
   fail "secret-looking value found in the repo"
 else
   pass "no secret-looking values in the repo"
