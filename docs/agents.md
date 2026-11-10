@@ -141,8 +141,8 @@ version you install.
 
 The Muse Code beta does not support MCP servers. It does read skills from `~/.agents/skills`, and
 the `onesource` skill tells the agent to use the `onesource` CLI when the MCP tools are missing.
-So install the skills and the [CLI](../README.md#cli-preview) and Muse Code can call OneSource
-through the shell.
+So install the skills and the [CLI](../README.md#cli-preview), run `onesource login` once in your
+terminal, and Muse Code can call OneSource through the shell.
 
 ## Any other agent
 

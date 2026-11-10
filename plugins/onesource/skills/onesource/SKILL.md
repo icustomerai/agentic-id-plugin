@@ -34,6 +34,9 @@ exact arguments. Each verb has a specific input shape (for example validate take
   [references/cli.md](references/cli.md) for setup, flags and exit codes.
 - If neither is available, tell the user how to connect OneSource (the README's "Choose your
   integration") instead of answering from memory.
+- A **file** of more than about 100 rows: if the CLI is available, prefer
+  `onesource validate|enrich --file <csv> --max-credits <budget> -o csv > <out.csv>` over looping
+  tool calls. Agree the budget first; see [references/cli.md](references/cli.md#files-and-budgets).
 
 ## Rules for every call
 
