@@ -1,256 +1,405 @@
-# OneSource for coding agents
+<!--
+REVIEW BEFORE THIS REPO GOES PUBLIC (founder sign-off on external claims):
+  [ ] "75M+ verified companies and people": confirm the current count and the wording "verified".
+  [ ] Data co-operative: contribution is modelled in the service, but on today's live path the
+      opt-out does not change resolve. Confirm we can describe it publicly as it stands.
+  [ ] Ledger: today every issued ID is recorded. Signed, append-only, independently checkable
+      copies come with the next service version, so this README does not claim them yet.
+  [ ] Evidence fields: the hero animation and quickstart show "matched on work_email · confidence
+      0.97". Today's live resolve (proxied to the Go backend) returns neither; v3 does. Either
+      ship matched_on + confidence in the live path before launch, or trim them from the visuals.
+  [ ] Example people and companies (Maya Chen, Tallpine Software, ...) are fictional; their
+      domains were checked to be unregistered on 2026-11-10.
+-->
 
-iCustomer's B2B identity and enrichment service, packaged for the coding agent you already use.
-Validate work emails, resolve people to OneSource identities, enrich missing fields, find the
-buying group inside a company, and discover net-new accounts and contacts from ICP filters, with
-every credit accounted for.
+<h1 align="center">OneSource</h1>
 
-The package has two portable parts, and both are open standards:
+<p align="center">
+  <b>Identity resolution for coding agents, built on a verified identity ledger.</b><br/>
+  Resolve any B2B person or company to one stable ID, backed by evidence, from a ledger of
+  <b>75M+ verified companies and people</b> that a data co-operative keeps growing.
+</p>
 
-- **One MCP server** (Streamable HTTP) with five tools. Any agent that can talk to a remote MCP
-  server can use it.
-- **Three Agent Skills** in the open `SKILL.md` format. They teach the agent which tool to use
-  when, what the verdicts mean, and the credit rules. Any agent that reads skills can load them.
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/claude%20code%20plugin-0.1.0-6b4fbb">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-streamable%20http-2b7489">
+</p>
 
-Claude Code also gets a ready-made plugin that bundles both, plus a subagent, a usage-log hook
-and a slash command.
+<p align="center">
+  <img src="docs/assets/resolve.svg" width="820" alt="An agent asks who maya.chen@tallpinesoftware.com is. OneSource matches the hashed work email against its verified ledger of 75M+ companies and people and returns Maya Chen, VP Marketing at Tallpine Software, with a stable ID, confidence 0.97, no conflict, 0 credits, and the issued ID recorded in the ledger.">
+</p>
 
-## Supported agents
+<p align="center">
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#why-onesource">Why OneSource</a> ·
+  <a href="#choose-your-integration">Choose your integration</a> ·
+  <a href="#the-five-tools">The five tools</a> ·
+  <a href="#credits-and-guardrails">Credits</a> ·
+  <a href="#skills-and-evals">Skills and evals</a> ·
+  <a href="docs/agents.md">Other agents</a>
+</p>
 
-| Agent | Tools (MCP) | Skills | Extras | Status |
+---
+
+## Why OneSource
+
+Most B2B data tools look things up: an email in, a guess out. OneSource **resolves**: every person
+and company maps to one stable identity in a ledger, and every link to that identity needs
+evidence.
+
+- **One ID per entity, from a verified ledger.** 75M+ companies and people. Resolve an email, a
+  LinkedIn URL, or a name with a company, and you get the same stable ID whichever one you start
+  from.
+- **Evidence, not guesses.**
+  - Every match says what it matched on and how confident it is.
+  - Weak input comes back as `needs_evidence`, with what to add.
+  - Identifiers that point at two records come back as a `conflict`, flagged and never merged.
+- **Every ID issued is recorded.** The ledger keeps a trail of which ID was handed to which
+  workspace, for which request.
+- **A data co-operative.**
+  - Workspaces that contribute make resolution better for everyone in the network.
+  - A workspace that opts out keeps its keys private.
+  - A workspace's own facts and outcomes never leave it.
+  - Matching runs on hashed keys.
+- **Made for agents.**
+  - Hard credit caps on every call.
+  - Errors that tell the agent what to fix.
+  - Skills that teach the agent when to resolve, enrich, find or discover.
+  - Deliverability checks (validate) are one step in that flow, not the product.
+
+<p align="center">
+  <img src="docs/assets/how-it-works.svg" width="820" alt="Workspaces in the data co-operative send hashed identity keys into the verified identity ledger of 75M+ companies and people; one workspace keeps its keys private. Your agent calls resolve and gets back a stable ID with evidence, confidence and cost.">
+</p>
+
+## Quickstart
+
+In Claude Code:
+
+```bash
+claude plugin marketplace add <github-org>/onesource-plugin
+claude plugin install onesource@icustomer-onesource
+```
+
+Restart Claude Code, run `/mcp`, choose `plugin:onesource:onesource` → **Authenticate**, and sign
+in with your iCustomer account. Then ask:
+
+```text
+Who is maya.chen@tallpinesoftware.com? Then find two more marketing leaders at her company. 6 credits max.
+```
+
+```text
+✓ Maya Chen · VP Marketing · Tallpine Software
+  id did:icustomer:global:person:7a1e0c9f3b · matched on work_email · confidence 0.97 · free
+
+Marketing leaders at tallpinesoftware.com (2 of 7 found):
+  Daniel Okoro   Head of Demand Generation     email unverified
+  Sofia Marin    Director, Product Marketing   email unverified
+
+Charged 4 credits (cap 6). 46 credits left.
+```
+
+Using Codex, Cursor, Hermes, Pi or another agent? See [docs/agents.md](docs/agents.md).
+
+## Choose your integration
+
+All surfaces call the same API with the same inputs, outputs, error codes and credits.
+
+| Surface | Use it when | Get it | Status |
+| --- | --- | --- | --- |
+| [Claude Code plugin](#claude-code-plugin) | You work in Claude Code | `claude plugin install onesource@icustomer-onesource` | ✅ Stable, tested end to end |
+| [MCP server](#mcp-server) | Your agent speaks MCP (Codex, Cursor, Hermes, Pi, ...) | `https://mcp-onesource-development.icustomer.ai/mcp` | ✅ Live (development) |
+| [Agent Skills](#skills-and-evals) | Your agent reads `SKILL.md` | Link `plugins/onesource/skills/*` ([how](docs/agents.md#install-the-skills)) | ✅ Stable |
+| [CLI](#cli-preview) | Scripts, CI, or an agent without MCP | Build from source | 🧪 Preview |
+| [TypeScript SDK](#typescript-sdk-preview) | You are building an app or service | Build from source | 🧪 Preview |
+| [REST API](#rest-api) | Any other language | `POST /v1/entities/<verb>` | ✅ Live (development) |
+
+Coding agents should use the **MCP server** where they can (it handles sign-in) and the **CLI**
+where they can't. The skills cover both, so the same skill works either way.
+
+## The five tools
+
+Resolve is the core. Enrich, find and discover build on resolved identities, and validate checks
+deliverability before you send.
+
+| Verb | Ask it | MCP tool | CLI | Credits\* |
 | --- | --- | --- | --- | --- |
-| [Claude Code](#claude-code) | Plugin, OAuth sign-in | Plugin | Subagent, usage hook, `/onesource-usage` | Tested end to end |
-| [Codex](#codex) | `config.toml`, OAuth sign-in | `~/.agents/skills` | none | Documented, not yet tested |
-| [Hermes Agent](#hermes-agent) | `config.yaml`, API key | `~/.hermes/skills` | none | Documented, not yet tested |
-| [Pi](#pi) | Through the `pi-mcp-adapter` extension | `~/.pi/agent/skills` | none | Documented, not yet tested |
-| [Muse Code](#muse-code) | Not possible yet (no MCP in the beta) | `~/.agents/skills` | none | Skills only, tools unavailable |
-| [Any other MCP client](#any-other-agent) | Connection details below | If it reads `SKILL.md` | none | Should work |
+| **resolve** | Who is this? Resolves an email, LinkedIn URL, or name and company to one stable ID from the ledger, with what it matched on and how confident it is. | `onesource_resolve` | `onesource resolve` | Free |
+| **enrich** | What's their title, company, work email? Up to 100 contacts per call. | `onesource_enrich` | `onesource enrich` | Per lookup that filled a field: person 1, company 1, work email 2 |
+| **find** | Who holds role X at company Y? | `onesource_find` | `onesource find` | Per person returned (1–2, being finalised) |
+| **discover** | Which companies and people match my ICP? | `onesource_discover` | `onesource discover` | 1 per contact returned |
+| **validate** | Is this mailbox deliverable before you send? Up to 1,000 per call. | `onesource_validate` | `onesource validate` | 1 per `valid` / `catch-all` / `risky`. `invalid`, `unknown` and domain-only checks are free |
 
-"Documented, not yet tested" means the setup follows that agent's own docs but nobody has run it
-against a OneSource server yet. If you try one, please report what happened.
+\* Development prices. They will change before general availability.
 
-## What's in the package
+<details>
+<summary><b>Example: find the buying group</b> (MCP arguments, CLI, SDK, output)</summary>
 
-| Component | Where | Works in |
-| --- | --- | --- |
-| MCP server `onesource`: the five tools | `https://mcp-onesource-development.icustomer.ai/mcp` | Any MCP client |
-| Skill `onesource`: tool choice, verdicts, credit rules, B2B-only rule, error codes | `plugins/onesource/skills/onesource/` | Any agent that reads skills |
-| Skill `who-matters`: validate, resolve, enrich, find, discover, budget agreed up front | `plugins/onesource/skills/who-matters/` | Any agent that reads skills |
-| Skill `onesource-credits`: prices, estimating and capping spend, quoted vs charged | `plugins/onesource/skills/onesource-credits/` | Any agent that reads skills |
-| Subagent `lead-qualification`: works a lead list inside a credit budget | `plugins/onesource/agents/` | Claude Code |
-| PostToolUse hook: one PII-free line per call in `~/.onesource/usage.jsonl` | `plugins/onesource/hooks/` | Claude Code |
-| Command `/onesource-usage`: credits per tool and the last 20 calls | `plugins/onesource/commands/` | Claude Code |
+MCP tool arguments:
 
-Every agent still sees what each call cost: credits come back in every tool result, and the skills
-tell the agent to report them. Only the local usage log and its summary command need Claude Code.
+```json
+{ "account": { "domain": "tallpinesoftware.com" }, "roles": ["Marketing"],
+  "seniority": ["VP", "Director"], "limit": 2, "max_credits": 4 }
+```
 
-## Connection details
+CLI:
 
-These are all an agent needs to reach the tools.
+```bash
+onesource find --domain tallpinesoftware.com --roles Marketing --seniority VP,Director \
+  --limit 2 --max-credits 4 --json
+```
+
+SDK:
+
+```ts
+const found = await os.find({ account: { domain: 'tallpinesoftware.com' },
+  roles: ['Marketing'], seniority: ['VP', 'Director'], limit: 2, max_credits: 4 });
+```
+
+Output (trimmed):
+
+```json
+{
+  "account": { "domain": "tallpinesoftware.com", "name": "Tallpine Software" },
+  "people": [
+    { "name": "Daniel Okoro", "title": "Head of Demand Generation", "seniority": "VP",
+      "work_email": "daniel.okoro@tallpinesoftware.com", "match_confidence": 0.91 }
+  ],
+  "total_found": 7,
+  "cost": { "quoted_credits": 4, "charged_credits": 2 },
+  "ledger": { "held": 4, "charged": 2, "available_after": 46 },
+  "request_id": "6f1c0e2a-...",
+  "summary": "1 person at Tallpine Software (7 match in total). Charged 2 credits."
+}
+```
+
+Emails returned by find are unverified until you validate them.
+</details>
+
+Exact arguments for every tool: [skills/onesource/references/tools.md](plugins/onesource/skills/onesource/references/tools.md).
+
+## Claude Code plugin
+
+`plugins/onesource` bundles the MCP server entry, the skills and a few Claude Code extras:
+
+| Component | What it does |
+| --- | --- |
+| Skill `onesource` | Picks the right verb, shows the exact arguments, applies the credit and B2B-only rules. Falls back to the CLI when the MCP tools are missing. |
+| Skill `who-matters` | A playbook: validate, resolve, enrich, find and discover inside a budget agreed up front. |
+| Skill `onesource-credits` | Prices, estimating and capping spend, and quoted vs charged credits. |
+| Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a clean list grouped by account. |
+| Hook (PostToolUse) | Writes one line per OneSource call to `~/.onesource/usage.jsonl`: tool, outcome, request id and credits. Never inputs or results. |
+| Command `/onesource-usage` | Shows credits per tool and the last 20 calls from that log. |
+
+For CI and headless runs, the plugin can send an API key instead of using OAuth. See
+[API-key mode](docs/agents.md#claude-code).
+
+## MCP server
 
 | Setting | Value |
 | --- | --- |
 | Transport | Streamable HTTP |
-| URL | `https://mcp-onesource-development.icustomer.ai/mcp` (development deployment) |
-| Sign-in for people | OAuth with your iCustomer account. The agent opens a browser the first time. |
-| Sign-in for scripts and CI | An API key in the `x-api-key` header |
+| URL | `https://mcp-onesource-development.icustomer.ai/mcp` (development) |
+| Auth | OAuth 2.1 with PKCE (discovered from the server; your agent opens a browser), or `x-api-key` |
+| Tools | `onesource_validate`, `onesource_resolve`, `onesource_enrich`, `onesource_find`, `onesource_discover` |
 
-Never commit an API key. Keep it in an environment variable or a file only you can read.
-
-## Install the skills
-
-Every agent except Claude Code loads the skills from a folder. Clone this repo once and link the
-three skill folders into the folder your agent reads:
-
-```bash
-git clone <github-org>/onesource-plugin ~/onesource-plugin
-
-SKILLS_DIR=~/.agents/skills   # Codex and Muse Code. Hermes: ~/.hermes/skills. Pi: ~/.pi/agent/skills
-mkdir -p "$SKILLS_DIR"
-for s in onesource who-matters onesource-credits; do
-  ln -s ~/onesource-plugin/plugins/onesource/skills/$s "$SKILLS_DIR/$s"
-done
-```
-
-Links rather than copies mean a `git pull` updates the skills everywhere. To load the skills for
-one project only, link them into that project's `.agents/skills/` instead.
-
-## Claude Code
-
-```bash
-claude plugin marketplace add <github-org>/onesource-plugin   # or a local checkout path
-claude plugin install onesource@icustomer-onesource
-```
-
-Restart Claude Code. Then run `/mcp`, pick `plugin:onesource:onesource` and choose
-**Authenticate**. A browser window opens for your iCustomer sign-in. Claude Code stores the
-tokens, not this plugin.
-
-To try it without installing: `claude --plugin-dir /path/to/onesource-plugin/plugins/onesource`.
-The hook and helper scripts need `node` 18 or later on your `PATH`.
-
-**Another server.** Set `ONESOURCE_MCP_URL`, for example
-`export ONESOURCE_MCP_URL=http://localhost:3000/mcp`.
-
-**API-key mode.** The plugin's `.mcp.json` sends no static headers. A `headersHelper`
-(`plugins/onesource/scripts/api-key-headers.mjs`) adds `x-api-key` only when a key is configured,
-and otherwise sends nothing so OAuth applies. Claude Code removes credential-named environment
-variables (`*_API_KEY`, `*_TOKEN`, ...) from a plugin's `headersHelper` environment, so the key is
-read from a file:
-
-```bash
-mkdir -p ~/.onesource && chmod 700 ~/.onesource
-printf '%s\n' "<your key>" > ~/.onesource/api-key && chmod 600 ~/.onesource/api-key
-# or keep it elsewhere: export ONESOURCE_CONFIG_DIR=/secure/dir  (reads /secure/dir/api-key)
-```
-
-Remove the file to go back to OAuth. Outside plugin scope (running the helper by hand, or from a
-user-scoped MCP config) the helper also reads `ONESOURCE_API_KEY`.
-
-For headless runs you can skip the plugin's server entry and load your own, as `test/e2e.sh` does:
+Generic MCP client config:
 
 ```json
-{ "mcpServers": { "onesource": { "type": "http", "url": "https://<host>/mcp",
-  "headers": { "x-api-key": "${ONESOURCE_API_KEY}" } } } }
+{ "mcpServers": { "onesource": { "type": "http", "url": "https://mcp-onesource-development.icustomer.ai/mcp" } } }
 ```
+
+Per-agent setup for Codex, Hermes, Pi and others: [docs/agents.md](docs/agents.md).
+
+## CLI (preview)
+
+> 🧪 **Preview.** The CLI is not on npm yet, so you build it from source.
+> Repo: [`<github-org>/onesource-cli`](https://github.com/<github-org>/onesource-cli).
+> Before the npm release, two things change:
+> - `ICUSTOMER_API_KEY` / `ICUSTOMER_API_URL` are renamed to `ONESOURCE_*`
+> - the command list is trimmed to the five tools plus `credits`
 
 ```bash
-claude -p "..." --mcp-config onesource.mcp.json --strict-mcp-config \
-  --allowedTools mcp__onesource__onesource_validate
+git clone https://github.com/<github-org>/onesource-cli && cd onesource-cli
+pnpm install && pnpm build && pnpm link --global      # puts `onesource` on your PATH
+
+export ICUSTOMER_API_URL=https://mcp-onesource-development.icustomer.ai
+export ICUSTOMER_API_KEY=...                           # from your iCustomer workspace; never commit it
+
+onesource validate --email maya.chen@tallpinesoftware.com --max-credits 1 --json
+onesource credits                                      # balance, holds, recent movements (free)
 ```
 
-## Codex
+The CLI runs the same input checks as the server before sending anything, so bad input is
+refused locally and costs nothing:
+- Every command takes `--json`, `--input <file|->` for a full JSON body, and `--idempotency-key`.
+- Exit codes: `0` ok, `1` API error, `2` bad input, `3` configuration or connection problem.
 
-Add the server to `~/.codex/config.toml`, or to `.codex/config.toml` in a trusted project:
+## TypeScript SDK (preview)
 
-```toml
-[mcp_servers.onesource]
-url = "https://mcp-onesource-development.icustomer.ai/mcp"
+> 🧪 **Preview.** `@icustomer/onesource` is not on npm yet, so you build it from source.
+> Repo: [`<github-org>/onesource-sdk-js`](https://github.com/<github-org>/onesource-sdk-js).
+
+It has no dependencies and uses the global `fetch`, so it runs on Node 18+, Deno, Bun and in
+browsers.
+
+```ts
+import { OneSource, OneSourceError } from '@icustomer/onesource';
+
+const os = new OneSource({
+  apiKey: process.env.ONESOURCE_API_KEY!,
+  baseUrl: 'https://mcp-onesource-development.icustomer.ai',
+});
+
+const check = await os.validate({ identifiers: { email: 'maya.chen@tallpinesoftware.com' }, max_credits: 1 });
+console.log(check.email_validation?.status, check.cost);   // "valid" { quoted_credits: 1, charged_credits: 1 }
+
+try {
+  await os.enrich({ contact: { email: 'maya.chen@tallpinesoftware.com' }, required_fields: ['job_title'], max_credits: 2 });
+} catch (e) {
+  if (e instanceof OneSourceError) console.error(e.code, e.fix);   // e.g. insufficient_credits
+}
 ```
 
-Sign in once with `codex mcp login onesource`. For CI, use an API key instead of OAuth:
+Methods: `validate`, `resolve`, `enrich`, `find`, `discover`, `credits`.
 
-```toml
-[mcp_servers.onesource]
-url = "https://mcp-onesource-development.icustomer.ai/mcp"
-env_http_headers = { "x-api-key" = "ONESOURCE_API_KEY" }
+## REST API
+
+```bash
+curl -s https://mcp-onesource-development.icustomer.ai/v1/entities/validate \
+  -H "x-api-key: $ONESOURCE_API_KEY" -H "content-type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"identifiers":{"email":"maya.chen@tallpinesoftware.com"},"max_credits":1}'
 ```
 
-Then [install the skills](#install-the-skills) into `~/.agents/skills`.
+| Verb | Route |
+| --- | --- |
+| validate | `POST /v1/entities/validate` |
+| resolve | `POST /v1/entities/resolve` |
+| enrich | `POST /v1/entities/enrich` |
+| find | `POST /v1/entities/find` |
+| discover | `POST /v1/entities/discover` |
+| credit balance | `GET /v1/credits` |
 
-## Hermes Agent
+`Idempotency-Key` makes a retried request return the first answer instead of charging again.
+Reusing a key with a different body returns `409 idempotency_key_reused`.
 
-Add the server to `~/.hermes/config.yaml`:
+## Authentication
 
-```yaml
-mcp_servers:
-  onesource:
-    url: "https://mcp-onesource-development.icustomer.ai/mcp"
-    headers:
-      x-api-key: "${ONESOURCE_API_KEY}"
-```
-
-Run `/reload-mcp` in an open chat to pick it up. Then [install the skills](#install-the-skills)
-into `~/.hermes/skills`.
-
-## Pi
-
-Pi has no built-in MCP support. Add it with the `pi-mcp-adapter` extension, then add the server
-to `~/.pi/agent/mcp.json`, or to `.pi/mcp.json` for one project:
-
-```json
-{ "mcpServers": { "onesource": {
-  "url": "https://mcp-onesource-development.icustomer.ai/mcp",
-  "auth": "oauth" } } }
-```
-
-Sign in with `/mcp auth onesource`. Then [install the skills](#install-the-skills) into
-`~/.pi/agent/skills`. The adapter's config keys vary between its forks, so check the README of the
-version you install.
-
-## Muse Code
-
-The Muse Code beta does not support MCP servers, so it cannot call the OneSource tools yet. It does
-read skills from `~/.agents/skills`, but the skills only describe the tools, so on their own they
-cannot validate, enrich or discover anything. We will add Muse Code once it can connect to MCP
-servers.
-
-## Any other agent
-
-Point any MCP client at the [connection details](#connection-details). If the agent reads
-`SKILL.md` skills, link the three skill folders into its skills folder as shown under
-[Install the skills](#install-the-skills). If it reads neither, the `onesource` skill file is plain
-Markdown and works as a system prompt or project instructions file.
-
-## The five tools
-
-Each agent shows these tools with its own prefix. Claude Code, for example, names them
-`mcp__plugin_onesource_onesource__onesource_<verb>`. The skills refer to them by their short names.
-
-| Tool | Use it to | Credits (development prices) |
+| You are | Use | How |
 | --- | --- | --- |
-| `onesource_validate` | Check whether a work email is deliverable (one, or up to 1000 per call); or verify a company domain alone. Verdicts: valid, invalid, catch-all, risky, unknown. | 1 per address with a valid / catch-all / risky verdict; invalid, unknown, rejected and domain-only are free |
-| `onesource_resolve` | Turn a work email or LinkedIn URL into a OneSource identity (universal DID, golden-record DID, whether an enriched record exists). | Free on the live backend |
-| `onesource_enrich` | Fill missing fields (title, company, work email, ...) on an identity or on up to 100 contacts, with per-field sources. | Per lookup that filled a field (person 1, company 1, work email 2) |
-| `onesource_find` | List decision-makers inside a known company by role and seniority. | Per person returned |
-| `onesource_discover` | Find net-new accounts and contacts from ICP filters (industry, country, size, revenue; job function, level, title). | 1 per contact returned |
+| A person in an agent | OAuth | The agent opens a browser the first time. Your agent stores the tokens. |
+| A script, CI job or headless agent | API key | Send it as `x-api-key`. Keep it in an environment variable or a `chmod 600` file. |
 
-Every answer carries `cost.quoted_credits` (the most it could cost, never above your
-`max_credits`) and `cost.charged_credits` (what was actually taken). The skills make the agent
-state the charge after every call, respect `max_credits`, and never call find or discover without
-a `limit`. Prices are development defaults, not production pricing.
+Never put an API key in a URL, a prompt, a chat message or a committed file. The skills tell
+agents never to ask you for one in chat.
 
-## Examples
+## Credits and guardrails
 
-> Check these three emails and tell me which are safe to send to.
+You pay only for results delivered. Rejected input, misses and errors on our side are free.
 
-> Who runs marketing at these four accounts? Up to 3 people each, 30 credits max.
+- **`max_credits` is a hard budget.** It is required on validate, resolve, enrich and find, and
+  also caps the row count on discover. A call that can't fit returns `credit_cap_reached` and
+  spends nothing.
+- **`limit` caps rows** on find (default 20, max 100) and discover (default 100). The skills always
+  set it.
+- **Every answer shows both numbers.** `cost.quoted_credits` is the most the call could cost;
+  `cost.charged_credits` is what it did cost. `ledger.available_after` is your balance after the
+  call.
+- **Agents report spend.** The skills make the agent state credits after each call, total them for
+  multi-step work, and ask before raising any budget. In Claude Code, `/onesource-usage` shows
+  what the session spent.
 
-> Work through leads.csv with a 100-credit budget and give me a clean list by account.
+## Errors
 
-In Claude Code, the last one runs in the `lead-qualification` subagent, and `/onesource-usage`
-shows what the session spent.
+Errors are JSON with a machine-readable code and a fix an agent can act on:
 
-## Privacy
+```json
+{ "error": "credit_cap_reached", "message": "max_credits 1 cannot pay for any contact...", "fix": "Raise max_credits or request fewer rows or fields." }
+```
 
-- **B2B only.** The tools take work emails, LinkedIn profile URLs, names with a company, and
-  company domains. The server refuses personal emails, phone numbers and device IDs, and the
-  skills tell the agent never to ask for them.
-- **The usage log holds no PII.** In Claude Code, `~/.onesource/usage.jsonl` records only
-  timestamp, session id, tool, outcome, error code, request id and credits. It never records tool
-  inputs, names, emails, domains or result summaries. The file is created with mode 0600. Delete
-  it any time.
-- The package sends data only to the OneSource server you configured. Results come back into your
-  agent's conversation; handle them under your organisation's data policy.
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `invalid_input` | 400 | A field is missing or malformed, or is test data such as `test@` or `example.com` |
+| `consumer_data_v2` | 422 | Personal data (free-mail address, phone, device ID). OneSource is B2B only. |
+| `credit_cap_reached` | 402 | `max_credits` can't cover the cheapest paid step |
+| `insufficient_credits` | 402 | The workspace balance can't cover the call |
+| `no_match` / `not_found` | 404 | Nothing found; nothing charged |
+| `rate_limited` | 429 | Retry after `Retry-After` |
+| `provider_unavailable` | 503 | An upstream source failed; nothing charged |
+
+Full list with what to do: [references/errors.md](plugins/onesource/skills/onesource/references/errors.md).
+
+## Where your data goes
+
+- **B2B only.** OneSource accepts work emails, LinkedIn profile URLs, names with a company, and
+  company domains. It refuses personal emails, phone numbers and device IDs.
+- **Bad input stops before it costs anything.** Test addresses, placeholder names and disposable
+  domains are refused before any lookup runs.
+- **Requests go only to the OneSource server you configured.** Results come back into your agent's
+  conversation. Handle them under your organisation's data policy.
+- **The local usage log holds no personal data:** timestamp, session, tool, outcome, error code,
+  request id and credits only. The file is mode `0600`; delete it any time.
+
+## Skills and evals
+
+The skills are plain [Agent Skills](https://code.claude.com/docs/en/skills) and work in any agent
+that reads `SKILL.md`:
+
+```
+plugins/onesource/skills/
+  onesource/            SKILL.md + references/{tools,cli,errors}.md
+  who-matters/          SKILL.md
+  onesource-credits/    SKILL.md
+```
+
+Every skill change is tested with
+[`claude plugin eval`](https://code.claude.com/docs/en/plugin-evals). The five tools answer from
+synthetic mocks (`plugins/onesource/evals/mocks/`), so evals need no API key, no credits and no
+real data.
+
+| Group | Checks |
+| --- | --- |
+| `triggering/` | The right skill loads for natural requests (email check, buying group, cost question), and no OneSource skill loads for unrelated work |
+| `behaviour/` | Batches emails into one validate call; always passes `limit` and `max_credits`; reports cost and unverified emails; says so when results don't match the roles asked for; never sends personal data; stops on `insufficient_credits` without retrying; validates before enriching; shrinks a plan to fit the budget; hands lead lists to the `lead-qualification` agent |
+
+```bash
+./test/evals.sh                     # full suite: 3 runs per case, with and without the plugin
+EVAL_QUICK=1 ./test/evals.sh        # 1 run per case, no baseline: a quick check
+./test/evals.sh --tag triggering    # one group
+```
+
+`test/evals.sh` always passes `--no-publish` (reports stay local) and a cost ceiling
+(`EVAL_MAX_COST_USD`, default $10).
 
 ## Development
 
 ```bash
-./test/validate.sh   # manifests (claude plugin validate), JSON, frontmatter, secrets scan, unit tests
-ONESOURCE_MCP_URL=http://localhost:3000/mcp ONESOURCE_API_KEY=... ./test/e2e.sh
+./test/validate.sh   # manifests, JSON, frontmatter, eval-suite structure, secrets scan, unit tests (no network)
+./test/evals.sh      # skill evals against mocks (model cost only)
+
+# Against a live server (spends about 1 to 3 credits):
+ONESOURCE_MCP_URL=https://<host>/mcp ONESOURCE_API_KEY=... node test/protocol.test.mjs   # MCP + hook, no model
+ONESOURCE_MCP_URL=https://<host>/mcp ONESOURCE_API_KEY=... E2E_MODE=helper ./test/e2e.sh # headless Claude Code
 ```
 
-`e2e.sh` runs a headless `claude -p` session with this plugin, validates one email through the
-live server (about 1 credit), and checks that the answer names a validation status and the
-credits, and that the usage hook logged the call. `E2E_MODE=helper` exercises the plugin's own
-server entry and `headersHelper` instead of a separate `--mcp-config`. The end-to-end test covers
-Claude Code only.
-
-## Layout
-
 ```
-.claude-plugin/marketplace.json      Claude Code marketplace "icustomer-onesource"
+.claude-plugin/marketplace.json          Claude Code marketplace "icustomer-onesource"
 plugins/onesource/
-  skills/{onesource,who-matters,onesource-credits}/SKILL.md   portable Agent Skills
-  .claude-plugin/plugin.json         Claude Code plugin manifest
-  .mcp.json                          Claude Code server entry: OAuth, optional headersHelper
-  agents/lead-qualification.md       Claude Code subagent
-  commands/onesource-usage.md        Claude Code slash command
-  hooks/hooks.json, hooks/log-usage.mjs
-  scripts/api-key-headers.mjs, scripts/usage-summary.mjs
-test/validate.sh, test/e2e.sh, test/log-usage.test.mjs, test/protocol.test.mjs, test/fixtures/
+  .claude-plugin/plugin.json             plugin manifest
+  .mcp.json                              MCP server entry: OAuth, optional API-key headersHelper
+  skills/                                portable Agent Skills
+  agents/lead-qualification.md           subagent
+  commands/onesource-usage.md            slash command
+  hooks/                                 PII-free usage log
+  scripts/                               headersHelper, usage summary
+  evals/                                 skill evals and tool mocks
+docs/agents.md                           setup for Codex, Hermes, Pi and other agents
+docs/release-notes/                      release notes
+test/                                    validate.sh, evals.sh, e2e.sh, protocol test, fixtures
 ```
 
-## License
+## Support and license
 
-MIT, copyright iCustomer. See [LICENSE](LICENSE).
+Issues and questions: open an issue in this repo, or contact your iCustomer team.
+Changes: [CHANGELOG.md](CHANGELOG.md). MIT, copyright iCustomer: [LICENSE](LICENSE).

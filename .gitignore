@@ -17,3 +17,5 @@ api-key
 usage.jsonl
 .onesource/
 mcp.local.json
+test/eval-results.json
+plugins/onesource/evals/results/

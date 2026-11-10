@@ -14,9 +14,13 @@ Before any paid call, confirm in one short message:
   revenue ranges;
 - how many people per account (`limit` for find) and in total (`limit` for discover);
 - the credit budget. Estimate it with the `onesource-credits` skill and show the arithmetic
-  (for example "3 accounts x 5 people x 1 credit = up to 15 credits").
+  (for example "3 accounts x 5 people x 2 credits = up to 30 credits").
 
-If the user already gave all three, do not ask again; proceed.
+If the user already gave all three, do not ask again; proceed. If the budget is smaller than the
+plan, shrink the plan (fewer people per account, or fewer accounts) and say what you cut.
+
+Exact arguments for each call are in the `onesource` skill's `references/tools.md`. Every step
+below works the same through the MCP tools or the `onesource` CLI.
 
 ## 1. Validate what the user handed over
 
@@ -40,7 +44,8 @@ Report `missing_fields` honestly.
 
 For each target account, call `onesource_find` with `account.domain` (or the company DID), the
 agreed `roles` / `seniority` (or `job_function` / `job_level`), the agreed `limit` and a
-`max_credits` that matches it. Stop early when the budget is spent.
+`max_credits` that matches it. Stop early when the budget is spent. If the people returned do not
+match the roles asked for, report that plainly and do not count them as the buying group.
 
 ## 5. Discover net-new accounts (only when asked)
 

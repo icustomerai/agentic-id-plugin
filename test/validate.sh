@@ -62,6 +62,13 @@ else
   pass "no secret-looking values in the repo"
 fi
 
+echo "== eval suite (static: cases, graders, mocks; no model calls)"
+if node "$ROOT/test/check-evals.mjs" 2>&1 | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
+  pass "plugins/onesource/evals"
+else
+  fail "eval suite"
+fi
+
 echo "== unit tests (node --test)"
 if node --test "$ROOT/test/log-usage.test.mjs" 2>&1 | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
   pass "log-usage.mjs, usage-summary.mjs, api-key-headers.mjs"

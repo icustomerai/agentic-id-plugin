@@ -64,6 +64,15 @@ Every answer carries `cost.quoted_credits` and `cost.charged_credits` (discover 
 Always tell the user the charged figure, and the quote when they differ, for example:
 "Charged 6 credits (quoted 10: 4 lookups found nothing and were not charged)."
 
+## Balance
+
+- **After a paid call:** `ledger.available_after` in the answer is the wallet balance after that
+  call. `ledger.held` and `ledger.charged` show what was reserved and what was taken.
+- **With the CLI:** `onesource credits --json` shows the balance, open holds and recent movements,
+  for free.
+- **Neither:** there is no balance tool in the MCP catalog. Say so, and give the credits spent in
+  this session instead.
+
 ## Local usage log
 
 This plugin logs every OneSource call (tool, request id, credits; never the inputs) to
