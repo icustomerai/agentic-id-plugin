@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "agentic-id": {
+      "type": "http",
+      "url": "https://mcp-onesource-development.icustomer.ai/mcp",
+      "headers": {
+        "x-api-key": "${user_config.api_key}",
+        "x-agentic-id-client": "claude-plugin/0.4.0"
+      }
+    }
+  }
+}

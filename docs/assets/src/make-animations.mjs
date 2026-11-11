@@ -27,7 +27,7 @@ function hero() {
   const row = (t, parts, dy = 26) => { rows.push({ t, y, parts }); y += dy; };
   const span = (text, fill = C.text, weight = 400) => ({ text, fill, weight });
 
-  row(2.4, [span('⏺ ', C.purple), span('onesource_resolve', C.purple, 600), span('({ identifiers: { email: "maya.chen@tallpinesoftware.com" } })', C.dim)], 34);
+  row(2.4, [span('⏺ ', C.purple), span('agentic_id_resolve', C.purple, 600), span('({ identifiers: { email: "maya.chen@tallpinesoftware.com" } })', C.dim)], 34);
   row(3.2, [span('  normalise ', C.dim), span('maya.chen@tallpinesoftware.com', C.text)]);
   row(3.9, [span('  anchor    ', C.dim), span('work_email', C.blue), span(' → hashed match key', C.dim)]);
   row(4.6, [span('  ledger    ', C.dim), span('searching 75M+ verified companies and people', C.text)]);
@@ -46,8 +46,8 @@ function hero() {
   const k = (s) => (s / T).toFixed(4);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${FONT}" font-size="14" role="img" aria-labelledby="t d" xml:space="preserve">
-  <title id="t">An agent resolves a work email to a OneSource identity</title>
-  <desc id="d">The agent calls onesource_resolve. OneSource normalises the email, turns it into a hashed match key, searches its verified ledger of more than 75 million companies and people, finds a known match on the work email with confidence 0.97 and no conflict, and returns a stable identity for Maya Chen, VP Marketing at Tallpine Software. The lookup is free and the issued ID is recorded in the ledger.</desc>
+  <title id="t">An agent resolves a work email to an Agentic ID identity</title>
+  <desc id="d">The agent calls agentic_id_resolve. Agentic ID normalises the email, turns it into a hashed match key, searches its verified ledger of more than 75 million companies and people, finds a known match on the work email with confidence 0.97 and no conflict, and returns a stable identity for Maya Chen, VP Marketing at Tallpine Software. The lookup is free and the issued ID is recorded in the ledger.</desc>
   <defs>
     <clipPath id="typing"><rect x="${x0 + 18}" y="52" height="24" width="0">
       <animate attributeName="width" dur="${T}s" repeatCount="indefinite" values="0;0;${promptW};${promptW}" keyTimes="0;${k(0.3)};${k(1.9)};1" calcMode="linear"/>
@@ -57,7 +57,7 @@ function hero() {
   <rect width="${W}" height="${H}" rx="12" fill="${C.bg}"/>
   <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="12" fill="none" stroke="${C.line}"/>
   <circle cx="22" cy="20" r="5" fill="#ff5f57"/><circle cx="40" cy="20" r="5" fill="#febc2e"/><circle cx="58" cy="20" r="5" fill="#28c840"/>
-  <text x="${W / 2}" y="24" text-anchor="middle" fill="${C.dim}" font-size="12">your coding agent · onesource</text>
+  <text x="${W / 2}" y="24" text-anchor="middle" fill="${C.dim}" font-size="12">your coding agent · agentic-id</text>
   <line x1="0" y1="38" x2="${W}" y2="38" stroke="${C.line}"/>
 
   <text x="${x0}" y="70" fill="${C.green}" font-weight="600">&gt;</text>
@@ -115,7 +115,7 @@ function coop() {
   const outPath = `M${L.x + L.w},${L.y + L.h / 2} C${L.x + L.w + 40},${L.y + L.h / 2} ${out.x - 40},${out.y + out.h / 2} ${out.x},${out.y + out.h / 2}`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${FONT}" role="img" aria-labelledby="t d" xml:space="preserve">
-  <title id="t">How OneSource resolution works: a data co-operative feeding a verified identity ledger</title>
+  <title id="t">How Agentic ID resolution works: a data co-operative feeding a verified identity ledger</title>
   <desc id="d">Workspaces that contribute send hashed identity keys into a shared identity ledger. A workspace that does not contribute keeps its keys private to itself. The ledger holds more than 75 million verified companies and people. An agent's resolve request comes back as a stable identity with its evidence, and every ID issued is recorded.</desc>
   <rect width="${W}" height="${H}" rx="12" fill="${C.bg}"/>
   <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="12" fill="none" stroke="${C.line}"/>

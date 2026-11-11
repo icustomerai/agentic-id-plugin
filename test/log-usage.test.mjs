@@ -1,4 +1,4 @@
-// Unit tests for plugins/onesource/hooks/log-usage.mjs and scripts/usage-summary.mjs.
+// Unit tests for plugins/agentic-id/hooks/log-usage.mjs and scripts/usage-summary.mjs.
 // Run with: node --test test/
 // Fixtures use fake markers and request ids only; no real people, emails or keys.
 import { test } from 'node:test';
@@ -11,20 +11,20 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
-const hook = join(root, 'plugins/onesource/hooks/log-usage.mjs');
-const summary = join(root, 'plugins/onesource/scripts/usage-summary.mjs');
+const hook = join(root, 'plugins/agentic-id/hooks/log-usage.mjs');
+const summary = join(root, 'plugins/agentic-id/scripts/usage-summary.mjs');
 const fixture = (name) => readFileSync(join(here, 'fixtures', name), 'utf8');
 
 function cleanEnv(extra = {}) {
   const env = { ...process.env, ...extra };
-  delete env.ONESOURCE_API_KEY;
+  delete env.AGENTIC_ID_API_KEY;
   return { ...env, ...extra };
 }
 
 function runHook(stdin, configDir) {
   return spawnSync(process.execPath, [hook], {
     input: stdin,
-    env: cleanEnv({ ONESOURCE_CONFIG_DIR: configDir }),
+    env: cleanEnv({ AGENTIC_ID_CONFIG_DIR: configDir }),
     encoding: 'utf8',
   });
 }
@@ -35,7 +35,7 @@ function readLog(configDir) {
   return readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
 
-const tmp = () => mkdtempSync(join(tmpdir(), 'onesource-test-'));
+const tmp = () => mkdtempSync(join(tmpdir(), 'agentic-id-test-'));
 
 test('validate with structuredContent logs tool, request id and credits', () => {
   const dir = tmp();
@@ -45,7 +45,7 @@ test('validate with structuredContent logs tool, request id and credits', () => 
   const [rec, ...rest] = readLog(dir);
   assert.equal(rest.length, 0);
   assert.equal(rec.tool, 'validate');
-  assert.equal(rec.server, 'plugin_onesource_onesource');
+  assert.equal(rec.server, 'plugin_agentic-id_agentic-id');
   assert.equal(rec.ok, true);
   assert.equal(rec.request_id, 'req-fixture-0001');
   assert.equal(rec.quoted_credits, 1);
@@ -59,7 +59,7 @@ test('find with a text-only content array parses the JSON after the summary line
   assert.equal(runHook(fixture('find-text-only.json'), dir).status, 0);
   const [rec] = readLog(dir);
   assert.equal(rec.tool, 'find');
-  assert.equal(rec.server, 'onesource');
+  assert.equal(rec.server, 'agentic-id');
   assert.equal(rec.request_id, 'req-fixture-0002');
   assert.equal(rec.quoted_credits, 10);
   assert.equal(rec.credits_charged, 3);
@@ -84,7 +84,7 @@ test('error result logs the error code and zero credits', () => {
   assert.equal(rec.credits_charged, 0);
 });
 
-test('non-OneSource tools are ignored', () => {
+test('non-Agentic ID tools are ignored', () => {
   const dir = tmp();
   assert.equal(runHook(fixture('unrelated-tool.json'), dir).status, 0);
   assert.deepEqual(readLog(dir), []);
@@ -118,12 +118,12 @@ test('garbage stdin, empty stdin and an unwritable log dir never fail the hook',
 test('usage summary prints credits per tool and recent calls', () => {
   const dir = tmp();
   for (const f of readdirSync(join(here, 'fixtures'))) runHook(fixture(f), dir);
-  const res = spawnSync(process.execPath, [summary], { env: cleanEnv({ ONESOURCE_CONFIG_DIR: dir }), encoding: 'utf8' });
+  const res = spawnSync(process.execPath, [summary], { env: cleanEnv({ AGENTIC_ID_CONFIG_DIR: dir }), encoding: 'utf8' });
   assert.equal(res.status, 0);
   assert.match(res.stdout, /\| find \| 1 \| 0 \| 10 \| 3 \|/);
   assert.match(res.stdout, /\| \*\*total\*\* \| 4 \| 1 \| 13 \| 6 \|/);
   assert.match(res.stdout, /Last 4 calls/);
-  const empty = spawnSync(process.execPath, [summary], { env: cleanEnv({ ONESOURCE_CONFIG_DIR: tmp() }), encoding: 'utf8' });
+  const empty = spawnSync(process.execPath, [summary], { env: cleanEnv({ AGENTIC_ID_CONFIG_DIR: tmp() }), encoding: 'utf8' });
   assert.equal(empty.status, 0);
-  assert.match(empty.stdout, /No OneSource usage logged yet/);
+  assert.match(empty.stdout, /No Agentic ID usage logged yet/);
 });

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Protocol test: does what Claude Code does with this plugin, without a model in the loop.
-//   1. reads plugins/onesource/.mcp.json and fills its ${user_config.*} references the way Claude
-//      Code does: api_key from ONESOURCE_API_KEY. The URL is the one fixed in .mcp.json, unless
-//      ONESOURCE_MCP_URL points the test at another server;
+//   1. reads plugins/agentic-id/.mcp.json and fills its ${user_config.*} references the way Claude
+//      Code does: api_key from AGENTIC_ID_API_KEY. The URL is the one fixed in .mcp.json, unless
+//      AGENTIC_ID_MCP_URL points the test at another server;
 //   2. speaks MCP over Streamable HTTP: initialize, tools/list, then calls the tools;
 //   3. feeds each real tool answer to the plugin's PostToolUse hook and checks the usage line.
 //
-// Needs a running OneSource server. Usage:
-//   ONESOURCE_MCP_URL=http://127.0.0.1:3000/mcp ONESOURCE_API_KEY=<key> node test/protocol.test.mjs
+// Needs a running Agentic ID server. Usage:
+//   AGENTIC_ID_MCP_URL=http://127.0.0.1:3000/mcp AGENTIC_ID_API_KEY=<key> node test/protocol.test.mjs
 // Spends at most 1 credit on the target server (validate; resolve is free). Set PROTOCOL_PAID=0 to
 // skip the paid call. E2E_EMAIL picks the work address to look up; the default is fictional.
 import { spawnSync } from 'node:child_process';
@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PLUGIN = join(ROOT, 'plugins/onesource');
+const PLUGIN = join(ROOT, 'plugins/agentic-id');
 const EMAIL = process.env.E2E_EMAIL ?? 'maya.chen@tallpinesoftware.com';
 const PAID = process.env.PROTOCOL_PAID !== '0';
 
@@ -27,16 +27,16 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures += 1;
 };
 
-if (!process.env.ONESOURCE_API_KEY) {
-  console.error('Set ONESOURCE_API_KEY (and ONESOURCE_MCP_URL) to run the protocol test.');
+if (!process.env.AGENTIC_ID_API_KEY) {
+  console.error('Set AGENTIC_ID_API_KEY (and AGENTIC_ID_MCP_URL) to run the protocol test.');
   process.exit(2);
 }
 
 // 1. The server entry from the plugin's own .mcp.json, with the user's options filled in.
 const manifest = JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin/plugin.json'), 'utf8'));
-const server = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.onesource;
+const server = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.agentic-id;
 const options = {
-  api_key: process.env.ONESOURCE_API_KEY,
+  api_key: process.env.AGENTIC_ID_API_KEY,
 };
 const fill = (value) =>
   value.replace(/\$\{user_config\.(\w+)\}/g, (_m, key) => {
@@ -47,10 +47,10 @@ const fill = (value) =>
 check(server.type === 'http' && /^https:\/\/[a-z0-9.-]+\/mcp$/.test(server.url) && !server.headersHelper, '.mcp.json: http server, fixed https URL, no headersHelper');
 check(server.headers?.['x-api-key'] === '${user_config.api_key}' && manifest.userConfig.api_key.sensitive === true, 'the API key comes only from a sensitive userConfig option');
 
-const url = process.env.ONESOURCE_MCP_URL || server.url;
+const url = process.env.AGENTIC_ID_MCP_URL || server.url;
 const headers = Object.fromEntries(Object.entries(server.headers ?? {}).map(([k, v]) => [k, fill(v)]));
-const cfg = mkdtempSync(join(tmpdir(), 'onesource-protocol-'));
-const hookEnv = { PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_PLUGIN_ROOT: PLUGIN, ONESOURCE_CONFIG_DIR: cfg };
+const cfg = mkdtempSync(join(tmpdir(), 'agentic-id-protocol-'));
+const hookEnv = { PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_PLUGIN_ROOT: PLUGIN, AGENTIC_ID_CONFIG_DIR: cfg };
 
 // 2. MCP over Streamable HTTP.
 let nextId = 1;
@@ -68,7 +68,7 @@ async function rpc(method, params) {
   return { status: res.status, body: json ? JSON.parse(json) : null };
 }
 
-const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'onesource-plugin-protocol-test', version: '0.1.0' } });
+const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'agentic-id-protocol-test', version: '0.1.0' } });
 check(init.status === 200 && init.body?.result?.serverInfo, 'initialize', `${init.status} ${init.body?.result?.serverInfo?.name ?? JSON.stringify(init.body?.error ?? '')}`);
 
 const list = await rpc('tools/list', {});
@@ -87,7 +87,7 @@ async function callAndLog(verb, args) {
   const payload = {
     session_id: 'protocol-test',
     hook_event_name: 'PostToolUse',
-    tool_name: `mcp__plugin_onesource_onesource__${toolName(verb)}`,
+    tool_name: `mcp__plugin_agentic-id_agentic-id__${toolName(verb)}`,
     tool_input: args,
     tool_response: result,
   };

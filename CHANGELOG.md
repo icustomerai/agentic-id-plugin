@@ -1,7 +1,28 @@
 # Changelog
 
-All notable changes to this marketplace and the `onesource` plugin. Versions follow
+All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
+
+## 0.4.0 - 2026-11-12
+
+OneSource is now **Agentic ID**. Breaking: every name changed at once, with no aliases.
+
+### Changed
+- Marketplace `icustomer-onesource` is now `icustomer`; plugin `onesource` is now `agentic-id`.
+  Install with `claude plugin install agentic-id@icustomer`.
+- MCP server entry `onesource` is now `agentic-id` (`/mcp` → `plugin:agentic-id:agentic-id`).
+- Tools `onesource_<verb>` are now `agentic_id_<verb>` (validate, resolve, enrich, find, discover).
+  Needs an MCP server that serves the new names.
+- Skills `onesource` and `onesource-credits` are now `agentic-id` and `agentic-id-credits`; command
+  `/onesource-usage` is now `/agentic-id-usage`; the CLI binary is `agentic-id`.
+- Local files move from `~/.onesource/` to `~/.agentic-id/` (usage log, API key). Env vars
+  `ONESOURCE_*` are now `AGENTIC_ID_*`. Client header `x-onesource-client` is now `x-agentic-id-client`.
+
+**Migration:** uninstall `onesource@icustomer-onesource`, install `agentic-id@icustomer`, and move
+`~/.onesource/api-key` to `~/.agentic-id/api-key` if you use API-key mode.
+
+The MCP endpoint (`https://mcp-onesource-development.icustomer.ai/mcp`) and the GitHub repository
+keep their names for now.
 
 ## 0.3.1 - 2026-11-11
 

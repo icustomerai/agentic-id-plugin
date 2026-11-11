@@ -5,7 +5,7 @@
 // one plugin folder, so problems show up in CI instead of in the developer portal. `claude plugin
 // validate` covers syntax and schema; this covers the directory's own rules on top.
 //
-//   node test/directory-check.mjs [plugin-folder]     default: plugins/onesource
+//   node test/directory-check.mjs [plugin-folder]     default: plugins/agentic-id
 //   node test/directory-check.mjs --strict            also fail on "held for a reviewer"
 //
 // Results use the portal's words:
@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const strict = args.includes('--strict');
-const PLUGIN = resolve(ROOT, args.find((a) => !a.startsWith('--')) ?? 'plugins/onesource');
+const PLUGIN = resolve(ROOT, args.find((a) => !a.startsWith('--')) ?? 'plugins/agentic-id');
 const rel = (p) => relative(PLUGIN, p) || '.';
 
 const findings = [];
@@ -47,7 +47,7 @@ const HOOK_EVENTS = new Set([
   'ConfigChange', 'WorktreeCreate', 'WorktreeRemove', 'InstructionsLoaded', 'CwdChanged', 'FileChanged',
 ]);
 const SECRET_PATTERNS = [
-  /os_(live|test)_[A-Za-z0-9]{12,}/, // OneSource API keys
+  /os_(live|test)_[A-Za-z0-9]{12,}/, // Agentic ID API keys
   /sk-(ant-)?[A-Za-z0-9_-]{24,}/, // Anthropic / OpenAI style keys
   /gh[pousr]_[A-Za-z0-9]{30,}/, // GitHub tokens
   /AKIA[0-9A-Z]{16}/, // AWS access key ids

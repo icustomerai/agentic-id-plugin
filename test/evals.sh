@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs the plugin's skill evals (plugins/onesource/evals) with `claude plugin eval`.
+# Runs the plugin's skill evals (plugins/agentic-id/evals) with `claude plugin eval`.
 #
-# The five OneSource tools answer from the mocks in evals/mocks/onesource/, so no API key, no
+# The five Agentic ID tools answer from the mocks in evals/mocks/agentic-id/, so no API key, no
 # credits and no real data are involved. Model and judge calls still cost money: the run stops at
 # EVAL_MAX_COST_USD (list price).
 #
@@ -22,7 +22,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN="$ROOT/plugins/onesource"
+PLUGIN="$ROOT/plugins/agentic-id"
 
 command -v claude >/dev/null || { echo "claude CLI not found"; exit 1; }
 

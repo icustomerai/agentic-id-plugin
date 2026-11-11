@@ -1,25 +1,25 @@
 {
-  "name": "icustomer-onesource",
+  "name": "icustomer",
   "owner": {
     "name": "iCustomer",
     "url": "https://icustomer.ai"
   },
   "metadata": {
-    "description": "iCustomer OneSource for Claude Code: ledger-based B2B identity resolution, enrichment and contact discovery.",
-    "version": "0.3.1"
+    "description": "Agentic ID for Claude Code: ledger-based B2B identity resolution, enrichment and contact discovery.",
+    "version": "0.4.0"
   },
   "plugins": [
     {
-      "name": "onesource",
-      "source": "./plugins/onesource",
+      "name": "agentic-id",
+      "source": "./plugins/agentic-id",
       "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then enrich, find, discover and validate, with credit-aware skills, a lead-qualification agent and a local usage log.",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "author": {
         "name": "iCustomer",
         "url": "https://icustomer.ai"
       },
       "license": "MIT",
-      "keywords": ["onesource", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm"],
+      "keywords": ["agentic-id", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm"],
       "category": "sales"
     }
   ]

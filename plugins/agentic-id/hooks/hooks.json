@@ -1,0 +1,18 @@
+{
+  "description": "Log every Agentic ID tool call (tool, request id, credits; never inputs) to ~/.agentic-id/usage.jsonl.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*agentic[-_]id.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/log-usage.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

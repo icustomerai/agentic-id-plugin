@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="820" height="340" viewBox="0 0 820 340" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" role="img" aria-labelledby="t d" xml:space="preserve">
-  <title id="t">How OneSource resolution works: a data co-operative feeding a verified identity ledger</title>
+  <title id="t">How Agentic ID resolution works: a data co-operative feeding a verified identity ledger</title>
   <desc id="d">Workspaces that contribute send hashed identity keys into a shared identity ledger. A workspace that does not contribute keeps its keys private to itself. The ledger holds more than 75 million verified companies and people. An agent's resolve request comes back as a stable identity with its evidence, and every ID issued is recorded.</desc>
   <rect width="820" height="340" rx="12" fill="#0d1117"/>
   <rect x="0.5" y="0.5" width="819" height="339" rx="12" fill="none" stroke="#30363d"/>

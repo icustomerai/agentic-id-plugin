@@ -9,13 +9,13 @@ node_modules/
 *.log
 .tmp/
 
-# Never commit credentials or local OneSource state
+# Never commit credentials or local Agentic ID state
 .env
 .env.*
 *.key
 api-key
 usage.jsonl
-.onesource/
+.agentic-id/
 mcp.local.json
 test/eval-results.json
-plugins/onesource/evals/results/
+plugins/agentic-id/evals/results/
