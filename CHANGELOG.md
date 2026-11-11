@@ -3,6 +3,37 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.0 - unreleased (branch `v3/plugin-on-v3`)
+
+The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint is no longer used.
+
+### Changed
+- `.mcp.json` starts a bundled, dependency-free stdio MCP server (`server/mcp.mjs`) that calls the
+  V3 public API (`/v1/*`) with an API key. OAuth sign-in through `/mcp` is gone until V3 offers it.
+- Plugin options: `api_key` is now required; new `api_url` (default `http://127.0.0.1:3100`) and
+  optional `session_budget`.
+- Tool arguments and answers follow the V3 contract: `id` is an `os_...` ID; resolve returns
+  `outcome` (known, new, review, conflict, unresolvable); enrich returns `results[].fields[]` with a
+  `level` per value; find and discover return `excluded` and `rejected`; discover takes
+  `employees_min` / `employees_max` and `count_only`.
+- Prices: find is 2 credits per person, an `invalid` validate answer is charged, resolve is 1 per
+  ID (0 for an ID the workspace holds).
+- Error codes are V3's (`auth.invalid_key`, `credits.insufficient`, `request.invalid`, ...).
+
+### Added
+- Tools: `agentic_id_resolve_many`, `agentic_id_lookalike`, `agentic_id_facts`, `agentic_id_ledger`,
+  `agentic_id_estimate`, `agentic_id_status`.
+- Local guards: personal emails and phone numbers never leave the machine; input is cleaned;
+  repeats are paid once; calls over 10 credits need `max_credits`.
+- CLI `agentic-id` in the plugin's `bin/`: every tool, CSV in and out for validate, resolve and
+  enrich, `--dry-run`, `estimate`, `doctor`, exit codes.
+- Skills `clean-a-list`, `lookalike-prospecting`, `trust-check`.
+- Hook: optional per-session credit budget. Commands `/agentic-id-status`, `/agentic-id-clean-list`.
+- Tests: unit tests for the bundled layer, a stdio protocol test, 8 new eval cases.
+
+### Not yet updated
+- The repository README and `docs/agents.md` still describe the v2 endpoint. See `docs/v3.md`.
+
 ## 0.4.0 - 2026-11-12
 
 OneSource is now **Agentic ID**. Breaking: every name changed at once, with no aliases.

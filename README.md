@@ -12,6 +12,11 @@ REVIEW BEFORE THIS REPO GOES PUBLIC (founder sign-off on external claims):
       domains were checked to be unregistered on 2026-11-10.
 -->
 
+> **Branch `v3/plugin-on-v3`.** On this branch the plugin runs on the Agentic ID V3 API through
+> its own bundled server. Start with [docs/v3.md](docs/v3.md) and
+> [plugins/agentic-id/README.md](plugins/agentic-id/README.md). The rest of this page still
+> describes the hosted v2 endpoint (five tools, OAuth sign-in) and is rewritten before release.
+
 <h1 align="center">Agentic ID</h1>
 
 <p align="center">

@@ -1,5 +1,10 @@
 # Connect Agentic ID to your agent
 
+> **Branch `v3/plugin-on-v3`.** This page still describes the hosted v2 endpoint. On V3 the tools
+> come from the plugin's own stdio server. Any MCP client can start it:
+> `{ "command": "node", "args": ["<repo>/plugins/agentic-id/server/mcp.mjs"], "env": { "AGENTIC_ID_API_KEY_FILE": "<file that holds the key>", "AGENTIC_ID_URL": "<V3 API URL>" } }`.
+> Agents without MCP can use `plugins/agentic-id/bin/agentic-id`. See [v3.md](v3.md).
+
 Agentic ID has two parts that work in any agent:
 - **the MCP server** (the five tools)
 - **the Agent Skills** (they teach the agent when to use each tool and how credits work)
