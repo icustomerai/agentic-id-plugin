@@ -54,7 +54,7 @@ else
   # Server entry with the key header, written from the environment by node (not via argv).
   node -e '
     const fs = require("fs");
-    const cfg = { mcpServers: { agentic-id: { type: "http", url: process.env.AGENTIC_ID_MCP_URL,
+    const cfg = { mcpServers: { "agentic-id": { type: "http", url: process.env.AGENTIC_ID_MCP_URL,
       headers: { "x-api-key": process.env.AGENTIC_ID_API_KEY } } } };
     fs.writeFileSync(process.argv[1], JSON.stringify(cfg), { mode: 0o600 });
   ' "$TMP/mcp.json"

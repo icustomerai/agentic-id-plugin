@@ -34,7 +34,7 @@ if (!process.env.AGENTIC_ID_API_KEY) {
 
 // 1. The server entry from the plugin's own .mcp.json, with the user's options filled in.
 const manifest = JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin/plugin.json'), 'utf8'));
-const server = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.agentic-id;
+const server = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers['agentic-id'];
 const options = {
   api_key: process.env.AGENTIC_ID_API_KEY,
 };
