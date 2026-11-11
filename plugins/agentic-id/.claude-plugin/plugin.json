@@ -1,8 +1,8 @@
 {
   "name": "agentic-id",
   "displayName": "Agentic ID",
-  "version": "0.4.0",
-  "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then enrich, find, discover and validate with the five Agentic ID tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
+  "version": "0.5.0",
+  "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then validate, enrich, find, discover and find look-alikes, with every value marked verified, corroborated or claimed. Credit-aware skills, a lead-qualification agent, a CLI for CSV lists and a local, PII-free usage log.",
   "author": {
     "name": "iCustomer",
     "url": "https://icustomer.ai"
@@ -11,14 +11,29 @@
   "privacyPolicyUrl": "https://icustomer.ai/privacy-policy",
   "repository": "https://github.com/icustomerai/onesource-plugin",
   "license": "MIT",
-  "keywords": ["agentic-id", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm", "mcp"],
+  "keywords": [
+    "agentic-id",
+    "b2b",
+    "enrichment",
+    "identity",
+    "email-validation",
+    "prospecting",
+    "gtm",
+    "mcp"
+  ],
   "userConfig": {
     "api_key": {
       "type": "string",
-      "title": "Agentic ID API key (optional)",
-      "description": "Leave empty to sign in with your iCustomer account (run /mcp, pick agentic-id, choose Authenticate). For CI and headless runs, paste an os_live_ key: Claude Code keeps it in your system keychain and sends it only to the Agentic ID server, as the x-api-key header.",
+      "title": "Agentic ID API key",
+      "description": "Your Agentic ID API key. Claude Code keeps it in your system keychain and passes it only to the plugin's own local server process, which sends it to the Agentic ID API as a Bearer token. Never paste a key into a chat.",
       "sensitive": true,
       "default": ""
+    },
+    "api_url": {
+      "type": "string",
+      "title": "Agentic ID API URL",
+      "description": "Where the Agentic ID V3 API runs. Leave the default for a local V3 stack; set your hosted URL (https) otherwise.",
+      "default": "http://127.0.0.1:3100"
     }
   }
 }

@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+// The agentic-id command. Claude Code puts a plugin's bin/ folder on PATH; outside Claude Code,
+// link this file into a folder on your PATH.
+import('../server/cli.mjs').then(async (m) => {
+  process.exitCode = await m.main();
+});
