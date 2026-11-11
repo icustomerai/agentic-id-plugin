@@ -1,90 +1,72 @@
 # Using Agentic ID through the CLI
 
-Use the CLI when:
-- the Agentic ID MCP tools are not in your tool list but you can run shell commands (agents without
-  MCP support, CI jobs, scripts), or
-- the user has a **file** of more than about 100 rows: `--file` sends it in budgeted chunks and
-  writes one CSV row per input, which is cheaper in tokens and safer than looping tool calls.
+`agentic-id` ships with the plugin (Claude Code puts the plugin's `bin/` folder on PATH). It
+calls the same API as the MCP tools, with the same cleaning, caps and answers.
 
-The CLI calls the same API as the MCP tools, so inputs, outputs, error codes and credits are
-identical.
+Use it when:
+- the user has a **CSV file**, or more than about 50 rows;
+- the MCP tools are not in your tool list but you can run shell commands (CI jobs, scripts).
 
-## Check it is there and signed in
+## Check it works
 
 ```bash
-agentic-id --version
-agentic-id whoami --json      # free: which credential, which workspace, credits available
+agentic-id doctor
 ```
 
-If the command is missing, tell the user: the CLI is in preview and installs from source (see the
-README, "CLI"). Do not install software without the user's yes.
+It checks Node, the key, the server and what the key can read, and prints a fix for anything
+wrong. The key comes from `AGENTIC_ID_API_KEY`, or from the file named in
+`AGENTIC_ID_API_KEY_FILE`; the server from `AGENTIC_ID_URL`.
 
-If `whoami` exits 3 ("Not signed in"), ask the user to run one of these **themselves**:
-- `agentic-id login` (opens a browser; for people at a terminal)
-- `agentic-id login --with-api-key < key.txt` (for CI and servers)
+Never ask the user to paste a key into the chat, never put a key on a command line, and never
+write one into a file in the repository.
 
-`agentic-id doctor` prints every check with a fix; suggest it when something is off.
+## Commands
 
-## Authentication
-
-The CLI finds a credential on its own, in this order: `--api-key`, `AGENTIC_ID_API_KEY`, the
-`agentic-id login` session, `~/.agentic-id/api-key`. The Claude Code plugin does not read that file; it
-uses its own `api_key` option.
-`AGENTIC_ID_API_URL` sets the server; the default is the hosted development server.
-
-Never ask the user to paste a key into the chat, never put a key on the command line (it lands in
-shell history and logs), and never write one into a file in the repository.
-
-## Always use machine output
-
-- `--json`: the raw API answer, with the same fields as the MCP tool result in [tools.md](tools.md).
-- `-o csv` / `-o jsonl`: one row per result (validate, enrich, find, discover, resolve). Use these
-  for files and write them where the user asked, e.g. `-o csv > verdicts.csv`.
-
-Parse these rather than the readable view.
-
-## Command map
-
-| MCP tool | CLI |
+| Tool | CLI |
 | --- | --- |
-| `agentic_id_validate` | `agentic-id validate --email <e> --max-credits <n> --json` (or `--domain`, `--id`) |
-| `agentic_id_validate` (batch) | `agentic-id validate --file <csv> [--column <name>] --max-credits <budget> -o csv` |
-| `agentic_id_resolve` | `agentic-id resolve --email <e> \| --linkedin-url <u> \| --name <n> --company-domain <d> --max-credits <n> --json` |
-| `agentic_id_enrich` | `agentic-id enrich --email <e> \| --linkedin-url <u> \| --name <n> --company-domain <d> [--job-title <t>] \| --id <did> --max-credits <n> --json` |
-| `agentic_id_enrich` (companies) | `agentic-id enrich --account <domain-or-name>[,...] --required-fields industry,employee_size --max-credits <n> --json` |
-| `agentic_id_enrich` (batch) | `agentic-id enrich --file <csv> --required-fields email,job_title --max-credits <budget> -o csv` |
-| `agentic_id_find` | `agentic-id find --domain <d> --roles "<r>" --seniority <s> --limit <n> --max-credits <n> --json` |
-| `agentic_id_discover` | `agentic-id discover --industry "<i>" --country <c> --employee <band> [--keyword <k>] [--tech <t>] --job-title "<t>" --limit <n> --max-credits <n> --json` |
-| (no MCP tool) | `agentic-id credits --json`: balance, holds and recent movements. Free. |
+| `agentic_id_validate` | `agentic-id validate jane.doe@acme.io bob@acme.io --json` |
+| `agentic_id_resolve` | `agentic-id resolve --email jane.doe@acme.io --json` (`--linkedin`, `--name` + `--company` or `--domain`, `--domain` alone for a company) |
+| `agentic_id_enrich` | `agentic-id enrich --email jane.doe@acme.io --fields title,company_domain --json`; a company: `agentic-id enrich --domain acme.io --json` |
+| `agentic_id_find` | `agentic-id find acme.io --role "VP Marketing" --limit 5 --max-credits 10 --json` |
+| `agentic_id_discover` | `agentic-id discover --industry software --country GB --min 100 --max 2000 --count` then the same with `--max-accounts 25 --max-credits 25 --json` |
+| `agentic_id_lookalike` | `agentic-id lookalike acme.io globex.com initech.com --max-accounts 10 --max-credits 10 --json` |
+| `agentic_id_facts` / `agentic_id_ledger` | `agentic-id facts <id>` / `agentic-id ledger <id>` |
+| `agentic_id_estimate` | `agentic-id estimate discover --max-accounts 50 --title CTO --per-account 2` |
+| `agentic_id_status` | `agentic-id status --json` |
+
+Always pass `--json` when you will read the answer yourself.
 
 ## Files and budgets
 
-- With `--file`, `--max-credits` is the budget for **the whole file**. Agree it with the user first
-  (validate: up to 1 credit per email; enrich: up to 5 held per contact, about 2 charged).
-- Enrich rows carry `status` (Enriched with email / Enriched / Not Enriched), `confidence`,
-  `outreach_ready` and `reason`. Only `outreach_ready` rows are safe to email.
-- `--required-fields` takes the backend's names (`email`, `job_title`, `linkedin`, ...). A wrong
-  name stops the whole file before anything is charged; fix the name from the error and rerun.
-- Rows come back with a `status` when they were not processed:
-  - `skipped`: the budget ran out first. Tell the user how many, and ask before spending more.
-  - `rejected`: refused before lookup (personal email, placeholder name). Not charged.
-  - `not_sent`: the run stopped part-way (exit code 1). Everything before it was paid for and is
-    in the output; report the error and ask before re-running.
-- Validate takes a CSV with an `email` / `work_email` column (or `--column`), or one email per line.
-  Enrich reads `email`, `linkedin_url`, `name` / `first_name` + `last_name`, `company`,
-  `company_domain` / `website`.
+```bash
+agentic-id validate --file leads.csv --dry-run                         # rows, distinct addresses, the most it could cost; sends nothing
+agentic-id validate --file leads.csv --max-credits 200 --out checked.csv
+agentic-id resolve  --file crm.csv   --max-credits 500 --out resolved.csv
+agentic-id enrich   --file leads.csv --fields title,work_email --max-credits 400 --out enriched.csv
+```
 
-## Retries
-
-Pass `--idempotency-key <unique-key>` on paid calls you might retry. A retried call with the same
-key returns the first answer instead of charging again; in file mode each chunk gets its own
-derived key, so re-running the same file with the same key does not pay twice.
+- Always run `--dry-run` first and show the user the estimate. A file run without `--max-credits`
+  is refused.
+- Columns are found by their usual names (Email, Work Email, LinkedIn, First Name, Last Name,
+  Company, Website, Domain). Name one explicitly with `--column` or `--email-column`,
+  `--linkedin-column`, `--name-column`, `--company-column`, `--domain-column`.
+- Comma, semicolon and tab separated files all work. The output keeps every input column and row
+  order and adds:
+  - validate: `email_verdict`, `email_reason`
+  - resolve: `agentic_id`, `resolve_outcome`, `same_id_as_row` (the first row with the same ID:
+    the duplicate marker)
+  - enrich: `agentic_id`, `enrich_status`, and for each field `os_<field>` and `os_<field>_level`
+- Repeats are paid once. Personal emails and phone numbers never leave the machine.
+- `--limit-rows 20` runs a sample; use it to see the real price before the full file.
+- The run stops at the cap; rows not reached are marked `not_checked` or `not_run`.
 
 ## Exit codes
 
-| Code | Meaning | What to do |
-| --- | --- | --- |
-| 0 | OK | Read the output |
-| 1 | API error, or a file run that stopped part-way | Read `error` and `fix` on stderr (see [errors.md](errors.md)); keep the rows already printed |
-| 2 | Bad input, refused before sending | Fix the flag the message names |
-| 3 | Configuration, sign-in or connection problem | Ask the user to run `agentic-id doctor` and follow its fix |
+| Code | Means |
+| --- | --- |
+| 0 | ok |
+| 1 | bad input; nothing was sent |
+| 2 | no key, or the key was refused |
+| 3 | not enough credits, or a cap is needed |
+| 4 | the API refused the request |
+| 5 | the API could not be reached, or failed |

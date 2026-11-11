@@ -1,62 +1,65 @@
 ---
 name: who-matters
-description: Work out who matters for the user's ICP with the five Agentic ID tools - validate the identifiers in hand, resolve them to Agentic ID identities, enrich the gaps, find the buying group inside known accounts, and discover net-new accounts and contacts - within an agreed credit budget. Use for "who should I talk to at <company>", "build me a contact list for <ICP>", "check and enrich these leads", "find the marketing leadership at these accounts".
+description: Work out who matters for the user's ICP with Agentic ID - check the identifiers in hand, resolve them, enrich the gaps, find the buying group inside known accounts, and discover net-new accounts and people - within an agreed credit budget. Use for "who should I talk to at <company>", "build me a contact list for <ICP>", "check and enrich these leads", "find the marketing leadership at these accounts", "map the buying committee".
 ---
 
 # Who matters
 
-A playbook on top of the `agentic-id` skill (read it for tool details and the credit rules).
+A playbook on top of the `agentic-id` skill (tool arguments are in its `references/tools.md`;
+prices are in `agentic-id-credits`).
 
-## 0. Agree the scope and the budget first
+## 0. Agree the scope and the budget
 
-Before any paid call, confirm in one short message:
-- the ICP: roles or job functions, seniority, and for discover the industry, country, employee or
-  revenue ranges;
-- how many people per account (`limit` for find) and in total (`limit` for discover);
-- the credit budget. Estimate it with the `agentic-id-credits` skill and show the arithmetic
-  (for example "3 accounts x 5 people x 1 credit = up to 15 credits").
+Before any paid call, settle in one short message:
+- the persona: job titles or seniority; for discover also industry, country and size range;
+- how many people per account, and how many accounts;
+- the credit budget. Get the number from `agentic_id_estimate` and show the arithmetic
+  ("3 accounts x 5 people x 2 = up to 30 credits").
 
-If the user already gave all three, do not ask again; proceed. If the budget is smaller than the
-plan, shrink the plan (fewer people per account, or fewer accounts) and say what you cut.
+If the user already gave all three, do not ask again. If the budget is smaller than the plan,
+shrink the plan (fewer people per account, or fewer accounts) and say what you cut.
 
-Exact arguments for each call are in the `agentic-id` skill's `references/tools.md`. Every step
-below works the same through the MCP tools or the `agentic-id` CLI.
+## 1. Start from what the user has
 
-## 1. Validate what the user handed over
+- Emails in hand: `agentic_id_validate` with `emails`. Keep `valid`. Keep `catch-all` and
+  `unknown` but flag them. Drop `invalid` and `rejected`, one line each with the reason.
+- Then `agentic_id_resolve_many` on the keepers: one ID per person, and `same_id` shows the
+  duplicates. `review` and `conflict` rows go to the user, not into the list.
 
-Call `agentic_id_validate`, with `emails` for more than one address. Keep `valid` and
-`catch-all`. Report `invalid` and rejected addresses in one line each. `unknown` is not a verdict
-against the address; keep it but flag it.
+## 2. Enrich only the gaps that matter
 
-## 2. Resolve the keepers to identities
+`agentic_id_enrich` with `contacts` and the `fields` the task needs, not everything. Report each
+value with its level. A result with no fields found nothing: say so.
 
-Call `agentic_id_resolve` with each email or LinkedIn URL. Keep the `universal_did`.
-`found: true` means Agentic ID already holds an enriched record, which usually makes enrich
-cheaper or unnecessary. Handle `needs_evidence` and `conflict` as the `agentic-id` skill says.
+## 3. Find the rest of the buying group
 
-## 3. Enrich only the gaps that matter
+For each target account, `agentic_id_find` with `account.domain`, the agreed `roles` or
+`seniority`, the agreed `limit`, and a matching `max_credits`.
 
-For the identities worth working, call `agentic_id_enrich` with the DID (or `contacts` for people
-Agentic ID has not seen). Ask for the fields the task needs (`required_fields`), not everything.
-Report `missing_fields` honestly.
+- Read `excluded`: it says why candidates were left out (former role, wrong company, already
+  delivered). If few people came back, tell the user the main reason before widening anything.
+- If the titles returned are not the ones asked for, say so plainly. Do not count them.
+- Calling again returns the next people (already delivered ones are skipped). Only page with the
+  user's yes.
+- Stop early when the budget is spent.
 
-## 4. Find the rest of the buying group
+## 4. Discover net-new accounts (only when asked)
 
-For each target account, call `agentic_id_find` with `account.domain` (a DID alone is not enough), the
-agreed `roles` (job titles) / `seniority` (or `job_function`), the agreed `limit` and a
-`max_credits` that matches it. Stop early when the budget is spent. If the people returned do not
-match the roles asked for, report that plainly and do not count them as the buying group.
+1. `agentic_id_discover` with `count_only: true`. Report the count and the `plan`.
+2. If the count is far larger than wanted, tighten the filters with the user. If `rejected` lists
+   a filter value, fix that value first: it was not applied.
+3. Run the paid call with `max_accounts`, `contact_filters` when people are wanted, and
+   `max_credits` set to the agreed budget.
 
-## 5. Discover net-new accounts (only when asked)
+For "more companies like these", use `agentic_id_lookalike` with the user's best customers as
+seeds, and show `profile` before the list.
 
-Call `agentic_id_discover` with `account_filters` and `contact_filters`, an explicit `limit`, and
-`max_credits` set to the agreed budget. Repeat calls page through net-new contacts; only page
-again with the user's yes.
+## 5. Deliver
 
-## 6. Deliver
-
-- Group by account. For each person: name, title, seniority, DID, and only the fields that were
-  actually returned. Mark provider emails from find/discover as unverified unless validated.
+- Group by account. For each person: name, title, Agentic ID, and only the values that were
+  returned, each with its level.
+- Emails from find and discover are masked unless the key may read them. To send, the user needs
+  the values through a key with that right, and anything below `corroborated` validated first.
 - Lists longer than about 20 rows go to a CSV file (ask where), not into the chat.
-- Finish with a credits table: step, calls, credits charged, and the total against the budget.
+- End with a credits table: step, calls, credits charged, and the total against the budget.
 - Never send email, never write to a CRM, never raise a budget without a yes.

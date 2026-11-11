@@ -76,7 +76,7 @@ export const TOOLS = [
         contact: identifiers,
         contacts: { type: 'array', items: identifiers, description: 'Several people in one call. Lists over 100 are sent in batches inside max_credits.' },
         company: { type: 'object', properties: { domain: str('Company domain.'), name: str('Company name.') }, additionalProperties: false },
-        fields: list('Only these fields, e.g. ["title", "work_email", "company_domain"]. Leave out for everything.'),
+        fields: list('Only these fields; leave out for everything. People: work_email, linkedin_url, title, seniority, company_name, company_domain, location, city, country. Companies: name, domain, linkedin_url, industry, employees, revenue_usd, country, city, founded, description.'),
         purpose,
         max_credits: maxCredits,
       },

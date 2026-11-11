@@ -2,13 +2,14 @@
 type: fixed
 ---
 {
-  "id": null,
-  "universal_did": "did:icustomer:global:person:7a1e0c9f3b",
-  "golden_record_did": "did:icustomer:ws_eval:person:7a1e0c9f3b",
-  "found": true,
-  "identity_state": "known",
-  "match_confidence": 0.97,
-  "cost": { "quoted_credits": 0, "charged_credits": 0 },
   "request_id": "req_eval_resolve_01",
-  "summary": "Resolved to a known Agentic ID identity with an enriched record. Free."
+  "summary": "already in the ledger. 0 credits charged.",
+  "cost": {
+    "quoted_credits": 1,
+    "charged_credits": 0
+  },
+  "id": "os_evalPerson0000000001",
+  "outcome": "known",
+  "matched_on": "email",
+  "confidence": 0.99
 }

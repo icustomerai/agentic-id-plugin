@@ -2,13 +2,31 @@
 type: fixed
 ---
 {
-  "account": { "domain": "acme-analytics-synthetic.com", "name": "Acme Analytics" },
-  "people": [
-    { "id": "did:icustomer:global:person:9a8b7c", "name": "Chris Patel", "title": "CTO", "seniority": "C-Level", "company": "Acme Analytics", "company_domain": "acme-analytics-synthetic.com", "match_confidence": 0.62, "source": "agentic-id" },
-    { "id": "did:icustomer:global:person:6d5e4f", "name": "Lee Novak", "title": "RevOps Manager", "seniority": "Manager", "company": "Acme Analytics", "company_domain": "acme-analytics-synthetic.com", "match_confidence": 0.58, "source": "agentic-id" }
-  ],
-  "total_found": 42,
-  "cost": { "quoted_credits": 2, "charged_credits": 2 },
   "request_id": "req_eval_find_offfilter",
-  "summary": "2 people at Acme Analytics. Charged 2 credits."
+  "summary": "2 people found at acme-analytics-synthetic.com. 4 credits charged.",
+  "cost": {
+    "quoted_credits": 4,
+    "charged_credits": 4
+  },
+  "account_id": "os_evalCompany000000001",
+  "people": [
+    {
+      "id": "os_evalPerson0000000021",
+      "account_id": "os_evalCompany000000001",
+      "name": "Chris Patel",
+      "title": "CTO",
+      "email": "c***@acme-analytics-synthetic.com",
+      "level": "claimed"
+    },
+    {
+      "id": "os_evalPerson0000000022",
+      "account_id": "os_evalCompany000000001",
+      "name": "Lee Novak",
+      "title": "RevOps Manager",
+      "email": "l***@acme-analytics-synthetic.com",
+      "level": "claimed"
+    }
+  ],
+  "excluded": {},
+  "rejected": []
 }

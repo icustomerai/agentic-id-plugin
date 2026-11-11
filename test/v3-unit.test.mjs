@@ -495,3 +495,56 @@ test('cli: a CSV is resolved with duplicates marked, and enriched with level col
   assert.equal((await cli(['find', '--file', file, '--max-credits', '1'], client)).code, 1);
   assert.match((await cli(['validate', '--file', join(dir, 'missing.csv'), '--max-credits', '1'], client)).err, /No such file/);
 });
+
+// ------------------------------------------------------------------ session budget hook
+test('budget hook: off by default, lets free calls through, blocks paid calls past the budget', async () => {
+  const { budgetFrom, decide, spentInSession } = await import('../plugins/agentic-id/hooks/budget-guard.mjs');
+  assert.equal(budgetFrom({}), null);
+  assert.equal(budgetFrom({ CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '' }), null);
+  assert.equal(budgetFrom({ CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: 'lots' }), null);
+  assert.equal(budgetFrom({ CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '100' }), 100);
+  assert.equal(budgetFrom({ AGENTIC_ID_SESSION_BUDGET: '25', CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '100' }), 25);
+  const t = (verb) => `mcp__plugin_agentic-id_agentic-id__agentic_id_${verb}`;
+  assert.equal(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, null, 999), null, 'no budget, no opinion');
+  assert.equal(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 20), null);
+  assert.match(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 100), /budget of 100 credits is spent/);
+  assert.match(decide({ tool_name: t('enrich'), tool_input: { max_credits: 30 } }, 100, 80), /Lower max_credits to 20/);
+  for (const free of ['facts', 'ledger', 'estimate', 'status']) assert.equal(decide({ tool_name: t(free), tool_input: {} }, 100, 500), null, free);
+  assert.equal(decide({ tool_name: t('discover'), tool_input: { count_only: true } }, 100, 500), null);
+  assert.match(decide({ tool_name: t('discover'), tool_input: {} }, 100, 500), /spent/);
+  assert.equal(decide({ tool_name: 'mcp__github__create_issue', tool_input: {} }, 100, 500), null, 'other servers are never touched');
+
+  const dir = mkdtempSync(join(tmpdir(), 'aid-budget-'));
+  writeFileSync(join(dir, 'usage.jsonl'), [{ session_id: 's1', credits_charged: 4 }, { session_id: 's2', credits_charged: 50 }, { session_id: 's1', credits_charged: 6 }, { session_id: 's1', credits_charged: null }].map((r) => JSON.stringify(r)).join('\n') + '\nnot json\n');
+  assert.equal(spentInSession('s1', dir), 10);
+  assert.equal(spentInSession('s1', join(dir, 'missing')), 0);
+});
+
+test('budget hook: as Claude Code runs it, a denial is one JSON line and silence otherwise', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const hook = new URL('../plugins/agentic-id/hooks/budget-guard.mjs', import.meta.url).pathname;
+  const dir = mkdtempSync(join(tmpdir(), 'aid-budget-'));
+  writeFileSync(join(dir, 'usage.jsonl'), `${JSON.stringify({ session_id: 's1', credits_charged: 12 })}\n`);
+  const run = (payload, env) => spawnSync(process.execPath, [hook], { input: typeof payload === 'string' ? payload : JSON.stringify(payload), env: { PATH: process.env.PATH, AGENTIC_ID_CONFIG_DIR: dir, ...env }, encoding: 'utf8' });
+  const paid = { session_id: 's1', tool_name: 'mcp__plugin_agentic-id_agentic-id__agentic_id_find', tool_input: { account: { domain: 'acme.io' }, max_credits: 4 } };
+  const denied = run(paid, { CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '10' });
+  assert.equal(denied.status, 0);
+  const out = JSON.parse(denied.stdout);
+  assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
+  assert.doesNotMatch(denied.stdout, /acme\.io/, 'the reason never repeats the input');
+  assert.equal(run(paid, {}).stdout, '', 'no budget set: silent');
+  assert.equal(run(paid, { CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '100' }).stdout, '', 'inside the budget: silent');
+  assert.equal(run('not json', { CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '10' }).status, 0, 'a broken payload never blocks a call');
+});
+
+test('enrich: field names are checked and old names are mapped', async () => {
+  const c = fake();
+  await ops.enrich(c, { contact: { email: 'a@acme.io' }, fields: ['Job Title', 'email', 'company'] });
+  assert.deepEqual(c.calls[0].body.fields, ['title', 'work_email', 'company_name']);
+  const e = await refused(() => ops.enrich(c, { contact: { email: 'a@acme.io' }, fields: ['salary'] }));
+  assert.match(e.detail, /Unknown field: salary/);
+  assert.match(e.fix, /work_email/);
+  assert.equal((await refused(() => ops.enrich(c, { company: { domain: 'acme.io' }, fields: ['title'] }))).code, 'request.invalid', 'a person field on a company is caught');
+  await ops.enrich(c, { company: { domain: 'acme.io' }, fields: ['employee_size', 'industry'] });
+  assert.deepEqual(c.calls.at(-1).body.fields, ['employees', 'industry']);
+});

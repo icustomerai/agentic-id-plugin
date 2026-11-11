@@ -34,6 +34,12 @@
       "title": "Agentic ID API URL",
       "description": "Where the Agentic ID V3 API runs. Leave the default for a local V3 stack; set your hosted URL (https) otherwise.",
       "default": "http://127.0.0.1:3100"
+    },
+    "session_budget": {
+      "type": "string",
+      "title": "Session credit budget (optional)",
+      "description": "The most credits one Claude Code session may spend through this plugin, e.g. 100. Once the session's logged calls reach it, further paid calls are blocked until you raise it. Leave empty for no session budget; each call is still capped by its own max_credits.",
+      "default": ""
     }
   }
 }

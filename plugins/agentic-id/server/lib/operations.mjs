@@ -156,6 +156,10 @@ export async function resolveMany(client, args = {}, { concurrency = 4 } = {}) {
 }
 
 // ------------------------------------------------------------------ enrich
+export const PERSON_FIELDS = ['work_email', 'linkedin_url', 'title', 'seniority', 'company_name', 'company_domain', 'location', 'city', 'country'];
+export const COMPANY_FIELDS = ['name', 'domain', 'linkedin_url', 'industry', 'employees', 'revenue_usd', 'country', 'city', 'founded', 'description'];
+// The names people and older integrations use for the same fields.
+const FIELD_ALIASES = { email: 'work_email', job_title: 'title', linkedin: 'linkedin_url', company: 'company_name', website: 'company_domain', employee_size: 'employees', employee_count: 'employees', headcount: 'employees', revenue: 'revenue_usd', job_level: 'seniority' };
 export async function enrich(client, args = {}) {
   const notes = [];
   const people = [...(Array.isArray(args.contacts) ? args.contacts : []), ...(args.contact ? [args.contact] : [])].map((c) => cleanIdentifiers(c));
@@ -178,8 +182,11 @@ export async function enrich(client, args = {}) {
     else company = compact({ domain, name: typeof args.company.name === 'string' ? args.company.name.trim() : undefined });
     if (company && !Object.keys(company).length) company = undefined;
   }
-  const fields = args.fields ? cleanList(args.fields) : undefined;
+  const fields = args.fields ? cleanList(args.fields, (f) => FIELD_ALIASES[f.toLowerCase().replace(/[\s-]+/g, '_')] ?? f.toLowerCase().replace(/[\s-]+/g, '_')) : undefined;
   if (fields?.some((f) => /phone|mobile/i.test(f))) throw new LocalRefusal('phone_not_supported', 'Phone numbers are not enriched through this plugin.', 'Remove phone and mobile from fields. Agentic ID here is for work identities: title, company, work email, firmographics.');
+  const allowed = new Set([...(contacts.length || !company ? PERSON_FIELDS : []), ...(company ? COMPANY_FIELDS : [])]);
+  const unknownFields = (fields ?? []).filter((f) => !allowed.has(f));
+  if (unknownFields.length) throw new LocalRefusal('request.invalid', `Unknown field${unknownFields.length === 1 ? '' : 's'}: ${unknownFields.join(', ')}.`, `Allowed here: ${[...allowed].join(', ')}.`);
   if (!contacts.length && !company) throw new LocalRefusal('nothing_to_enrich', skipped ? `None of the ${plural(skipped, 'contact')} had a usable work identifier.` : 'Nothing to enrich: send contact, contacts or company.', 'Each contact needs a work email, a LinkedIn profile URL, or a name with a company.');
   const cap = capFor('enrich', { contacts, company, fields, max_credits: args.max_credits });
   if (contacts.length <= 100) {

@@ -57,7 +57,8 @@ export class AgenticIdError extends Error {
 
 /** The key from the environment, or from a file (a line ending in the key) so it never sits in a shell history. */
 export function keyFromEnv(env = process.env) {
-  const direct = env.AGENTIC_ID_API_KEY?.trim();
+  // Inside Claude Code the plugin's options are also exported to the commands it runs.
+  const direct = (env.AGENTIC_ID_API_KEY ?? env.CLAUDE_PLUGIN_OPTION_API_KEY)?.trim();
   // Claude Code leaves an unset ${user_config.*} reference as an empty string or the literal text.
   if (direct && !direct.startsWith('${')) return direct;
   const file = env.AGENTIC_ID_API_KEY_FILE?.trim();
@@ -73,7 +74,7 @@ export function keyFromEnv(env = process.env) {
 }
 
 export function urlFromEnv(env = process.env) {
-  const u = env.AGENTIC_ID_URL?.trim();
+  const u = (env.AGENTIC_ID_URL ?? env.CLAUDE_PLUGIN_OPTION_API_URL)?.trim();
   return (u && !u.startsWith('${') ? u : DEFAULT_URL).replace(/\/+$/, '');
 }
 

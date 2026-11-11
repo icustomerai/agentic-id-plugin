@@ -1,6 +1,19 @@
 {
-  "description": "Log every Agentic ID tool call (tool, request id, credits; never inputs) to ~/.agentic-id/usage.jsonl.",
+  "description": "Log every Agentic ID tool call (tool, request id, credits; never inputs) to ~/.agentic-id/usage.jsonl, and hold paid calls to an optional per-session credit budget.",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*agentic[-_]id.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/budget-guard.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "mcp__.*agentic[-_]id.*",
