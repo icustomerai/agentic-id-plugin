@@ -14,8 +14,8 @@ import { join } from 'node:path';
 const VERBS = new Set(['validate', 'resolve', 'enrich', 'find', 'discover']);
 const REQUEST_ID_KEYS = ['request_id', 'requestId', 'x-request-id', 'x_request_id'];
 
-export function configDir(env = process.env) {
-  const dir = env.ONESOURCE_CONFIG_DIR;
+// Reads one named variable only; the environment object is never passed around or enumerated.
+export function configDir(dir = process.env.ONESOURCE_CONFIG_DIR) {
   return dir && dir.trim() ? dir.trim() : join(homedir(), '.onesource');
 }
 
@@ -124,8 +124,7 @@ export function buildRecord(payload, now = new Date()) {
   };
 }
 
-export function appendRecord(record, env = process.env) {
-  const dir = configDir(env);
+export function appendRecord(record, dir = configDir()) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   appendFileSync(join(dir, 'usage.jsonl'), JSON.stringify(record) + '\n', { mode: 0o600 });
 }
