@@ -22,7 +22,7 @@ REVIEW BEFORE THIS REPO GOES PUBLIC (founder sign-off on external claims):
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Claude Code plugin" src="https://img.shields.io/badge/claude%20code%20plugin-0.3.0-6b4fbb">
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/claude%20code%20plugin-0.3.1-6b4fbb">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-streamable%20http-2b7489">
 </p>
 
@@ -197,7 +197,8 @@ OneSource → **Configure options**:
 | Option | Default | Use |
 | --- | --- | --- |
 | `api_key` (sensitive) | empty | Leave empty to sign in through `/mcp`. For CI and headless runs, paste an `os_live_` key. Claude Code keeps it in the system keychain and sends it as `x-api-key`. |
-| `server_url` | `https://mcp-onesource-development.icustomer.ai/mcp` | The OneSource MCP endpoint. Point it at staging or a local server for testing. |
+
+The MCP endpoint is fixed in the plugin's `.mcp.json` (`https://mcp-onesource-development.icustomer.ai/mcp`); a plugin update changes it.
 
 The plugin itself reads no credentials from your environment or files, which keeps it within the
 [Claude plugin directory](https://claude.com/docs/plugins/pre-submission-checklist) rules. See
@@ -426,7 +427,7 @@ ONESOURCE_MCP_URL=https://<host>/mcp ONESOURCE_API_KEY=... E2E_MODE=plugin ./tes
 ```
 .claude-plugin/marketplace.json          Claude Code marketplace "icustomer-onesource"
 plugins/onesource/
-  .claude-plugin/plugin.json             plugin manifest and userConfig options (api_key, server_url)
+  .claude-plugin/plugin.json             plugin manifest and userConfig option (api_key)
   README.md, LICENSE                     the directory listing text and license
   .mcp.json                              MCP server entry: OAuth, or an API key from the api_key option
   skills/                                portable Agent Skills

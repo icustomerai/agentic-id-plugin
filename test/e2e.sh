@@ -12,9 +12,10 @@
 #   E2E_MODE            mcp-config (default): the key is sent by an --mcp-config server entry
 #                         (--strict-mcp-config, so only that server loads);
 #                       plugin: no --mcp-config; the plugin's own .mcp.json is used, with
-#                         server_url and api_key set as its userConfig options through a 0600
-#                         --settings file (pluginConfigs["onesource@inline"]). Exercises the
-#                         shipped .mcp.json exactly as an installed plugin uses it.
+#                         api_key set as its userConfig option through a 0600 --settings file
+#                         (pluginConfigs["onesource@inline"]). Exercises the shipped .mcp.json
+#                         exactly as an installed plugin uses it, so calls go to the URL fixed
+#                         there and ONESOURCE_MCP_URL is ignored.
 #   E2E_REQUIRE_HOOK    1 (default) fails when the usage hook wrote no log line; 0 only warns.
 #   E2E_MAX_BUDGET_USD  model spend cap for the session (default 1).
 set -euo pipefail
@@ -44,7 +45,7 @@ if [ "$MODE" = "plugin" ] || [ "$MODE" = "helper" ]; then
   # loaded with --plugin-dir reads them under the id onesource@inline.
   node -e '
     const fs = require("fs");
-    const options = { server_url: process.env.ONESOURCE_MCP_URL, api_key: process.env.ONESOURCE_API_KEY };
+    const options = { api_key: process.env.ONESOURCE_API_KEY };
     fs.writeFileSync(process.argv[1], JSON.stringify({ pluginConfigs: { "onesource@inline": { options } } }), { mode: 0o600 });
   ' "$TMP/settings.json"
   args+=(--settings "$TMP/settings.json")

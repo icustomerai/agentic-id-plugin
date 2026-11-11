@@ -1,12 +1,12 @@
 ---
 description: Summarise local OneSource usage - credits per tool and the last 20 calls - from ~/.onesource/usage.jsonl
 argument-hint: "[number of recent calls, default 20]"
-allowed-tools: Bash(node:*)
+allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/usage-summary.mjs *)
 ---
 
 Here is the local OneSource usage log, as summarised by the plugin's script:
 
-!`node "${CLAUDE_PLUGIN_ROOT}/scripts/usage-summary.mjs" $ARGUMENTS`
+!`node ${CLAUDE_PLUGIN_ROOT}/scripts/usage-summary.mjs $ARGUMENTS`
 
 Present this to the user as-is: the per-tool credit table first, then the recent calls. Then add
 at most three short observations, for example which tool spent the most credits, any errors and

@@ -64,8 +64,9 @@ Try it without installing: `claude --plugin-dir /path/to/onesource-plugin/plugin
 enable the plugin; change them later with `/plugin configure onesource@icustomer-onesource`, or in
 `/plugin` → **Installed** → OneSource → **Configure options**.
 
-- `server_url`: the MCP endpoint. Default `https://mcp-onesource-development.icustomer.ai/mcp`. Set it
-  to `http://localhost:3000/mcp` to test against a local server.
+- The MCP endpoint is not an option: it is fixed in the plugin's `.mcp.json`
+  (`https://mcp-onesource-development.icustomer.ai/mcp`). To test against a local server, pass your own
+  server entry with `--mcp-config`.
 - `api_key` (sensitive): empty by default, which means OAuth sign-in. Paste an `os_live_` key for
   API-key mode. Claude Code stores it in the system keychain and sends it as `x-api-key`.
 
@@ -77,7 +78,7 @@ settings file, kept at mode 0600 and out of the repository:
 
 ```json
 { "pluginConfigs": { "onesource@icustomer-onesource": {
-  "options": { "server_url": "https://<host>/mcp", "api_key": "<your key>" } } } }
+  "options": { "api_key": "<your key>" } } } }
 ```
 
 ```bash

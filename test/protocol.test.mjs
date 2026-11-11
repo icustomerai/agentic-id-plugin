@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Protocol test: does what Claude Code does with this plugin, without a model in the loop.
 //   1. reads plugins/onesource/.mcp.json and fills its ${user_config.*} references the way Claude
-//      Code does: server_url from ONESOURCE_MCP_URL (or the manifest default), api_key from
-//      ONESOURCE_API_KEY;
+//      Code does: api_key from ONESOURCE_API_KEY. The URL is the one fixed in .mcp.json, unless
+//      ONESOURCE_MCP_URL points the test at another server;
 //   2. speaks MCP over Streamable HTTP: initialize, tools/list, then calls the tools;
 //   3. feeds each real tool answer to the plugin's PostToolUse hook and checks the usage line.
 //
@@ -36,7 +36,6 @@ if (!process.env.ONESOURCE_API_KEY) {
 const manifest = JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin/plugin.json'), 'utf8'));
 const server = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.onesource;
 const options = {
-  server_url: process.env.ONESOURCE_MCP_URL || manifest.userConfig.server_url.default,
   api_key: process.env.ONESOURCE_API_KEY,
 };
 const fill = (value) =>
@@ -45,10 +44,10 @@ const fill = (value) =>
     return options[key] ?? manifest.userConfig[key].default ?? '';
   });
 
-check(server.type === 'http' && server.url === '${user_config.server_url}' && !server.headersHelper, '.mcp.json: http server, URL from userConfig, no headersHelper');
+check(server.type === 'http' && /^https:\/\/[a-z0-9.-]+\/mcp$/.test(server.url) && !server.headersHelper, '.mcp.json: http server, fixed https URL, no headersHelper');
 check(server.headers?.['x-api-key'] === '${user_config.api_key}' && manifest.userConfig.api_key.sensitive === true, 'the API key comes only from a sensitive userConfig option');
 
-const url = fill(server.url);
+const url = process.env.ONESOURCE_MCP_URL || server.url;
 const headers = Object.fromEntries(Object.entries(server.headers ?? {}).map(([k, v]) => [k, fill(v)]));
 const cfg = mkdtempSync(join(tmpdir(), 'onesource-protocol-'));
 const hookEnv = { PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_PLUGIN_ROOT: PLUGIN, ONESOURCE_CONFIG_DIR: cfg };

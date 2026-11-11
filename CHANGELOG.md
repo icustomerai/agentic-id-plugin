@@ -3,6 +3,21 @@
 All notable changes to this marketplace and the `onesource` plugin. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.3.1 - 2026-11-11
+
+Fixes for the Claude plugin directory's validation report.
+
+### Changed
+- The MCP server URL is fixed in `.mcp.json` (`https://mcp-onesource-development.icustomer.ai/mcp`). The
+  `server_url` option is gone: the directory has to be able to read the address. **Migration:**
+  nothing to do if you kept the default; a custom `server_url` is no longer read.
+- `/onesource-usage` pre-approves only its own script instead of any `node` command.
+- The usage hook is declared as `command` plus `args`, and reads only `ONESOURCE_CONFIG_DIR` from the
+  environment instead of taking the whole environment object.
+
+### Added
+- `privacyPolicyUrl` and the listing icon (`.claude-plugin/icon.png`).
+
 ## 0.3.0 - 2026-11-11
 
 Ready for the Claude plugin directory: no blocking findings against the
