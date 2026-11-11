@@ -77,7 +77,7 @@ evidence.
 In Claude Code:
 
 ```bash
-claude plugin marketplace add <github-org>/onesource-plugin
+claude plugin marketplace add icustomerai/onesource-plugin
 claude plugin install onesource@icustomer-onesource
 ```
 
