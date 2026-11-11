@@ -1,6 +1,6 @@
 {
   "name": "onesource",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then enrich, find, discover and validate with the five OneSource tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
   "author": {
     "name": "iCustomer",

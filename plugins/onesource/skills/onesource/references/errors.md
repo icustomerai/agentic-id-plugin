@@ -22,4 +22,4 @@ A refused request never reaches a data provider and costs nothing.
 | `rate_limited` | Too many requests | Wait for `Retry-After`, then retry once. |
 | `provider_unavailable` | An upstream source failed or timed out | Nothing was charged. Retry once later, then report it with the `request_id`. |
 | `internal_error` | Server fault | Nothing was charged. Retry once, then report it with the `request_id`. |
-| `unauthorized` / 401 | Not signed in, or the key is wrong | MCP: sign in again (Claude Code: `/mcp`, pick `onesource`, Authenticate). CLI: ask the user to check `ICUSTOMER_API_KEY`. Never ask for the key in chat. |
+| `unauthorized` / 401 | Not signed in, or the key is wrong | MCP: sign in again (Claude Code: `/mcp`, pick `onesource`, Authenticate). CLI: ask the user to run `onesource doctor`, then `onesource login`. Never ask for the key in chat. |

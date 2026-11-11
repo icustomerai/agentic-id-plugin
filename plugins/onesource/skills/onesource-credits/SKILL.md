@@ -8,18 +8,16 @@ description: Estimate and control OneSource credit spend - what each of the five
 OneSource bills in credits from one workspace wallet. There is no separate "quote" tool in the
 current catalog, so cost control works in three moves: **estimate, cap, read back**.
 
-## Prices (development defaults - not approved production pricing)
+## Prices (measured on the production backend, 11 Nov 2026)
 
 | Tool | What is charged | Free |
 | --- | --- | --- |
 | `onesource_validate` | 1 per address that gets a `valid`, `catch-all` or `risky` verdict | `invalid`, `unknown`, non-existent domains, locally rejected input, domain-only checks, re-checks of a fresh stored status |
 | `onesource_resolve` | free on the live OneSource backend (no lookup is bought) | always free there; the reference contract prices a full resolve at 0.25 email check + 1 person + 1 company (+2 work email in `full` mode), charged only for lookups that found something |
-| `onesource_enrich` | per lookup that filled a field: person profile 1, company profile 1, work email 2 | fields already stored and fresh, misses, rejected input, provider failures |
-| `onesource_find` | per person returned: 1 per the live tool description, 2 per the reference contract | no match, dropped duplicates or off-filter candidates, provider failures |
-| `onesource_discover` | 1 per contact returned | empty results |
+| `onesource_enrich` | 1 per provider tier that contributed (the stored-data tier counts too). Seen: about 2 per person, 1-3 per company (1 with a short `required_fields`) | misses with nothing returned, rejected input, provider failures |
+| `onesource_find` | 1 per person returned | no match, discarded vendor records, provider failures |
+| `onesource_discover` | 1 per account returned plus 1 per contact returned | empty results, accounts left out by a filter |
 
-When the live tool description and the contract disagree (resolve, find), **budget at the higher
-price** until the first real response shows the actual charge, then use what the response says.
 The `cost` block in each answer is always authoritative.
 
 ## 1. Estimate before spending
@@ -28,13 +26,13 @@ Do the arithmetic and show it to the user before any call that could cost more t
 credits:
 
 - validate: number of addresses x 1 (upper bound; invalid and unknown come back free).
-- enrich: records x (1 person + 1 company + 2 work email), or fewer when only some fields are
-  requested with `required_fields` / `fields`.
-- find: accounts x `limit` x price per person.
-- discover: `limit` x 1.
+- enrich: people x 3, companies x 3 (upper bound; usually 2 and 1-3).
+- find: accounts x `limit` x 1.
+- discover: accounts + contacts, where accounts = `limit` / `contacts_per_account` (default 2).
+  For 10 contacts at 2 per account: 5 + 10 = 15.
 
-Example: "Find up to 5 VPs at each of 4 accounts: 4 x 5 x 2 = at most 40 credits (likely 20).
-Shall I go ahead with a 40-credit cap?"
+Example: "Find up to 5 VPs at each of 4 accounts: 4 x 5 x 1 = at most 20 credits.
+Shall I go ahead with a 20-credit cap?"
 
 For a large job, run a small sample first (one account, `limit: 5`) to see the real price, then
 scale with the user's yes.
@@ -42,7 +40,8 @@ scale with the user's yes.
 ## 2. Cap every call
 
 - `max_credits` is required on validate, resolve, enrich and find, and optional on discover
-  (where it caps the row count up front). Set it to the agreed estimate, not to a large number
+  (where it sizes accounts and contacts up front, so the call cannot cost more). On enrich the
+  backend decides the charge after the lookup, so keep batches small until you have seen it. Set it to the agreed estimate, not to a large number
   "just in case".
 - `limit` is the second cap on find (default 20, max 100) and discover (default 100). Always pass
   it explicitly.

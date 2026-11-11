@@ -110,7 +110,7 @@ All surfaces call the same API with the same inputs, outputs, error codes and cr
 | [Claude Code plugin](#claude-code-plugin) | You work in Claude Code | `claude plugin install onesource@icustomer-onesource` | ✅ Stable, tested end to end |
 | [MCP server](#mcp-server) | Your agent speaks MCP (Codex, Cursor, Hermes, Pi, ...) | `https://mcp-onesource-development.icustomer.ai/mcp` | ✅ Live (development) |
 | [Agent Skills](#skills-and-evals) | Your agent reads `SKILL.md` | Link `plugins/onesource/skills/*` ([how](docs/agents.md#install-the-skills)) | ✅ Stable |
-| [CLI](#cli-preview) | Scripts, CI, or an agent without MCP | Build from source | 🧪 Preview |
+| [CLI](#cli-preview) | CSV files, scripts, CI, or an agent without MCP | Build from source | 🧪 Preview, tested end to end |
 | [TypeScript SDK](#typescript-sdk-preview) | You are building an app or service | Build from source | 🧪 Preview |
 | [REST API](#rest-api) | Any other language | `POST /v1/entities/<verb>` | ✅ Live (development) |
 
@@ -125,12 +125,12 @@ deliverability before you send.
 | Verb | Ask it | MCP tool | CLI | Credits\* |
 | --- | --- | --- | --- | --- |
 | **resolve** | Who is this? Resolves an email, LinkedIn URL, or name and company to one stable ID from the ledger, with what it matched on and how confident it is. | `onesource_resolve` | `onesource resolve` | Free |
-| **enrich** | What's their title, company, work email? Up to 100 contacts per call. | `onesource_enrich` | `onesource enrich` | Per lookup that filled a field: person 1, company 1, work email 2 |
-| **find** | Who holds role X at company Y? | `onesource_find` | `onesource find` | Per person returned (1–2, being finalised) |
-| **discover** | Which companies and people match my ICP? | `onesource_discover` | `onesource discover` | 1 per contact returned |
+| **enrich** | What's their title, work email, LinkedIn? Or a company's industry, size and HQ. Up to 100 per call. Every person comes back with a trust status: *Enriched with email* (safe to send), *Enriched*, or *Not Enriched*. | `onesource_enrich` | `onesource enrich` | 1 per data source that contributed: about 2 per person, 1–3 per company |
+| **find** | Who holds role X at company Y? Decision makers by default. | `onesource_find` | `onesource find` | 1 per person returned |
+| **discover** | Which companies and people match my ICP? Industry, country, size, revenue, keywords and tech stack are hard filters. | `onesource_discover` | `onesource discover` | 1 per account plus 1 per contact |
 | **validate** | Is this mailbox deliverable before you send? Up to 1,000 per call. | `onesource_validate` | `onesource validate` | 1 per `valid` / `catch-all` / `risky`. `invalid`, `unknown` and domain-only checks are free |
 
-\* Development prices. They will change before general availability.
+\* Prices measured on the production backend on 11 Nov 2026. The `cost` block in every answer is authoritative.
 
 <details>
 <summary><b>Example: find the buying group</b> (MCP arguments, CLI, SDK, output)</summary>
@@ -192,7 +192,17 @@ Exact arguments for every tool: [skills/onesource/references/tools.md](plugins/o
 | Command `/onesource-usage` | Shows credits per tool and the last 20 calls from that log. |
 
 For CI and headless runs, the plugin can send an API key instead of using OAuth. See
-[API-key mode](docs/agents.md#claude-code).
+[API-key mode](docs/agents.md#claude-code). `onesource login --with-api-key` (CLI) writes the same
+key file, so one step sets up both.
+
+**Troubleshooting**
+
+- **`onesource` shows "Needs authentication" after you added an API key.** Claude Code remembers
+  that a server needed sign-in and skips it for a while. Run `/mcp`, pick `onesource` and choose
+  **Reconnect** (or Authenticate). Headless runs (`claude -p`) cannot do this. Start the first run
+  in a folder you have trusted, with the key already in `~/.onesource/api-key`.
+- **Skill changes don't show up after `claude plugin update`.** Updates are keyed on the version
+  in `plugin.json`, so every release must bump it.
 
 ## MCP server
 
@@ -213,27 +223,39 @@ Per-agent setup for Codex, Hermes, Pi and others: [docs/agents.md](docs/agents.m
 
 ## CLI (preview)
 
-> 🧪 **Preview.** The CLI is not on npm yet, so you build it from source.
-> Repo: [`<github-org>/onesource-cli`](https://github.com/<github-org>/onesource-cli).
-> Before the npm release, two things change:
-> - `ICUSTOMER_API_KEY` / `ICUSTOMER_API_URL` are renamed to `ONESOURCE_*`
-> - the command list is trimmed to the five tools plus `credits`
+> 🧪 **Preview.** The CLI is not on npm yet. It builds from the OneSource server repo today and
+> moves to its own repo before the npm release.
 
 ```bash
-git clone https://github.com/<github-org>/onesource-cli && cd onesource-cli
+git clone https://github.com/<github-org>/onesource-mcp-cli && cd onesource-mcp-cli
 pnpm install && pnpm build && pnpm link --global      # puts `onesource` on your PATH
 
-export ICUSTOMER_API_URL=https://mcp-onesource-development.icustomer.ai
-export ICUSTOMER_API_KEY=...                           # from your iCustomer workspace; never commit it
-
-onesource validate --email maya.chen@tallpinesoftware.com --max-credits 1 --json
-onesource credits                                      # balance, holds, recent movements (free)
+onesource login                    # browser sign-in with your iCustomer account
+onesource doctor                   # checks server, sign-in, credits and file permissions
 ```
 
-The CLI runs the same input checks as the server before sending anything, so bad input is
-refused locally and costs nothing:
-- Every command takes `--json`, `--input <file|->` for a full JSON body, and `--idempotency-key`.
-- Exit codes: `0` ok, `1` API error, `2` bad input, `3` configuration or connection problem.
+Built for growth and data engineers. Point it at a CSV, give it a budget, and get rows back:
+
+```bash
+onesource resolve  --email maya.chen@tallpinesoftware.com --max-credits 1
+onesource validate --file leads.csv --max-credits 500 -o csv > verdicts.csv
+onesource enrich   --file leads.csv --required-fields email,job_title --max-credits 300 -o csv > enriched.csv
+onesource find     --domain tallpinesoftware.com --roles "VP Marketing" --limit 5 --max-credits 10 -o jsonl
+onesource credits                  # balance, holds, recent movements (free)
+```
+
+- **Budgets hold for the whole file.** With `--file`, `--max-credits` caps the entire run. Rows go
+  in chunks that never exceed what is left; rows not sent come back as `skipped`.
+- **Dirty rows don't stop a run.** A row OneSource refuses (personal email, placeholder name) comes
+  back as `rejected` at no cost, and the rest still go through. If the service fails part-way,
+  everything already paid for is still printed, the rest is marked `not_sent`, and the exit code
+  is 1.
+- **Machine output everywhere.** `-o csv`, `-o jsonl` or `--json`. CSV cells that would run as
+  spreadsheet formulas are neutralised.
+- **Safe retries.** `--idempotency-key` makes a re-run return the first answer instead of
+  charging again, chunk by chunk.
+- **Predictable exits.** `0` ok, `1` API error, `2` bad input (nothing sent), `3` configuration,
+  sign-in or connection problem.
 
 ## TypeScript SDK (preview)
 
@@ -286,10 +308,18 @@ Reusing a key with a different body returns `409 idempotency_key_reused`.
 
 ## Authentication
 
+Every surface accepts both a signed-in iCustomer account and an API key, and both act as the same
+OneSource workspace.
+
 | You are | Use | How |
 | --- | --- | --- |
-| A person in an agent | OAuth | The agent opens a browser the first time. Your agent stores the tokens. |
-| A script, CI job or headless agent | API key | Send it as `x-api-key`. Keep it in an environment variable or a `chmod 600` file. |
+| A person in Claude Code or another agent | Browser sign-in (OAuth) | `/mcp` → `onesource` → **Authenticate**. The agent keeps and renews the tokens. |
+| A person at a terminal | Browser sign-in (OAuth) | `onesource login`. The session renews itself for 30 days of use. |
+| A script, CI job or headless agent | API key | `ONESOURCE_API_KEY`, or `onesource login --with-api-key < key.txt`, which saves it to `~/.onesource/api-key` (0600). |
+
+`~/.onesource/api-key` is shared: the plugin's API-key mode and the CLI both read it, so one
+`onesource login --with-api-key` sets up both. `onesource whoami` shows which credential is in use
+and never prints it.
 
 Never put an API key in a URL, a prompt, a chat message or a committed file. The skills tell
 agents never to ask you for one in chat.
