@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Static checks for the OneSource plugin marketplace. No network, no credits, no secrets.
+# Static checks for the Agentic ID plugin marketplace. No network, no credits, no secrets.
 #   1. `claude plugin validate` on the marketplace and the plugin (skipped if unavailable)
 #   2. every *.json file parses
 #   3. skills, agents and commands carry frontmatter with a description
@@ -9,7 +9,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN="$ROOT/plugins/onesource"
+PLUGIN="$ROOT/plugins/agentic-id"
 failures=0
 pass() { printf '  ok    %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; failures=$((failures + 1)); }
@@ -86,7 +86,7 @@ fi
 
 echo "== eval suite (static: cases, graders, mocks; no model calls)"
 if node "$ROOT/test/check-evals.mjs" 2>&1 | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
-  pass "plugins/onesource/evals"
+  pass "plugins/agentic-id/evals"
 else
   fail "eval suite"
 fi

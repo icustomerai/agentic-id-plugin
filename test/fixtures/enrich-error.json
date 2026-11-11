@@ -1,7 +1,7 @@
 {
   "session_id": "sess-fixture-0004",
   "hook_event_name": "PostToolUse",
-  "tool_name": "mcp__plugin_onesource_onesource__onesource_enrich",
+  "tool_name": "mcp__plugin_agentic-id_agentic-id__agentic_id_enrich",
   "tool_input": { "id": "FAKE-INPUT-MARKER", "max_credits": 0.5 },
   "tool_response": {
     "isError": true,

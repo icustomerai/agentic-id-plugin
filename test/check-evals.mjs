@@ -2,14 +2,14 @@
 // Static check of the eval suite (no model calls): every case has a prompt.md with a body and at
 // least one grader; every grader has a known type and the fields that type needs; every mock is
 // valid JSON for an MCP tool the plugin's server actually exposes; nothing looks like real PII.
-//   node test/check-evals.mjs [plugins/onesource/evals]
+//   node test/check-evals.mjs [plugins/agentic-id/evals]
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const EVALS = process.argv[2] ?? join(ROOT, 'plugins/onesource/evals');
-const TOOLS = ['onesource_validate', 'onesource_resolve', 'onesource_enrich', 'onesource_find', 'onesource_discover'];
+const EVALS = process.argv[2] ?? join(ROOT, 'plugins/agentic-id/evals');
+const TOOLS = ['agentic_id_validate', 'agentic_id_resolve', 'agentic_id_enrich', 'agentic_id_find', 'agentic_id_discover'];
 const GRADERS = {
   tool_used: ['tool'],
   tool_order: ['before', 'after'],
@@ -40,7 +40,7 @@ const walk = (dir) => readdirSync(dir).flatMap((n) => {
 
 const dirs = walk(EVALS).filter((d) => !d.split('/').includes('results'));
 const cases = dirs.filter((d) => existsSync(join(d, 'prompt.md')) || existsSync(join(d, 'case.yaml')));
-const mockDirs = dirs.filter((d) => /\/mocks\/onesource$/.test(d));
+const mockDirs = dirs.filter((d) => /\/mocks\/agentic-id$/.test(d));
 
 for (const c of cases) {
   const prompt = join(c, 'prompt.md');
@@ -62,7 +62,7 @@ for (const c of cases) {
     if (fields.type === 'llm' && !body && !fields.criteria) fail(file, 'llm grader needs criteria (body)');
     for (const key of ['tool', 'before', 'after']) {
       const v = fields[key];
-      if (v && v.startsWith('mcp__') && !TOOLS.some((t) => v === `mcp__plugin_onesource_onesource__${t}`)) fail(file, `unknown MCP tool ${v}`);
+      if (v && v.startsWith('mcp__') && !TOOLS.some((t) => v === `mcp__plugin_agentic-id_agentic-id__${t}`)) fail(file, `unknown MCP tool ${v}`);
     }
     for (const key of ['input_match', 'pattern']) {
       if (!fields[key]) continue;
