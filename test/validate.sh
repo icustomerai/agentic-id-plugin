@@ -3,8 +3,9 @@
 #   1. `claude plugin validate` on the marketplace and the plugin (skipped if unavailable)
 #   2. every *.json file parses
 #   3. skills, agents and commands carry frontmatter with a description
-#   4. .mcp.json ships no static headers and no secret-looking values
-#   5. unit tests for the usage hook, the usage summary and the headers helper
+#   4. .mcp.json headers come only from userConfig options, and the repo has no secret-looking values
+#   5. the Claude plugin directory's pre-submission checks (test/directory-check.mjs)
+#   6. unit tests for the usage hook and the usage summary
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -50,16 +51,37 @@ for f in "$PLUGIN"/skills/*/SKILL.md "$PLUGIN"/agents/*.md "$PLUGIN"/commands/*.
 done
 
 echo "== no static secrets"
+# Every header value is either a ${user_config.*} reference or a fixed, non-secret label; the
+# API key reaches the server only through the sensitive api_key option.
 if node -e '
-  const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-  for (const s of Object.values(c.mcpServers)) if (s.headers) process.exit(1);
-' "$PLUGIN/.mcp.json"; then pass ".mcp.json has no static headers"; else fail ".mcp.json must not carry static headers"; fi
+  const fs = require("fs");
+  const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const m = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+  for (const s of Object.values(c.mcpServers)) {
+    if (s.headersHelper) process.exit(1);
+    for (const [h, v] of Object.entries(s.headers ?? {})) {
+      const ref = /^\$\{user_config\.(\w+)\}$/.exec(v);
+      if (/key|token|secret|auth/i.test(h) && !(ref && m.userConfig?.[ref[1]]?.sensitive === true)) process.exit(1);
+    }
+  }
+' "$PLUGIN/.mcp.json" "$PLUGIN/.claude-plugin/plugin.json"; then
+  pass ".mcp.json: credential headers come only from sensitive userConfig options"
+else
+  fail ".mcp.json: a credential header must be \${user_config.<sensitive option>}, and no headersHelper"
+fi
 # A value that is only an UPPER_SNAKE env var name (Codex env_http_headers) is a reference, not a key.
 if grep -RInE --exclude-dir=.git '(x-api-key"?\s*[:=]\s*"[A-Za-z0-9_-]{16,})|(sk-[A-Za-z0-9]{20,})|(os_(live|test)_[A-Za-z0-9]{8,})' "$ROOT" \
   | grep -vE 'x-api-key"?\s*[:=]\s*"[A-Z][A-Z0-9_]*"' | grep -q .; then
   fail "secret-looking value found in the repo"
 else
   pass "no secret-looking values in the repo"
+fi
+
+echo "== Claude plugin directory pre-submission checks"
+if node "$ROOT/test/directory-check.mjs" "$PLUGIN" 2>&1 | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
+  pass "no blocking findings (holds are listed above for the reviewer)"
+else
+  fail "directory pre-submission checks"
 fi
 
 echo "== eval suite (static: cases, graders, mocks; no model calls)"
@@ -71,7 +93,7 @@ fi
 
 echo "== unit tests (node --test)"
 if node --test "$ROOT/test/log-usage.test.mjs" 2>&1 | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
-  pass "log-usage.mjs, usage-summary.mjs, api-key-headers.mjs"
+  pass "log-usage.mjs, usage-summary.mjs"
 else
   fail "unit tests"
 fi

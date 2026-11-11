@@ -1,23 +1,24 @@
 #!/usr/bin/env node
 // Protocol test: does what Claude Code does with this plugin, without a model in the loop.
-//   1. reads plugins/onesource/.mcp.json and expands the URL the way Claude Code does;
-//   2. runs the plugin's headersHelper (with an API key in a temp config dir, as in plugin mode);
-//   3. speaks MCP over Streamable HTTP: initialize, tools/list, then calls the tools;
-//   4. feeds each real tool answer to the plugin's PostToolUse hook and checks the usage line.
+//   1. reads plugins/onesource/.mcp.json and fills its ${user_config.*} references the way Claude
+//      Code does: server_url from ONESOURCE_MCP_URL (or the manifest default), api_key from
+//      ONESOURCE_API_KEY;
+//   2. speaks MCP over Streamable HTTP: initialize, tools/list, then calls the tools;
+//   3. feeds each real tool answer to the plugin's PostToolUse hook and checks the usage line.
 //
 // Needs a running OneSource server. Usage:
 //   ONESOURCE_MCP_URL=http://127.0.0.1:3000/mcp ONESOURCE_API_KEY=<key> node test/protocol.test.mjs
-// Spends about 3 credits on the target server (validate 1 + enrich-by-identifier estimate; resolve
-// is free). Set PROTOCOL_PAID=0 to skip the paid calls.
+// Spends at most 1 credit on the target server (validate; resolve is free). Set PROTOCOL_PAID=0 to
+// skip the paid call. E2E_EMAIL picks the work address to look up; the default is fictional.
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PLUGIN = join(ROOT, 'plugins/onesource');
-const EMAIL = process.env.E2E_EMAIL ?? 'jenish@icustomer.ai';
+const EMAIL = process.env.E2E_EMAIL ?? 'maya.chen@tallpinesoftware.com';
 const PAID = process.env.PROTOCOL_PAID !== '0';
 
 let failures = 0;
@@ -31,31 +32,28 @@ if (!process.env.ONESOURCE_API_KEY) {
   process.exit(2);
 }
 
-// 1. URL from the plugin's own .mcp.json, ${VAR:-default} expanded.
+// 1. The server entry from the plugin's own .mcp.json, with the user's options filled in.
+const manifest = JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin/plugin.json'), 'utf8'));
 const server = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.onesource;
-const url = server.url.replace(/\$\{(\w+):-([^}]*)\}/g, (_m, name, fallback) => process.env[name] || fallback);
-check(server.type === 'http' && !server.headers, '.mcp.json is http with no static headers');
+const options = {
+  server_url: process.env.ONESOURCE_MCP_URL || manifest.userConfig.server_url.default,
+  api_key: process.env.ONESOURCE_API_KEY,
+};
+const fill = (value) =>
+  value.replace(/\$\{user_config\.(\w+)\}/g, (_m, key) => {
+    if (!(key in manifest.userConfig)) throw new Error(`.mcp.json references undeclared option ${key}`);
+    return options[key] ?? manifest.userConfig[key].default ?? '';
+  });
 
-// 2. headersHelper, run with a key file in a temp config dir and credential env vars scrubbed (as
-//    Claude Code does for plugin helpers).
+check(server.type === 'http' && server.url === '${user_config.server_url}' && !server.headersHelper, '.mcp.json: http server, URL from userConfig, no headersHelper');
+check(server.headers?.['x-api-key'] === '${user_config.api_key}' && manifest.userConfig.api_key.sensitive === true, 'the API key comes only from a sensitive userConfig option');
+
+const url = fill(server.url);
+const headers = Object.fromEntries(Object.entries(server.headers ?? {}).map(([k, v]) => [k, fill(v)]));
 const cfg = mkdtempSync(join(tmpdir(), 'onesource-protocol-'));
-writeFileSync(join(cfg, 'api-key'), `${process.env.ONESOURCE_API_KEY}\n`);
-chmodSync(join(cfg, 'api-key'), 0o600);
+const hookEnv = { PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_PLUGIN_ROOT: PLUGIN, ONESOURCE_CONFIG_DIR: cfg };
 
-const helperEnv = { PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_PLUGIN_ROOT: PLUGIN, ONESOURCE_CONFIG_DIR: cfg };
-const helperCmd = server.headersHelper.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, PLUGIN);
-const helper = spawnSync('/bin/sh', ['-c', helperCmd], { env: helperEnv, encoding: 'utf8' });
-let headers = {};
-
-try {
-  headers = JSON.parse(helper.stdout);
-} catch {
-  /* checked below */
-}
-check(helper.status === 0 && typeof headers['x-api-key'] === 'string', 'headersHelper returns the key from the config dir');
-check(headers['x-onesource-client'] === 'plugin/0.1.0', 'headersHelper labels the client as the plugin');
-
-// 3. MCP over Streamable HTTP.
+// 2. MCP over Streamable HTTP.
 let nextId = 1;
 
 async function rpc(method, params) {
@@ -86,7 +84,7 @@ async function callAndLog(verb, args) {
   const result = res.body?.result;
   const structured = result?.structuredContent ?? null;
 
-  // 4. The PostToolUse hook, with the payload Claude Code would send for this plugin tool.
+  // 3. The PostToolUse hook, with the payload Claude Code would send for this plugin tool.
   const payload = {
     session_id: 'protocol-test',
     hook_event_name: 'PostToolUse',
@@ -94,14 +92,16 @@ async function callAndLog(verb, args) {
     tool_input: args,
     tool_response: result,
   };
-  const ran = spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), env: { ...helperEnv }, encoding: 'utf8' });
+  const ran = spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), env: { ...hookEnv }, encoding: 'utf8' });
 
   return { res, result, structured, hookStatus: ran.status };
 }
 
 const free = await callAndLog('resolve', { identifiers: { email: EMAIL }, max_credits: 1 });
-check(!free.result?.isError && free.structured, 'resolve answers', free.structured?.summary ?? JSON.stringify(free.result?.content?.[0]?.text ?? free.res.body?.error).slice(0, 160));
-check(typeof free.structured?.request_id === 'string', 'answers carry a request_id for the trace');
+const freeText = free.result?.content?.[0]?.text ?? JSON.stringify(free.res.body?.error ?? '');
+// A fictional address resolves to no_match, which is still a well-formed, free answer.
+check(Boolean(free.structured) || /no_match|not_found/.test(freeText), 'resolve answers', free.structured?.summary ?? freeText.slice(0, 160));
+if (free.structured) check(typeof free.structured.request_id === 'string', 'answers carry a request_id for the trace');
 
 const rejected = await callAndLog('validate', { identifiers: { email: 'test@example.com' }, max_credits: 1 });
 check(rejected.result?.isError === true && /invalid_input/.test(rejected.result?.content?.[0]?.text ?? ''), 'a placeholder email is refused before any lookup');
