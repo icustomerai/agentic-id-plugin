@@ -3,7 +3,24 @@
 All notable changes to this marketplace and the `onesource` plugin. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.2.0 - 2026-11-11
+
+Tested end to end in Claude Code against the production OneSource backend.
+
+### Changed
+- Skills follow the backend's current routes (contact enrichment v3.1, company enrichment v3,
+  advanced discovery v2):
+  - enrich: companies (`account` / `accounts`), a `job_title` hint, and how to read the trust
+    status (Enriched with email / Enriched / Not Enriched) and `outreach_ready`
+  - enrich: the real `required_fields` names (`email`, not `work_email`, which the backend refuses)
+  - find: roles are job titles; decision makers by default; a company domain is required
+  - discover: keyword and tech-stack filters, accounts-only and persona modes, and the `dropped`
+    reasons to widen a short result
+- Prices measured live: find 1 per person (was "1-2, being finalised"), discover 1 per account
+  plus 1 per contact, enrich 1 per contributing data source (about 2 per person).
+- Version 0.2.0, so `claude plugin update` picks the changes up.
+
+## Unreleased (before 0.2.0)
 
 ### Added
 - Skill evals in `plugins/onesource/evals/`:

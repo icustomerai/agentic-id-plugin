@@ -66,91 +66,114 @@ Read back:
 
 ## enrich
 
-Fill missing fields on a person.
+Fill missing fields on a person or a company.
 
-By identity (from resolve):
+By contact, without resolving first (add `job_title` when the list has one; it is used to check
+the match):
 ```json
-{ "id": "did:icustomer:global:person:4f1c...", "fields": ["title", "company"], "max_credits": 2 }
-```
-
-By contact, without resolving first:
-```json
-{ "contact": { "email": "jane@acme.com" }, "required_fields": ["job_title", "company"], "max_credits": 3 }
+{ "contact": { "name": "Jane Doe", "company_domain": "acme.com", "job_title": "VP Marketing" }, "required_fields": ["email", "job_title", "linkedin"], "max_credits": 5 }
 ```
 
 Many contacts (up to 100):
 ```json
-{ "contacts": [ { "email": "jane@acme.com" }, { "name": "Raj Patel", "company_domain": "globex.com" } ], "required_fields": ["job_title"], "max_credits": 10 }
+{ "contacts": [ { "email": "jane@acme.com" }, { "name": "Raj Patel", "company_domain": "globex.com" } ], "required_fields": ["job_title"], "max_credits": 20 }
 ```
 
-- Use exactly one of `id`, `contact` or `contacts`.
-- `required_fields` returns only those fields and is cheaper. Use it when the user needs specific
-  fields.
-- No other top-level keys are accepted. Identity values go inside `contact`.
+Companies (up to 100), by domain or name:
+```json
+{ "accounts": [ { "domain": "acme.com" }, { "name": "Globex" } ], "required_fields": ["industry", "employee_size", "location"], "max_credits": 10 }
+```
 
-CLI: `onesource enrich --id <did> --fields title,company --max-credits 2 --json`. For `contact` or
-`contacts`, send the JSON body with `--input -`.
+By identity (from resolve; a company DID goes to company enrichment):
+```json
+{ "id": "did:icustomer:global:person:4f1c...", "fields": ["title", "company"], "max_credits": 2 }
+```
 
-Read back:
+- Use exactly one of `id`, `contact`/`contacts` or `account`/`accounts`.
+- `required_fields` returns only those fields and is cheaper. Contact names: `email`,
+  `job_title`, `linkedin`, `location`, `phone`. Company names: `industry`, `employee_size`,
+  `location`, `revenue`, `country`, `description`, `linkedin`, `phone`. An unknown name is
+  refused for free, with the allowed list in the message: pick from that list, do not guess
+  (`work_email` is not a name; use `email`).
+- Contacts only: `trust_mode: "enforce"` drops contradicted fields and holds back unverified
+  email/LinkedIn; `list_context` ("VP Marketing at B2B SaaS") helps judge fit.
+- No other top-level keys are accepted. Identity values go inside `contact` / `account`.
+
+CLI: `onesource enrich --name "Jane Doe" --company-domain acme.com --job-title "VP Marketing" --max-credits 5 --json`,
+`onesource enrich --account acme.com,globex.com --required-fields industry,employee_size --max-credits 10`.
+
+Read back, contacts:
+- `trust.status` per person: **Enriched with email** (outreach-ready: the email is verified and
+  belongs to this person), **Enriched** (trustworthy data, but no email safe to send to), or
+  **Not Enriched** (no match, or the match was rejected). `trust.verdict`, `trust.confidence`
+  and `trust.reason` explain it. Batch: each `results[]` row has `status`, `confidence` and
+  `reason`, and `outreach_ready` counts the rows safe to email.
+- Only outreach-ready rows belong in an email campaign. For an Enriched row, say the email is not
+  confirmed; do not present it as safe.
+
+Read back, all:
 - `enriched`: field → value.
-- `coverage_pct`.
+- `coverage_pct` (a fraction: 1 = every requested field).
 - `missing_fields`: report these as missing. Never fill them in yourself.
 - `provenance`: where each field came from.
 - Batch: `results[]`.
 
 ## find
 
-The people in a role at a known company.
+The decision makers at a known company.
 
 ```json
-{ "account": { "domain": "acme.com" }, "roles": ["VP Marketing"], "seniority": ["VP"], "limit": 5, "max_credits": 10 }
+{ "account": { "domain": "acme.com" }, "roles": ["VP Marketing"], "seniority": ["VP"], "limit": 5, "max_credits": 5 }
 ```
 
-- Identify the company by `account.domain`, `account.id` (a company DID) or `account.name`.
-- Narrow with `roles` and `seniority`, or the exact taxonomy filters `job_function` and
-  `job_level`.
-- Always pass `limit`: default 20, max 100. Above 100 needs `confirm: true` and the user's yes.
-- Set `max_credits` to at least `limit` × the price per person (see the `onesource-credits`
-  skill).
-- Repeat calls page through people you have not been shown yet.
+- Identify the company by `account.domain` (required; add `account.id` / `account.name` if
+  known). Without a domain, `roles` search across companies.
+- `roles` are job titles; `job_function` (e.g. "Marketing") and `seniority` (VP, Director,
+  C-Level, Head) narrow further. With none of them, decision makers (C-level, VP, head, director)
+  are searched, and the summary says so.
+- Always pass `limit`: default 20, max 100. 1 credit per person returned.
 
-CLI: `onesource find --domain acme.com --roles "VP Marketing" --seniority VP --limit 5 --max-credits 10 --json`
+CLI: `onesource find --domain acme.com --roles "VP Marketing" --seniority VP --limit 5 --max-credits 5 --json`
 
 Read back:
 - `people[]`, each with `name`, `title`, `seniority`, `company`, `company_domain`,
-  `linkedin_url`, `work_email`, `match_confidence` and `source`.
-- `total_found`: how many exist at the account.
+  `linkedin_url`, `work_email` and `source`.
+- `total_found` and `warnings` (why fewer came back).
 
 `work_email` from find is an unverified claim. Validate it before anyone sends to it. If the
 people returned do not match the roles you asked for, say so. Do not present them as matches.
 
 ## discover
 
-Net-new companies and people that match an ICP.
+Net-new companies, and the decision makers in them, that match an ICP. Every account returned
+meets every account filter.
 
 ```json
 {
-  "account_filters": { "industry": ["Software Development"], "country": ["United States"], "employee": ["51-200"] },
-  "contact_filters": { "job_level": ["VP / Head"], "job_function": ["Sales & Business Development"] },
+  "account_filters": { "industry": ["Software Development"], "country": ["US"], "employee": ["1001-5000"] },
+  "contact_filters": { "job_title": ["VP Marketing"], "job_level": ["VP", "Head"] },
   "limit": 10,
-  "max_credits": 10
+  "max_credits": 15
 }
 ```
 
 - At least one filter is required.
-- Account filters: `industry`, `country`, `employee`, `revenue`.
-- Contact filters: `job_function`, `job_level`, `job_title`.
-- Always pass `limit`. Discover charges 1 credit per contact returned, and `max_credits` also caps
-  the row count.
+- Account filters: `industry`, `country`, `employee` (size bands: `51-200`, `201-500`,
+  `1001-5000`, `10001+`), `revenue` (`10M-50M`, `1B+`, `<5M`), `keywords` (in the company
+  description), `tech_stack`.
+- Contact filters: `job_title`, `job_function`, `job_level` (seniority), `exclude_titles`.
+- Account filters alone return accounts only (`mode: accounts_only`). Contact filters alone (a
+  country may be added) search people across companies (`mode: persona`).
+- Price: 1 credit per account plus 1 per contact. `max_credits` is split across both before
+  anything runs, so the call can never cost more; `contacts_per_account` (default 2) and `limit`
+  size it.
 - `group_by_account` (default `true`) nests contacts under their accounts.
-- `exclude_seen` (default `true`) makes a repeat call return the next page of net-new people.
-  Page again only with the user's yes.
-- `max_accounts` caps how many companies contribute.
 
-CLI: `onesource discover --industry "Software Development" --country "United States" --job-level "VP / Head" --limit 10 --max-credits 10 --json`
+CLI: `onesource discover --industry "Software Development" --country US --employee 1001-5000 --job-title "VP Marketing" --limit 10 --max-credits 15 --json`
 
 Read back:
 - `accounts[]` (each with its contacts) or `contacts[]`
-- `returned_count` and `account_count`
-- `filters_applied`
-- `credits_charged`
+- `returned_count`, `account_count`, `credits_charged`
+- `dropped`: how many candidate accounts each filter left out, largest first. On a short result,
+  tell the user which filter to widen.
+- `warnings`, and `partial: true` if the contact step failed after the accounts were charged.

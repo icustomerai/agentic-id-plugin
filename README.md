@@ -125,12 +125,12 @@ deliverability before you send.
 | Verb | Ask it | MCP tool | CLI | Credits\* |
 | --- | --- | --- | --- | --- |
 | **resolve** | Who is this? Resolves an email, LinkedIn URL, or name and company to one stable ID from the ledger, with what it matched on and how confident it is. | `onesource_resolve` | `onesource resolve` | Free |
-| **enrich** | What's their title, company, work email? Up to 100 contacts per call. | `onesource_enrich` | `onesource enrich` | Per lookup that filled a field: person 1, company 1, work email 2 |
-| **find** | Who holds role X at company Y? | `onesource_find` | `onesource find` | Per person returned (1–2, being finalised) |
-| **discover** | Which companies and people match my ICP? | `onesource_discover` | `onesource discover` | 1 per contact returned |
+| **enrich** | What's their title, work email, LinkedIn? Or a company's industry, size and HQ. Up to 100 per call. Every person comes back with a trust status: *Enriched with email* (safe to send), *Enriched*, or *Not Enriched*. | `onesource_enrich` | `onesource enrich` | 1 per data source that contributed: about 2 per person, 1–3 per company |
+| **find** | Who holds role X at company Y? Decision makers by default. | `onesource_find` | `onesource find` | 1 per person returned |
+| **discover** | Which companies and people match my ICP? Industry, country, size, revenue, keywords and tech stack are hard filters. | `onesource_discover` | `onesource discover` | 1 per account plus 1 per contact |
 | **validate** | Is this mailbox deliverable before you send? Up to 1,000 per call. | `onesource_validate` | `onesource validate` | 1 per `valid` / `catch-all` / `risky`. `invalid`, `unknown` and domain-only checks are free |
 
-\* Development prices. They will change before general availability.
+\* Prices measured on the production backend on 11 Nov 2026. The `cost` block in every answer is authoritative.
 
 <details>
 <summary><b>Example: find the buying group</b> (MCP arguments, CLI, SDK, output)</summary>

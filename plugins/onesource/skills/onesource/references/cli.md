@@ -49,16 +49,21 @@ Parse these rather than the readable view.
 | `onesource_validate` | `onesource validate --email <e> --max-credits <n> --json` (or `--domain`, `--id`) |
 | `onesource_validate` (batch) | `onesource validate --file <csv> [--column <name>] --max-credits <budget> -o csv` |
 | `onesource_resolve` | `onesource resolve --email <e> \| --linkedin-url <u> \| --name <n> --company-domain <d> --max-credits <n> --json` |
-| `onesource_enrich` | `onesource enrich --email <e> \| --linkedin-url <u> \| --id <did> --fields title,company --max-credits <n> --json` |
+| `onesource_enrich` | `onesource enrich --email <e> \| --linkedin-url <u> \| --name <n> --company-domain <d> [--job-title <t>] \| --id <did> --max-credits <n> --json` |
+| `onesource_enrich` (companies) | `onesource enrich --account <domain-or-name>[,...] --required-fields industry,employee_size --max-credits <n> --json` |
 | `onesource_enrich` (batch) | `onesource enrich --file <csv> --required-fields email,job_title --max-credits <budget> -o csv` |
 | `onesource_find` | `onesource find --domain <d> --roles "<r>" --seniority <s> --limit <n> --max-credits <n> --json` |
-| `onesource_discover` | `onesource discover --industry "<i>" --job-level "<l>" --limit <n> --max-credits <n> --json` |
+| `onesource_discover` | `onesource discover --industry "<i>" --country <c> --employee <band> [--keyword <k>] [--tech <t>] --job-title "<t>" --limit <n> --max-credits <n> --json` |
 | (no MCP tool) | `onesource credits --json`: balance, holds and recent movements. Free. |
 
 ## Files and budgets
 
 - With `--file`, `--max-credits` is the budget for **the whole file**. Agree it with the user first
-  (validate: up to 1 credit per email; enrich: up to 5 held per contact, usually less charged).
+  (validate: up to 1 credit per email; enrich: up to 5 held per contact, about 2 charged).
+- Enrich rows carry `status` (Enriched with email / Enriched / Not Enriched), `confidence`,
+  `outreach_ready` and `reason`. Only `outreach_ready` rows are safe to email.
+- `--required-fields` takes the backend's names (`email`, `job_title`, `linkedin`, ...). A wrong
+  name stops the whole file before anything is charged; fix the name from the error and rerun.
 - Rows come back with a `status` when they were not processed:
   - `skipped`: the budget ran out first. Tell the user how many, and ask before spending more.
   - `rejected`: refused before lookup (personal email, placeholder name). Not charged.
