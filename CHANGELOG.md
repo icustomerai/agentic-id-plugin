@@ -3,6 +3,35 @@
 All notable changes to this marketplace and the `onesource` plugin. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.3.0 - 2026-11-11
+
+Ready for the Claude plugin directory: no blocking findings against the
+[pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist).
+
+### Changed
+- API-key mode moved to a `userConfig` option. `api_key` is `sensitive`, so Claude Code keeps it in
+  the system keychain and sends it as `x-api-key` through `${user_config.api_key}`. Left empty, the
+  plugin signs in with OAuth as before.
+- The server URL is the `server_url` option (default: the hosted development server) instead of the
+  `ONESOURCE_MCP_URL` shell expansion, which the directory refuses.
+- The client label is a fixed `x-onesource-client: claude-plugin/0.3.0` header.
+- `displayName` "iCustomer OneSource" and `repository` in `plugin.json`.
+
+### Removed
+- `scripts/api-key-headers.mjs` (the `headersHelper`). It read a key from `~/.onesource/api-key` or
+  the environment, which the directory holds for review. **Migration:** if you used the key file
+  with the plugin, paste the key into `/plugin` → OneSource → **Configure options** → API key. The
+  CLI still reads `~/.onesource/api-key`.
+
+### Added
+- `plugins/onesource/README.md` and `LICENSE`: the directory shows the plugin folder's README as the
+  listing, and it now says everything the plugin sends, runs and stores.
+- `test/directory-check.mjs`: the directory's automated checks (layout, manifest and name, README and
+  license, file limits, MCP and hook commands, launchers, credentials, front matter), run by
+  `validate.sh`.
+- `test/e2e.sh` `E2E_MODE=plugin` runs the shipped `.mcp.json` with its options set through a 0600
+  `--settings` file. `helper` still works as an alias.
+
 ## 0.2.0 - 2026-11-11
 
 Tested end to end in Claude Code against the production OneSource backend.

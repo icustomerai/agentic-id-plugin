@@ -22,7 +22,7 @@ REVIEW BEFORE THIS REPO GOES PUBLIC (founder sign-off on external claims):
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Claude Code plugin" src="https://img.shields.io/badge/claude%20code%20plugin-0.1.0-6b4fbb">
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/claude%20code%20plugin-0.3.0-6b4fbb">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-streamable%20http-2b7489">
 </p>
 
@@ -191,16 +191,24 @@ Exact arguments for every tool: [skills/onesource/references/tools.md](plugins/o
 | Hook (PostToolUse) | Writes one line per OneSource call to `~/.onesource/usage.jsonl`: tool, outcome, request id and credits. Never inputs or results. |
 | Command `/onesource-usage` | Shows credits per tool and the last 20 calls from that log. |
 
-For CI and headless runs, the plugin can send an API key instead of using OAuth. See
-[API-key mode](docs/agents.md#claude-code). `onesource login --with-api-key` (CLI) writes the same
-key file, so one step sets up both.
+The plugin has two options, set when you enable it or later from `/plugin` → **Installed** →
+OneSource → **Configure options**:
+
+| Option | Default | Use |
+| --- | --- | --- |
+| `api_key` (sensitive) | empty | Leave empty to sign in through `/mcp`. For CI and headless runs, paste an `os_live_` key. Claude Code keeps it in the system keychain and sends it as `x-api-key`. |
+| `server_url` | `https://mcp-onesource-development.icustomer.ai/mcp` | The OneSource MCP endpoint. Point it at staging or a local server for testing. |
+
+The plugin itself reads no credentials from your environment or files, which keeps it within the
+[Claude plugin directory](https://claude.com/docs/plugins/pre-submission-checklist) rules. See
+[API-key mode](docs/agents.md#claude-code) for headless setups.
 
 **Troubleshooting**
 
 - **`onesource` shows "Needs authentication" after you added an API key.** Claude Code remembers
   that a server needed sign-in and skips it for a while. Run `/mcp`, pick `onesource` and choose
-  **Reconnect** (or Authenticate). Headless runs (`claude -p`) cannot do this. Start the first run
-  in a folder you have trusted, with the key already in `~/.onesource/api-key`.
+  **Reconnect** (or Authenticate). Headless runs (`claude -p`) cannot do this. Set the `api_key`
+  option before the first run, and start that run in a folder you have trusted.
 - **Skill changes don't show up after `claude plugin update`.** Updates are keyed on the version
   in `plugin.json`, so every release must bump it.
 
@@ -315,11 +323,12 @@ OneSource workspace.
 | --- | --- | --- |
 | A person in Claude Code or another agent | Browser sign-in (OAuth) | `/mcp` → `onesource` → **Authenticate**. The agent keeps and renews the tokens. |
 | A person at a terminal | Browser sign-in (OAuth) | `onesource login`. The session renews itself for 30 days of use. |
-| A script, CI job or headless agent | API key | `ONESOURCE_API_KEY`, or `onesource login --with-api-key < key.txt`, which saves it to `~/.onesource/api-key` (0600). |
+| A script, CI job or headless agent (CLI) | API key | `ONESOURCE_API_KEY`, or `onesource login --with-api-key < key.txt`, which saves it to `~/.onesource/api-key` (0600). |
+| Claude Code, headless (`claude -p`, CI) | API key | The plugin's `api_key` option (keychain), or a `pluginConfigs` entry in a 0600 `--settings` file, as `test/e2e.sh` does. |
 
-`~/.onesource/api-key` is shared: the plugin's API-key mode and the CLI both read it, so one
-`onesource login --with-api-key` sets up both. `onesource whoami` shows which credential is in use
-and never prints it.
+The CLI and the plugin keep their keys apart: the CLI reads `~/.onesource/api-key`, the plugin
+only its own `api_key` option. `onesource whoami` shows which credential the CLI uses and never
+prints it.
 
 Never put an API key in a URL, a prompt, a chat message or a committed file. The skills tell
 agents never to ask you for one in chat.
@@ -405,28 +414,30 @@ EVAL_QUICK=1 ./test/evals.sh        # 1 run per case, no baseline: a quick check
 ## Development
 
 ```bash
-./test/validate.sh   # manifests, JSON, frontmatter, eval-suite structure, secrets scan, unit tests (no network)
+./test/validate.sh   # manifests, JSON, frontmatter, directory pre-submission checks, evals structure, secrets scan, unit tests (no network)
+node test/directory-check.mjs   # just the Claude plugin directory checks (add --strict to fail on reviewer holds)
 ./test/evals.sh      # skill evals against mocks (model cost only)
 
 # Against a live server (spends about 1 to 3 credits):
 ONESOURCE_MCP_URL=https://<host>/mcp ONESOURCE_API_KEY=... node test/protocol.test.mjs   # MCP + hook, no model
-ONESOURCE_MCP_URL=https://<host>/mcp ONESOURCE_API_KEY=... E2E_MODE=helper ./test/e2e.sh # headless Claude Code
+ONESOURCE_MCP_URL=https://<host>/mcp ONESOURCE_API_KEY=... E2E_MODE=plugin ./test/e2e.sh # headless Claude Code, shipped .mcp.json
 ```
 
 ```
 .claude-plugin/marketplace.json          Claude Code marketplace "icustomer-onesource"
 plugins/onesource/
-  .claude-plugin/plugin.json             plugin manifest
-  .mcp.json                              MCP server entry: OAuth, optional API-key headersHelper
+  .claude-plugin/plugin.json             plugin manifest and userConfig options (api_key, server_url)
+  README.md, LICENSE                     the directory listing text and license
+  .mcp.json                              MCP server entry: OAuth, or an API key from the api_key option
   skills/                                portable Agent Skills
   agents/lead-qualification.md           subagent
   commands/onesource-usage.md            slash command
   hooks/                                 PII-free usage log
-  scripts/                               headersHelper, usage summary
+  scripts/                               usage summary
   evals/                                 skill evals and tool mocks
 docs/agents.md                           setup for Codex, Hermes, Pi and other agents
 docs/release-notes/                      release notes
-test/                                    validate.sh, evals.sh, e2e.sh, protocol test, fixtures
+test/                                    validate.sh, directory-check.mjs, evals.sh, e2e.sh, protocol test, fixtures
 ```
 
 ## Support and license

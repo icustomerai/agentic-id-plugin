@@ -1,12 +1,29 @@
 {
   "name": "onesource",
-  "version": "0.2.0",
+  "displayName": "iCustomer OneSource",
+  "version": "0.3.0",
   "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then enrich, find, discover and validate with the five OneSource tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
   "author": {
     "name": "iCustomer",
     "url": "https://icustomer.ai"
   },
   "homepage": "https://icustomer.ai",
+  "repository": "https://github.com/icustomerai/onesource-plugin",
   "license": "MIT",
-  "keywords": ["onesource", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm", "mcp"]
+  "keywords": ["onesource", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm", "mcp"],
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "OneSource API key (optional)",
+      "description": "Leave empty to sign in with your iCustomer account (run /mcp, pick onesource, choose Authenticate). For CI and headless runs, paste an os_live_ key: Claude Code keeps it in your system keychain and sends it only to the OneSource server below, as the x-api-key header.",
+      "sensitive": true,
+      "default": ""
+    },
+    "server_url": {
+      "type": "string",
+      "title": "OneSource MCP server URL",
+      "description": "The OneSource MCP endpoint every tool call goes to. Keep the default unless iCustomer gave you another one.",
+      "default": "https://mcp-onesource-development.icustomer.ai/mcp"
+    }
+  }
 }

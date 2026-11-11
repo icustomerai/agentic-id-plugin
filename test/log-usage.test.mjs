@@ -1,10 +1,10 @@
-// Unit tests for plugins/onesource/hooks/log-usage.mjs and the headers helper.
+// Unit tests for plugins/onesource/hooks/log-usage.mjs and scripts/usage-summary.mjs.
 // Run with: node --test test/
 // Fixtures use fake markers and request ids only; no real people, emails or keys.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,6 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const hook = join(root, 'plugins/onesource/hooks/log-usage.mjs');
-const helper = join(root, 'plugins/onesource/scripts/api-key-headers.mjs');
 const summary = join(root, 'plugins/onesource/scripts/usage-summary.mjs');
 const fixture = (name) => readFileSync(join(here, 'fixtures', name), 'utf8');
 
@@ -127,20 +126,4 @@ test('usage summary prints credits per tool and recent calls', () => {
   const empty = spawnSync(process.execPath, [summary], { env: cleanEnv({ ONESOURCE_CONFIG_DIR: tmp() }), encoding: 'utf8' });
   assert.equal(empty.status, 0);
   assert.match(empty.stdout, /No OneSource usage logged yet/);
-});
-
-test('headers helper: no key -> client label only (OAuth), env key or key file -> x-api-key', () => {
-  const run = (env) => spawnSync(process.execPath, [helper], { env: cleanEnv(env), encoding: 'utf8' });
-  const none = run({ ONESOURCE_CONFIG_DIR: tmp() });
-  assert.equal(none.status, 0);
-  assert.deepEqual(JSON.parse(none.stdout), { 'x-onesource-client': 'plugin/0.1.0' });
-
-  const fromEnv = run({ ONESOURCE_CONFIG_DIR: tmp(), ONESOURCE_API_KEY: 'dummy-test-value' });
-  assert.deepEqual(JSON.parse(fromEnv.stdout), { 'x-onesource-client': 'plugin/0.1.0', 'x-api-key': 'dummy-test-value' });
-
-  const dir = tmp();
-  writeFileSync(join(dir, 'api-key'), '  dummy-file-value  \n');
-  chmodSync(join(dir, 'api-key'), 0o600);
-  const fromFile = run({ ONESOURCE_CONFIG_DIR: dir });
-  assert.deepEqual(JSON.parse(fromFile.stdout), { 'x-onesource-client': 'plugin/0.1.0', 'x-api-key': 'dummy-file-value' });
 });

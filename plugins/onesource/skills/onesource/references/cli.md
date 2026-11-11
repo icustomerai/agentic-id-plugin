@@ -28,7 +28,8 @@ If `whoami` exits 3 ("Not signed in"), ask the user to run one of these **themse
 ## Authentication
 
 The CLI finds a credential on its own, in this order: `--api-key`, `ONESOURCE_API_KEY`, the
-`onesource login` session, `~/.onesource/api-key` (the same file the plugin's API-key mode reads).
+`onesource login` session, `~/.onesource/api-key`. The Claude Code plugin does not read that file; it
+uses its own `api_key` option.
 `ONESOURCE_API_URL` sets the server; the default is the hosted development server.
 
 Never ask the user to paste a key into the chat, never put a key on the command line (it lands in

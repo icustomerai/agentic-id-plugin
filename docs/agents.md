@@ -55,26 +55,39 @@ claude plugin install onesource@icustomer-onesource
 ```
 
 Restart Claude Code, run `/mcp`, pick `plugin:onesource:onesource` and choose **Authenticate**.
-Claude Code stores the tokens, not the plugin. The hook and helper scripts need `node` 18 or later.
+Claude Code stores the tokens, not the plugin. The usage hook and `/onesource-usage` need `node` 18
+or later.
 
 Try it without installing: `claude --plugin-dir /path/to/onesource-plugin/plugins/onesource`.
 
-**Another server:** `export ONESOURCE_MCP_URL=http://localhost:3000/mcp`.
+**Plugin options.** The plugin declares two `userConfig` options. Claude Code asks for them when you
+enable the plugin; change them later with `/plugin configure onesource@icustomer-onesource`, or in
+`/plugin` → **Installed** → OneSource → **Configure options**.
 
-**API-key mode (CI, headless).** The plugin's `.mcp.json` sends no static headers. Its
-`headersHelper` (`plugins/onesource/scripts/api-key-headers.mjs`) adds `x-api-key` only when a key
-is configured; otherwise OAuth applies. Claude Code removes credential-named environment
-variables (`*_API_KEY`, `*_TOKEN`, ...) from a plugin's `headersHelper`, so the key is read from a
-file:
+- `server_url`: the MCP endpoint. Default `https://mcp-onesource-development.icustomer.ai/mcp`. Set it
+  to `http://localhost:3000/mcp` to test against a local server.
+- `api_key` (sensitive): empty by default, which means OAuth sign-in. Paste an `os_live_` key for
+  API-key mode. Claude Code stores it in the system keychain and sends it as `x-api-key`.
 
-```bash
-mkdir -p ~/.onesource && chmod 700 ~/.onesource
-printf '%s\n' "<your key>" > ~/.onesource/api-key && chmod 600 ~/.onesource/api-key
-# or keep it elsewhere: export ONESOURCE_CONFIG_DIR=/secure/dir  (reads /secure/dir/api-key)
+The plugin reads no credential from your environment or your files. The CLI's
+`~/.onesource/api-key` is not used by the plugin.
+
+**API-key mode (CI, headless).** A machine without a keychain prompt can set the options in a
+settings file, kept at mode 0600 and out of the repository:
+
+```json
+{ "pluginConfigs": { "onesource@icustomer-onesource": {
+  "options": { "server_url": "https://<host>/mcp", "api_key": "<your key>" } } } }
 ```
 
-Create the folder as yourself, not with `sudo`. A folder owned by root stops the usage hook from
-writing its log. Remove the file to go back to OAuth.
+```bash
+claude -p "..." --settings /secure/onesource-settings.json \
+  --allowedTools mcp__plugin_onesource_onesource__onesource_validate
+```
+
+The id is `onesource@icustomer-onesource` for the installed plugin and `onesource@inline` for one
+loaded with `--plugin-dir`. `test/e2e.sh` with `E2E_MODE=plugin` writes this file from the
+environment and deletes it on exit.
 
 For headless runs you can skip the plugin's server entry and load your own, as `test/e2e.sh` does:
 
@@ -82,6 +95,9 @@ For headless runs you can skip the plugin's server entry and load your own, as `
 { "mcpServers": { "onesource": { "type": "http", "url": "https://<host>/mcp",
   "headers": { "x-api-key": "${ONESOURCE_API_KEY}" } } } }
 ```
+
+This is your own MCP config, not part of the plugin, so reading the key from your environment is
+your choice here.
 
 ```bash
 claude -p "..." --mcp-config onesource.mcp.json --strict-mcp-config \
