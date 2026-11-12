@@ -126,7 +126,7 @@ cases for `claude plugin eval`; Claude Code doesn't load them when you use the p
 
 ## Support and license
 
-Questions and issues: https://github.com/icustomerai/onesource-plugin/issues, or your iCustomer
+Questions and issues: https://github.com/icustomerai/agentic-id-plugin/issues, or your iCustomer
 team. Source, changelog and integration guides for other agents are in the same repository.
 
 MIT license, copyright iCustomer. See [LICENSE](LICENSE).
