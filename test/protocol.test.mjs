@@ -117,9 +117,11 @@ try {
   check((bad.structuredContent?.cost?.charged_credits ?? 0) === 0, 'find with max_credits 0 charges nothing', bad.structuredContent?.summary ?? bad.structuredContent?.message);
 
   const facts = await call('agentic_id_facts', { id: 'ic-doesNotExist000000000' });
-  check(!facts.isError && Array.isArray(facts.structuredContent.facts) && facts.structuredContent.verified_id === false, 'facts for an unknown ID: empty, not an error');
+  check(facts.isError === true && facts.structuredContent.error === 'id.not_held' && /holds/.test(facts.structuredContent.fix ?? ''), 'facts for an ID this workspace does not hold: refused, with what to do');
   const ledger = await call('agentic_id_ledger', { id: 'ic-doesNotExist000000000' });
-  check(!ledger.isError && ledger.structuredContent.entries.length === 0, 'ledger for an unknown ID: empty, not an error');
+  check(ledger.isError === true && ledger.structuredContent.error === 'id.not_held', 'ledger for an ID this workspace does not hold: refused');
+  const ws = await call('agentic_id_workspace', {});
+  check(!ws.isError && typeof ws.structuredContent.credits?.available === 'number' && /credits? available/.test(ws.structuredContent.summary), 'workspace: credits and spend', ws.structuredContent.summary);
 
   if (PAID) {
     const r = await call('agentic_id_resolve', { identifiers: { company_domain: `https://www.${DOMAIN}/` } });
@@ -132,6 +134,10 @@ try {
     check(again.structuredContent.id === s.id, 'the same company in another spelling gets the same ID');
     const history = await call('agentic_id_ledger', { id: s.id });
     check(history.structuredContent.verified === true && history.structuredContent.entries.length >= 1, 'its ledger chain verifies', history.structuredContent.summary);
+    const heldFacts = await call('agentic_id_facts', { id: s.id });
+    check(!heldFacts.isError && Array.isArray(heldFacts.structuredContent.facts), 'facts open for an ID the workspace holds');
+    const rep = await call('agentic_id_report', { id: s.id, field: 'company_domain', outcome: 'confirmed' });
+    check(!rep.isError && rep.structuredContent.recorded === 1 && rep.structuredContent.cost.charged_credits === 0, 'report: an outcome for a held ID is recorded, free', rep.structuredContent.summary);
     const many = await call('agentic_id_resolve_many', { records: [{ company_domain: DOMAIN }, { company_domain: `www.${DOMAIN}` }, { email: 'x@gmail.com' }], max_credits: 2 });
     const m = many.structuredContent;
     check(m.rows[1].repeat_of_row === 1 && m.rows[2].outcome === 'skipped' && m.cost.charged_credits <= 1, 'resolve_many: a repeat is paid once, a personal row is skipped', m.summary);

@@ -137,6 +137,8 @@ linked for review, never merged.
 
 ## agentic_id_facts
 
+Only for an ID this workspace holds (one it resolved, enriched, found or discovered). Any other ID answers `id.not_held`; the same goes for `agentic_id_ledger`.
+
 ```json
 { "id": "ic-1VcQFNN5zwWguwAUaHEBNk" }
 ```

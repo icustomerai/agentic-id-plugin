@@ -20,6 +20,7 @@ const FIXES = {
   'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap.',
   'credits.cap_too_low': 'max_credits is below the cheapest result. Ask the user before raising it.',
   rate_limited: 'Too many requests for this key. Wait for retry_after_seconds, then send the same call once.',
+  'id.not_held': 'Facts and history are shown only for IDs this workspace holds. Resolve, enrich, find or discover it first; an ID copied from elsewhere will not open.',
   'feedback.not_held': 'Outcomes can only be reported for IDs this workspace holds. Resolve or enrich the person first, then report.',
   'request.invalid': 'Fix the fields listed in "issues" and call again. Nothing was charged.',
   'find.persona_unreadable': 'Give at least one job title in roles, or a seniority (e.g. "director+").',
