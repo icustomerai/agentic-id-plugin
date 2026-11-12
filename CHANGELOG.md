@@ -17,9 +17,12 @@ OneSource is now **Agentic ID**. Breaking: every name changed at once, with no a
   `/onesource-usage` is now `/agentic-id-usage`; the CLI binary is `agentic-id`.
 - Local files move from `~/.onesource/` to `~/.agentic-id/` (usage log, API key). Env vars
   `ONESOURCE_*` are now `AGENTIC_ID_*`. Client header `x-onesource-client` is now `x-agentic-id-client`.
+- API keys are now `ic-live-...` and IDs `ic-...` (iCustomer ID). Old `os_live_` keys and `os_` IDs
+  are refused: ask for a new key.
 
-**Migration:** uninstall `onesource@icustomer-onesource`, install `agentic-id@icustomer`, and move
-`~/.onesource/api-key` to `~/.agentic-id/api-key` if you use API-key mode.
+**Migration:** uninstall `onesource@icustomer-onesource`, install `agentic-id@icustomer`, then sign in
+again through `/mcp`. In API-key mode, get a new `ic-live-` key and set it with
+`/plugin configure agentic-id@icustomer`.
 
 The MCP endpoint (`https://mcp-onesource-development.icustomer.ai/mcp`) and the GitHub repository
 keep their names for now.

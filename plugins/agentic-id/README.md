@@ -42,7 +42,7 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
    2 credits."
 
 **API key instead of sign-in.** For CI, scripts and headless runs (`claude -p`), paste an Agentic ID
-API key (`os_live_...`) into the plugin's **API key** option. Claude Code stores it in your system
+API key (`ic-live-...`) into the plugin's **API key** option. Claude Code stores it in your system
 keychain, not in a settings file. To change it later, run
 `/plugin configure agentic-id@icustomer`, or open `/plugin`, select Agentic ID on the
 **Installed** tab, and choose **Configure options**. Clear the key to go back to sign-in.
