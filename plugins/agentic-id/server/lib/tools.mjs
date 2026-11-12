@@ -43,7 +43,7 @@ export const TOOLS = [
     name: 'agentic_id_resolve',
     title: 'Resolve to an Agentic ID',
     description:
-      'Turn a work email, LinkedIn profile URL, name plus company, or a company domain into one stable Agentic ID (ic-...). "confidence" is how sure the identifier points at this ID, not how verified its facts are (see agentic_id_facts). outcome says what happened: known (already in the ledger), new (just created), review (probably a match, not sure enough to link), conflict (the identifiers point at two different IDs; nothing was merged) or unresolvable (not enough to go on; free). 1 credit per ID returned, 0 for one your workspace already holds. Use the ID with enrich, facts and ledger.',
+      'Turn a work email, LinkedIn profile URL, name plus company, or a company domain into one stable Agentic ID (ic-...). "confidence" is how sure the identifier points at this ID, not how verified its facts are (see agentic_id_facts). outcome says what happened: known (Agentic ID already had it; not the same as this workspace holding it), new (just created), review (probably a match, not sure enough to link), conflict (the identifiers point at two different IDs; nothing was merged) or unresolvable (not enough to go on; free). 1 credit per ID returned, 0 for one your workspace already holds. Use the ID with enrich, facts and ledger.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -227,7 +227,7 @@ export const TOOLS = [
     name: 'agentic_id_list',
     title: 'Work a CSV file',
     description:
-      'Run one action over a whole CSV file on disk: validate (adds email_verdict, email_reason), resolve (adds agentic_id, resolve_outcome, same_id_as_row: the duplicate report), enrich (adds one column per field plus its level) or report (sends outcomes from columns agentic_id, outcome[, field]; adds report_status). The rows are read and written by the plugin and never enter the conversation. Repeats are paid once; personal emails and phones never leave this machine. Always call it first with dry_run: true: that is free and gives the row count and the most it could cost; show the user, then call again with max_credits. The result is a new file next to the input, never the input itself.',
+      'Run one action over a whole CSV file on disk: validate (adds email_verdict, email_reason), resolve (adds agentic_id, resolve_outcome, resolve_note, same_id_as_row: the duplicate report; row numbers count data rows, the first under the header is 1), enrich (adds one column per field plus its level) or report (sends outcomes from columns agentic_id, outcome[, field]; adds report_status). The rows are read and written by the plugin and never enter the conversation. Repeats are paid once; personal emails and phones never leave this machine. Always call it first with dry_run: true: that is free and gives the row count and the most it could cost; show the user, then call again with max_credits. The result is a new file next to the input, never the input itself.',
     inputSchema: {
       type: 'object',
       properties: {

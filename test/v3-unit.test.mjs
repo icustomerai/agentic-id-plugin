@@ -417,27 +417,67 @@ test('csv: nothing is lost on the way through', () => {
   assert.equal(parseCsv(out).rows.length, 4, 'and it reads back the same');
 });
 
-test('cli files: the input is never overwritten, unrecognised email columns are flagged, a cap stop exits 3', async () => {
+test('cli files: the input is never overwritten, unread email columns stop a paid run, a cap stop exits 3', async () => {
+  const { symlinkSync } = await import('node:fs');
   const dir = mkdtempSync(join(tmpdir(), 'aid-cli-'));
   const file = join(dir, 'in.csv');
-  writeFileSync(file, 'Kontakt;Firma;Web\nada@alpha-synthetic.com;Alpha;alpha-synthetic.com\nbo@beta-synthetic.com;Beta;beta-synthetic.com\ncy@gamma-synthetic.com;Gamma;gamma-synthetic.com\n');
+  const original = 'Kontakt;Firma;Web\nada@alpha-synthetic.com;Alpha;alpha-synthetic.com\nbo@beta-synthetic.com;Beta;beta-synthetic.com\ncy@gamma-synthetic.com;Gamma;gamma-synthetic.com\n';
+  writeFileSync(file, original);
   const client = fake({ resolve: () => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: `ic-id${Math.random().toString(36).slice(2, 8)}0`, outcome: 'new' }) });
-  const same = await cli(['resolve', '--file', file, '--out', file, '--max-credits', '5'], client);
-  assert.equal(same.code, 1);
-  assert.match(same.err, /must not be the input file/);
+  // The same file under another spelling or through a link is still the same file.
+  const link = join(dir, 'link.csv');
+  symlinkSync(file, link);
+  for (const out of [file, link, join(dir, '.', 'in.csv')]) {
+    const r = await cli(['resolve', '--file', file, '--out', out, '--max-credits', '5', '--email-column', 'Kontakt'], client);
+    assert.equal(r.code, 1, out);
+    assert.match(r.err, /must not be the input file/);
+  }
   assert.equal(client.calls.length, 0);
+  assert.equal(readFileSync(file, 'utf8'), original);
   const dry = await cli(['resolve', '--file', file, '--dry-run'], client);
-  assert.match(dry.err, /Columns used: company from "Firma", company domain from "Web"\. Warning: "Kontakt" looks like emails/);
+  assert.match(dry.err, /Columns used: company from "Firma", company domain from "Web"\. Warning: "Kontakt" \(column 1\) holds email addresses/);
+  const paid = await cli(['resolve', '--file', file, '--max-credits', '5', '--out', join(dir, 'x.csv')], client);
+  assert.equal(paid.code, 1, 'a paid run does not go ahead matching people on their company alone');
+  assert.match(paid.err, /Name it with --email-column "Kontakt"/);
+  assert.equal(client.calls.length, 0);
   assert.match((await cli(['resolve', '--file', file, '--column', 'nope', '--dry-run'], client)).err, /No column "nope"/);
   assert.equal((await cli(['resolve', '--file', file, '--limit-rows', '0', '--dry-run'], client)).code, 1);
+  const noOut = await cli(['resolve', '--file', file, '--max-credits', '2', '--json', '--email-column', 'Kontakt'], client);
+  assert.equal(noOut.code, 1, 'with --json the rows need a file to go to');
+  assert.equal(client.calls.length, 0);
+  assert.equal(JSON.parse((await cli(['resolve', '--file', file, '--dry-run', '--json', '--email-column', 'Kontakt'], client)).out).to_send, 3);
   const out = join(dir, 'out.csv');
-  const capped = await cli(['resolve', '--file', file, '--max-credits', '2', '--out', out, '--json'], client);
+  const capped = await cli(['resolve', '--file', file, '--max-credits', '2', '--out', out, '--json', '--email-column', 'Kontakt'], client);
   assert.equal(capped.code, 3, 'stopped by the cap');
   const summary = JSON.parse(capped.out);
   assert.equal(summary.cost.charged_credits, 2);
   assert.equal(summary.cap_reached, true);
-  assert.equal(parseCsv(readFileSync(out, 'utf8')).rows.filter((x) => x.resolve_outcome === 'not_run').length, 1, 'the file holds what was done');
-  assert.equal(readFileSync(file, 'utf8').split('\n')[0], 'Kontakt;Firma;Web');
+  const rows = parseCsv(readFileSync(out, 'utf8')).rows;
+  assert.equal(rows.filter((x) => x.resolve_outcome === 'not_run').length, 1, 'the file holds what was done');
+  assert.match(rows.find((x) => x.resolve_outcome === 'not_run').resolve_note, /cap/);
+  assert.equal(readFileSync(file, 'utf8'), original);
+});
+
+test('cli files: two email columns are both read, and skipped rows say why', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aid-cli2-'));
+  const file = join(dir, 'two.csv');
+  writeFileSync(file, 'email,name,email\nada@alpha-synthetic.com,Ada,\n,Bo,bo@beta-synthetic.com\n,Cy Home,cy@gmail.com\n,Only Name,\n');
+  const client = fake({
+    validate: (b) => ({ request_id: 'r', summary: 'checked.', cost: { quoted_credits: 2, charged_credits: 2 }, results: b.emails.map((email) => ({ email, verdict: 'valid' })) }),
+    resolve: (b) => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: `ic-${b.identifiers.email.slice(0, 3)}00000`, outcome: 'new' }),
+  });
+  const v = join(dir, 'v.csv');
+  const rv = await cli(['validate', '--file', file, '--max-credits', '5', '--out', v], client);
+  assert.deepEqual(client.calls[0].body.emails, ['ada@alpha-synthetic.com', 'bo@beta-synthetic.com'], 'the second email column is read; the personal one is not sent');
+  assert.match(rv.err, /1 address was not sent \(1 personal, 0 malformed or disposable\)/);
+  assert.deepEqual(parseCsv(readFileSync(v, 'utf8')).rows.map((x) => x.email_verdict), ['valid', 'valid', 'rejected', '']);
+  const o = join(dir, 'o.csv');
+  await cli(['resolve', '--file', file, '--max-credits', '5', '--out', o], client);
+  const rows = parseCsv(readFileSync(o, 'utf8')).rows;
+  assert.deepEqual(rows.map((x) => x.resolve_outcome), ['new', 'new', 'skipped', 'skipped']);
+  assert.match(rows[2].resolve_note, /not enough to identify/);
+  assert.ok(rows[3].resolve_note.length > 0, 'a skipped row always says why');
+  assert.doesNotMatch(rows[2].resolve_note, /gmail|cy@/, 'the note never repeats the held-back value');
 });
 
 // ------------------------------------------------------------------ the HTTP client

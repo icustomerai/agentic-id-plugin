@@ -15,10 +15,10 @@ export const DEFAULT_URL = 'http://127.0.0.1:3100';
 export const CLIENT = 'agentic-id-plugin/0.5.0';
 
 const FIXES = {
-  'auth.invalid_key': 'Sign in with `agentic-id login`, or set a valid Agentic ID API key in the plugin options (or AGENTIC_ID_API_KEY). Never paste a key into the chat.',
-  'auth.missing_key': 'Sign in with `agentic-id login`, or set an Agentic ID API key in the plugin options (or AGENTIC_ID_API_KEY). Never paste a key into the chat.',
-  'auth.token_expired': 'The sign-in has run out. Run `agentic-id login` again.',
-  signed_out: 'Run `agentic-id login` again.',
+  'auth.invalid_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set a valid API key in the plugin options. Never ask for a key in the chat.',
+  'auth.missing_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set an API key in the plugin options. Never ask for a key in the chat.',
+  'auth.token_expired': 'The sign-in has run out. Call agentic_id_login to sign in again (terminal: `agentic-id login`).',
+  signed_out: 'Call agentic_id_login to sign in again (terminal: `agentic-id login`).',
   'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap.',
   'credits.cap_too_low': 'max_credits is below the cheapest result. Ask the user before raising it.',
   rate_limited: 'Too many requests for this key. Wait for retry_after_seconds, then send the same call once.',

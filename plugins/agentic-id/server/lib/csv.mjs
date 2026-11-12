@@ -94,18 +94,33 @@ const norm = (h) => columnName(h).toLowerCase().replace(/[_-]+/g, ' ').replace(/
 /** Which column holds which identifier, from the header names people actually use. `overrides` wins. */
 export function mapColumns(header, overrides = {}) {
   const map = {};
+  const alts = {};
   for (const [field, names] of Object.entries(ALIASES)) {
     const wanted = overrides[field];
-    const hit = wanted ? header.find((h) => norm(h) === norm(wanted)) : header.find((h) => names.includes(norm(h)));
-    if (wanted && !hit) throw new Error(`No column "${wanted}" in the file. Columns: ${header.map(columnName).join(', ')}`);
-    if (hit) map[field] = hit;
+    const hits = wanted ? header.filter((h) => norm(h) === norm(wanted)) : header.filter((h) => names.includes(norm(h)));
+    if (wanted && !hits.length) throw new Error(`No column "${wanted}" in the file. Columns: ${header.map(columnName).join(', ')}`);
+    if (hits.length) {
+      map[field] = hits[0];
+      alts[field] = hits;
+    }
   }
+  // Two columns of the same kind (two "email" columns): both are read, the first filled one wins.
+  Object.defineProperty(map, 'alts', { value: alts, enumerable: false });
   return map;
+}
+
+/** The cell for one identifier in one row: the first non-empty of the columns that hold it, trimmed. */
+export function cellFor(row, map, field) {
+  for (const col of map.alts?.[field] ?? (map[field] ? [map[field]] : [])) {
+    const v = String(row[col] ?? '').trim();
+    if (v) return v;
+  }
+  return '';
 }
 
 /** Columns nobody mapped whose cells mostly look like emails: a header we did not recognise. */
 export function unmappedEmailColumns(header, rows, map) {
-  const used = new Set(Object.values(map));
+  const used = new Set(Object.values(map.alts ?? {}).flat().concat(Object.values(map)));
   const sample = rows.slice(0, 200);
   return header.filter((h) => {
     if (used.has(h)) return false;
@@ -114,4 +129,4 @@ export function unmappedEmailColumns(header, rows, map) {
   });
 }
 
-export const rowIdentifiers = (row, map) => Object.fromEntries(Object.entries(map).map(([field, col]) => [field, String(row[col] ?? '').trim()]).filter(([, v]) => v));
+export const rowIdentifiers = (row, map) => Object.fromEntries(Object.keys(map).map((field) => [field, cellFor(row, map, field)]).filter(([, v]) => v));

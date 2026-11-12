@@ -5,7 +5,7 @@
 // rows are read from and written to disk here and never pass through the conversation.
 import { existsSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
-import { main } from '../cli.mjs';
+import { main, sameFile } from '../cli.mjs';
 import { AgenticIdError } from './client.mjs';
 import { LocalRefusal } from './operations.mjs';
 
@@ -20,7 +20,7 @@ export async function list(client, args = {}) {
   if (!existsSync(file) || !statSync(file).isFile()) throw new LocalRefusal('file_not_found', `No such file: ${file}`, 'Give the full path of the CSV file.');
   if (statSync(file).size > MAX_BYTES) throw new LocalRefusal('file_too_large', `${basename(file)} is over 20 MB.`, 'Split the file, or use --limit-rows with the agentic-id command in a terminal.');
   const out = args.out ? (isAbsolute(args.out) ? args.out : resolve(process.cwd(), args.out)) : join(dirname(file), `${basename(file, extname(file))}.agentic-id.csv`);
-  if (resolve(out) === resolve(file)) throw new LocalRefusal('request.invalid', 'The result file must not be the input file.', 'Leave "out" empty to write next to the input.');
+  if (sameFile(out, file)) throw new LocalRefusal('request.invalid', 'The result file must not be the input file, or a link to it.', 'Leave "out" empty to write next to the input.');
   if (extname(out).toLowerCase() !== '.csv') throw new LocalRefusal('request.invalid', 'The result file must end in .csv.', 'Leave "out" empty to write next to the input.');
 
   const argv = [action, '--file', file, '--out', out];

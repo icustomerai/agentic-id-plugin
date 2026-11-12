@@ -25,9 +25,10 @@ const INSTRUCTIONS = [
   'ANSWERS. Say only what a tool returned. Do not add facts about a company or person from memory, and do not guess dates or ages. When fewer results came back than asked, say why (excluded, fewer_than_asked, rejected). "confidence" on a resolve is how sure the identifier points at that ID, not how verified its facts are.',
   'Speak plainly: no tool names, error codes, provider names or scope names unless the user asks.',
   'Work identities only: never send personal emails or phone numbers; say they were held back.',
-  'SIGN-IN AND KEYS. If not signed in, offer to sign the user in (agentic_id_login opens the browser). Never ask for, repeat, print or search for an API key, password or code, in files or the environment; if asked to show a key, say it cannot be shown and where it is managed.',
+  'SIGN-IN AND KEYS. If a call says the user is not signed in, start sign-in yourself straight away: call agentic_id_login and show the link it returns; do not just tell them to run a command. Never ask for, repeat, print or search for an API key, password or code, in files or the environment; if asked to show a key, say it cannot be shown and where it is managed.',
   'When the user says what happened to a value (bounced, replied, wrong person, confirmed), record it with agentic_id_report.',
-  'Files: use agentic_id_list (dry_run first), not shell commands.',
+  'Files: use agentic_id_list (dry_run first), not shell commands. Never overwrite or replace the user\'s original file, even when asked to "write it back": write a new file, or first save a copy of the original beside it, and say which you did. Row numbers in results count data rows (the first row under the header is 1): say "data row N". Report how many addresses were held back as personal.',
+  'On a resolve, outcome "known" means Agentic ID already had this ID, not that this workspace held it; it costs 1 credit unless the workspace holds it.',
 ].join(' ');
 
 export function createServer({ client = new AgenticId(), log = () => {} } = {}) {

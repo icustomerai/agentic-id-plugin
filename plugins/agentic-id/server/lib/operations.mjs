@@ -309,7 +309,7 @@ export const ledger = (client, args = {}) => client.ledger(needId(args.id));
 export async function status(client) {
   const mode = client.authMode ?? (client.apiKey ? 'key' : undefined);
   const base = { client: CLIENT, server_url: client.baseUrl, key_configured: Boolean(client.apiKey), signed_in: mode === 'signin', auth: mode ?? 'none' };
-  if (!mode) return { ...base, ok: false, summary: 'Not signed in and no API key is configured.', fix: 'Call agentic_id_login to sign in with an iCustomer account in the browser (or run `agentic-id login` in a terminal), or set an API key in the plugin options (Claude Code: /plugin, agentic-id, Configure).' };
+  if (!mode) return { ...base, ok: false, summary: 'Not signed in and no API key is configured.', fix: 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link to show them). In a terminal: `agentic-id login`. Or they set an API key in the plugin options (Claude Code: /plugin, agentic-id, Configure).' };
   try {
     const me = await client.me();
     const how = mode === 'signin' ? 'signed in' : `key ${me.key_prefix}…`;

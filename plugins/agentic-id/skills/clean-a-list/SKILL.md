@@ -55,7 +55,8 @@ say how many rows were left and what it would cost to finish.
 | `resolve_outcome` | `known`, `new` | Has an `agentic_id` |
 | | `review`, `conflict` | Needs a person to look; never auto-merge these |
 | | `unresolvable`, `skipped` | Not enough to identify, or only personal data |
-| `same_id_as_row` | a row number | This row is the same person or company as that earlier row |
+| `resolve_note` | a few words | Why a row has no ID: personal data only, a name alone, the cap was reached |
+| `same_id_as_row` | a data row number | This row is the same person or company as that earlier row. Data rows are counted from 1 under the header, so data row 3 is line 4 of the file |
 
 ## 4. Report
 

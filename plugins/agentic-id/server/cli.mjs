@@ -1,14 +1,14 @@
 // agentic-id: the Agentic ID V3 API from a terminal, with the same cleaning, caps and batching as
 // the MCP tools. Works on single lookups and on CSV files.
 import { spawnSync } from 'node:child_process';
-import { accessSync, constants, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AuthError, login, logout } from './lib/auth.mjs';
 import { AgenticId, AgenticIdError, CLIENT, keyFromEnv, urlFromEnv } from './lib/client.mjs';
-import { columnName, mapColumns, parseCsv, rowIdentifiers, toCsv, unmappedEmailColumns } from './lib/csv.mjs';
+import { cellFor, columnName, mapColumns, parseCsv, rowIdentifiers, toCsv, unmappedEmailColumns } from './lib/csv.mjs';
 import { estimate } from './lib/estimate.mjs';
 import { cleanEmail, cleanIdentifiers, identityKey } from './lib/guards.mjs';
 import * as ops from './lib/operations.mjs';
@@ -157,13 +157,29 @@ export function render(cmd, r) {
 }
 
 // ------------------------------------------------------------------ files
+/** True when two paths are the same file on disk: another spelling, another letter case, or a link to it. */
+export function sameFile(a, b) {
+  if (resolvePath(a) === resolvePath(b)) return true;
+  try {
+    if (!existsSync(a) || !existsSync(b)) return false;
+    if (realpathSync(a) === realpathSync(b)) return true;
+    const [x, y] = [statSync(a), statSync(b)];
+    return x.ino === y.ino && x.dev === y.dev;
+  } catch {
+    return false;
+  }
+}
+const OVERWRITE = '--out must not be the input file (or a link to it): the original is never overwritten. Give another name.';
+
 function readList(f) {
   const sheet = parseCsv(readFileSync(f.file, 'utf8'));
   const { header, rows, delimiter } = sheet;
   if (!header.length) throw new Usage(`${f.file} is empty.`);
   const limit = num(f['limit-rows'], 'limit-rows');
   if (limit !== undefined && limit < 1) throw new Usage('--limit-rows must be 1 or more.');
-  if (f.out && resolvePath(f.out) === resolvePath(f.file)) throw new Usage('--out must not be the input file: the original is never overwritten. Give another name.');
+  if (f.out && sameFile(f.out, f.file)) throw new Usage(OVERWRITE);
+  // With --json the rows have nowhere to go but a file: refuse before anything is paid for.
+  if (f.json && !f.out && !f['dry-run']) throw new Usage('--json with --file needs --out <file>: the rows are written there and the summary is printed as JSON.');
   let map;
   try {
     map = mapColumns(header, clean({ email: f['email-column'] ?? f.column, linkedin_url: f['linkedin-column'], name: f['name-column'], company_name: f['company-column'], company_domain: f['domain-column'] }));
@@ -177,8 +193,8 @@ function readList(f) {
 function columnsLine(map, header, rows) {
   const label = { email: 'email', linkedin_url: 'LinkedIn', name: 'name', first_name: 'first name', last_name: 'last name', company_name: 'company', company_domain: 'company domain' };
   const used = Object.entries(map).map(([k, col]) => `${label[k] ?? k} from "${columnName(col)}"`).join(', ');
-  const missed = unmappedEmailColumns(header, rows, map).map((h) => `"${columnName(h)}"`);
-  return `Columns used: ${used || 'none'}.${missed.length ? ` Warning: ${missed.join(', ')} looks like emails but its name was not recognised; name it with --email-column (tool: columns.email).` : ''}`;
+  const missed = unmappedEmailColumns(header, rows, map).map((h) => `"${columnName(h) || '(no name)'}" (column ${header.indexOf(h) + 1})`);
+  return `Columns used: ${used || 'none'}.${missed.length ? ` Warning: ${missed.join(', ')} holds email addresses but its name was not recognised, so it is NOT being read; name it with --email-column (tool: columns.email).` : ''}`;
 }
 
 async function runFile(cmd, client, f, io) {
@@ -191,24 +207,34 @@ async function runFile(cmd, client, f, io) {
   };
   if (!Object.keys(map).length) throw new Usage(`No identifier column found in ${f.file}. Columns: ${header.map(columnName).join(', ')}. Name one with --email-column, --linkedin-column, --name-column, --company-column or --domain-column.`);
   const dry = f['dry-run'];
+  // A column of emails we are not reading means people would be matched on their company alone: stop before paying.
+  const unread = map.email ? [] : unmappedEmailColumns(header, rows, map);
+  if (unread.length && !dry && cmd !== 'validate') throw new Usage(`"${columnName(unread[0]) || '(no name)'}" (column ${header.indexOf(unread[0]) + 1}) holds email addresses but its name was not recognised. Name it with --email-column "${columnName(unread[0])}" (tool: columns.email) so each person is looked up by their own address.`);
   let added;
   let reply;
   let capReached = false;
   let stoppedBy;
+  const dryOut = (line, numbers) => {
+    io.err(line);
+    if (f.json) io.out(JSON.stringify({ dry_run: true, ...numbers, summary: line }, null, 2));
+    return 0;
+  };
 
   if (cmd === 'validate') {
     if (!map.email) throw new Usage(`No email column in ${f.file}. Name it with --column.`);
-    const emails = rows.map((r) => String(r[map.email] ?? '').trim()).filter(Boolean);
+    const emails = rows.map((r) => cellFor(r, map, 'email')).filter(Boolean);
     // Priced on what would really be sent: repeats once, personal and malformed addresses not at all.
     const sendable = [...new Set(emails.map((e) => cleanEmail(e)).filter((e) => e.ok).map((e) => e.email))];
     const est = estimate('validate', { emails: sendable });
-    if (dry) return io.err(`Dry run: ${rows.length} rows, ${emails.length} with an email, ${sendable.length} distinct work addresses to check (${emails.length - sendable.length} repeats, personal or malformed are not sent). At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`);
+    if (dry) return dryOut(`Dry run: ${rows.length} rows, ${emails.length} with an email, ${sendable.length} distinct work addresses to check (${emails.length - sendable.length} repeats, personal or malformed are not sent). At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`, { rows: rows.length, to_send: sendable.length, max_credits: est.max_credits });
     if (max_credits === undefined) throw needCap(est);
     reply = await ops.validate(client, { emails, purpose: f.purpose, max_credits });
+    const heldBack = emails.map((e) => cleanEmail(e)).filter((e) => !e.ok);
+    if (heldBack.length) reply = { ...reply, summary: `${reply.summary} ${heldBack.length} address${heldBack.length === 1 ? ' was' : 'es were'} not sent (${heldBack.filter((e) => /personal/.test(e.reason)).length} personal, ${heldBack.filter((e) => !/personal/.test(e.reason)).length} malformed or disposable): marked rejected.` };
     const by = new Map(reply.results.map((x) => [x.email, x]));
     added = ['email_verdict', 'email_reason'];
     for (const r of rows) {
-      const raw = String(r[map.email] ?? '').trim();
+      const raw = cellFor(r, map, 'email');
       const e = raw ? cleanEmail(raw) : undefined;
       const hit = e?.email ? by.get(e.email) : undefined;
       r.email_verdict = !raw ? '' : hit?.verdict ?? (e?.ok ? 'not_checked' : 'rejected');
@@ -223,7 +249,7 @@ async function runFile(cmd, client, f, io) {
       if (k) keys.add(k);
     }
     const est = estimate('resolve_many', { records: [...keys] });
-    if (dry) return io.err(`Dry run: ${rows.length} rows, ${keys.size} distinct lookups (repeats and rows with nothing usable are not sent). At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`);
+    if (dry) return dryOut(`Dry run: ${rows.length} rows, ${keys.size} distinct lookups (repeats and rows with nothing usable are not sent). At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`, { rows: rows.length, to_send: keys.size, max_credits: est.max_credits });
     if (max_credits === undefined) throw needCap(est);
     const out = [];
     let cost = { quoted_credits: 0, charged_credits: 0 };
@@ -243,11 +269,13 @@ async function runFile(cmd, client, f, io) {
       }
     }
     const firstRowOf = new Map();
-    added = ['agentic_id', 'resolve_outcome', 'same_id_as_row'];
+    added = ['agentic_id', 'resolve_outcome', 'resolve_note', 'same_id_as_row'];
     rows.forEach((r, i) => {
       const x = out[i];
       r.agentic_id = x?.id ?? '';
       r.resolve_outcome = x?.outcome ?? 'not_run';
+      // Why a row has no ID, in a few words (never an identifier from the row).
+      r.resolve_note = x?.id ? '' : String(x?.reason ?? (x ? '' : 'not run: the cap was reached')).replace(/\s+/g, ' ').slice(0, 160);
       r.same_id_as_row = '';
       if (x?.id) {
         if (firstRowOf.has(x.id)) r.same_id_as_row = firstRowOf.get(x.id);
@@ -256,7 +284,7 @@ async function runFile(cmd, client, f, io) {
     });
     const dupes = rows.filter((r) => r.same_id_as_row !== '').length;
     const notRun = rows.filter((r) => r.resolve_outcome === 'not_run').length;
-    reply = { summary: `${rows.length} rows: ${firstRowOf.size} distinct IDs, ${dupes} duplicate rows, ${rows.filter((r) => !r.agentic_id).length} without an ID. ${cost.charged_credits} credits charged.${capReached ? ` Stopped at the ${max_credits}-credit cap: ${notRun} rows not run.` : ''}${stoppedBy ? ` Stopped early: ${stoppedBy.message ?? stoppedBy.error}.` : ''}`, cost };
+    reply = { summary: `${rows.length} rows: ${firstRowOf.size} distinct IDs, ${dupes} duplicate rows, ${rows.filter((r) => !r.agentic_id).length} without an ID (${rows.filter((r) => r.resolve_outcome === 'skipped').length} skipped: personal data only, a name alone, or empty; see resolve_note). same_id_as_row counts data rows: the first row under the header is 1. ${cost.charged_credits} credits charged.${capReached ? ` Stopped at the ${max_credits}-credit cap: ${notRun} rows not run.` : ''}${stoppedBy ? ` Stopped early: ${stoppedBy.message ?? stoppedBy.error}.` : ''}`, cost };
   } else if (cmd === 'enrich') {
     const fields = many(f.fields);
     const unique = [];
@@ -272,7 +300,7 @@ async function runFile(cmd, client, f, io) {
       return key;
     });
     const est = estimate('enrich', { contacts: unique, fields });
-    if (dry) return io.err(`Dry run: ${rows.length} rows, ${unique.length} distinct contacts to enrich. At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`);
+    if (dry) return dryOut(`Dry run: ${rows.length} rows, ${unique.length} distinct contacts to enrich. At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`, { rows: rows.length, to_send: unique.length, max_credits: est.max_credits });
     if (max_credits === undefined) throw needCap(est);
     if (!unique.length) throw new Usage('No row has a usable work identifier.');
     reply = await ops.enrich(client, { contacts: unique, fields, purpose: f.purpose, max_credits });
@@ -406,7 +434,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       let sheet;
       if (f.file) {
         sheet = parseCsv(readFileSync(f.file, 'utf8'));
-        if (f.out && resolvePath(f.out) === resolvePath(f.file)) throw new Usage('--out must not be the input file: the original is never overwritten. Give another name.');
+        if (f.out && sameFile(f.out, f.file)) throw new Usage(OVERWRITE);
         const col = (names) => sheet.header.find((h) => names.includes(columnName(h).trim().toLowerCase().replace(/[\s-]+/g, '_')));
         const idCol = col(['agentic_id', 'id', 'ic_id']);
         const outCol = col(['outcome', 'result', 'status']);
