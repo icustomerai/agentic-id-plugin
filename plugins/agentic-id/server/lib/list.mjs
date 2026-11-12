@@ -3,7 +3,7 @@
 // Why a tool and not only the `agentic-id` command: Claude Code keeps an API key set in the
 // plugin options away from shell commands, so the command cannot use it. The server can. The
 // rows are read from and written to disk here and never pass through the conversation.
-import { copyFileSync, existsSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { main, sameFile } from '../cli.mjs';
 import { AgenticIdError } from './client.mjs';
@@ -66,9 +66,11 @@ export async function list(client, args = {}) {
     }
     let backup = `${stem}.original.csv`;
     for (let n = 2; existsSync(backup); n += 1) backup = `${stem}.original-${n}.csv`;
+    const mode = statSync(file).mode & 0o777;
     copyFileSync(file, backup);
     try {
       renameSync(out, file);
+      chmodSync(file, mode); // the result keeps the permissions the original had
     } catch (e) {
       try { unlinkSync(backup); } catch { /* leave it */ }
       throw e;

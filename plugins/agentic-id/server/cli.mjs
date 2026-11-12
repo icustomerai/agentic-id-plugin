@@ -226,7 +226,11 @@ async function runFile(cmd, client, f, io) {
     // Priced on what would really be sent: repeats once, personal and malformed addresses not at all.
     const sendable = [...new Set(emails.map((e) => cleanEmail(e)).filter((e) => e.ok).map((e) => e.email))];
     const est = estimate('validate', { emails: sendable });
-    if (dry) return dryOut(`Dry run: ${rows.length} rows, ${emails.length} with an email, ${sendable.length} distinct work addresses to check (${emails.length - sendable.length} repeats, personal or malformed are not sent). At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`, { rows: rows.length, to_send: sendable.length, max_credits: est.max_credits });
+    const cleanedAll = emails.map((e) => cleanEmail(e));
+    const personalCount = cleanedAll.filter((e) => !e.ok && /personal/.test(e.reason)).length;
+    const malformedCount = cleanedAll.filter((e) => !e.ok && !/personal/.test(e.reason)).length;
+    const repeatCount = cleanedAll.filter((e) => e.ok).length - sendable.length;
+    if (dry) return dryOut(`Dry run: ${rows.length} rows, ${emails.length} with an email, ${sendable.length} distinct work addresses to check (not sent: ${repeatCount} repeat${repeatCount === 1 ? '' : 's'}, ${personalCount} personal, ${malformedCount} malformed or disposable). At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`, { rows: rows.length, to_send: sendable.length, max_credits: est.max_credits });
     if (max_credits === undefined) throw needCap(est);
     reply = await ops.validate(client, { emails, purpose: f.purpose, max_credits });
     const heldBack = emails.map((e) => cleanEmail(e)).filter((e) => !e.ok);
@@ -275,6 +279,7 @@ async function runFile(cmd, client, f, io) {
       }
     }
     const firstRowOf = new Map();
+    const pairs = []; // "4 = 1": data row 4 is the same person or company as data row 1
     added = ['agentic_id', 'resolve_outcome', 'resolve_note', 'same_id_as_row'];
     rows.forEach((r, i) => {
       const x = out[i];
@@ -284,13 +289,16 @@ async function runFile(cmd, client, f, io) {
       r.resolve_note = x?.id ? '' : String(x?.reason ?? (x ? '' : 'not run: the cap was reached')).replace(/\s+/g, ' ').slice(0, 160);
       r.same_id_as_row = '';
       if (x?.id) {
-        if (firstRowOf.has(x.id)) r.same_id_as_row = firstRowOf.get(x.id);
-        else firstRowOf.set(x.id, i + 1);
+        if (firstRowOf.has(x.id)) {
+          r.same_id_as_row = firstRowOf.get(x.id);
+          r.resolve_note = `duplicate of data row ${firstRowOf.get(x.id)}`;
+          pairs.push(`${i + 1} = ${firstRowOf.get(x.id)}`);
+        } else firstRowOf.set(x.id, i + 1);
       }
     });
     const dupes = rows.filter((r) => r.same_id_as_row !== '').length;
     const notRun = rows.filter((r) => r.resolve_outcome === 'not_run').length;
-    reply = { summary: `${rows.length} rows: ${firstRowOf.size} distinct IDs, ${dupes} duplicate rows, ${rows.filter((r) => !r.agentic_id).length} without an ID (${rows.filter((r) => r.resolve_outcome === 'skipped').length} skipped: personal data only, a name alone, or empty; see resolve_note). same_id_as_row counts data rows: the first row under the header is 1. ${cost.charged_credits} credits charged.${capReached ? ` Stopped at the ${max_credits}-credit cap: ${notRun} rows not run.` : ''}${stoppedBy ? ` Stopped early: ${stoppedBy.message ?? stoppedBy.error}.` : ''}`, cost };
+    reply = { summary: `${rows.length} rows: ${firstRowOf.size} distinct IDs, ${dupes} duplicate rows, ${rows.filter((r) => !r.agentic_id).length} without an ID (${rows.filter((r) => r.resolve_outcome === 'skipped').length} skipped: personal data only, a name alone, or empty; see resolve_note). ${pairs.length ? `Duplicates (data row = the earlier data row it repeats): ${pairs.slice(0, 25).join(', ')}${pairs.length > 25 ? `, and ${pairs.length - 25} more in the file` : ''}. ` : ''}Data rows are counted from 1 under the header. ${cost.charged_credits} credits charged.${capReached ? ` Stopped at the ${max_credits}-credit cap: ${notRun} rows not run.` : ''}${stoppedBy ? ` Stopped early: ${stoppedBy.message ?? stoppedBy.error}.` : ''}`, cost };
   } else if (cmd === 'enrich') {
     const fields = many(f.fields);
     const unique = [];

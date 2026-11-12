@@ -37,6 +37,9 @@ const refused = async (fn) => {
 };
 
 // ------------------------------------------------------------------ guards
+// Tests never write to the real ~/.agentic-id (the usage log, the remembered server address).
+process.env.AGENTIC_ID_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'aid-unit-cfg-'));
+
 test('emails: what people paste is tidied', () => {
   assert.equal(cleanEmail('Jane Doe <Jane.Doe@Acme.io>').email, 'jane.doe@acme.io');
   assert.equal(cleanEmail('mailto:jane@acme.io?subject=hi').email, 'jane@acme.io');
@@ -382,9 +385,11 @@ test('budget hook: a call with no cap is priced at its estimate, and larger spen
   const one = { tool_name: t('resolve'), tool_input: { email: 'a@acme.io', max_credits: 1 } };
   assert.equal(needsConfirmation(one, 10, 0), null);
   assert.equal(needsConfirmation(one, 10, 8), null);
-  assert.match(needsConfirmation(one, 10, 9), /has spent 9 credits .* go past 10 credits/);
-  assert.equal(needsConfirmation(one, 10, 10), null);
+  assert.equal(needsConfirmation(one, 10, 9), null, 'the tenth credit goes through');
+  assert.match(needsConfirmation(one, 10, 10), /has spent 10 credits .* go past 10 credits/, 'the eleventh asks');
+  assert.equal(needsConfirmation(one, 10, 11), null);
   assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 5, max_credits: 5 } }, 10, 17), /go past 20 credits/);
+  assert.equal(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 3, max_credits: 3 } }, 10, 17), null, '17 + 3 reaches 20 but does not pass it');
   assert.match(needsConfirmation({ tool_name: t('resolve'), tool_input: { email: 'a@acme.io' } }, 0), /up to 1 credits/, '0 asks before every paid call');
 });
 
@@ -638,7 +643,8 @@ test('client: no key, an unreachable server and a slow one are told apart', asyn
 test('client: an unset plugin option is not mistaken for a key or a URL', () => {
   assert.equal(keyFromEnv({ AGENTIC_ID_API_KEY: '${user_config.api_key}' }), undefined);
   assert.equal(keyFromEnv({ AGENTIC_ID_API_KEY: '  ' }), undefined);
-  assert.equal(urlFromEnv({ AGENTIC_ID_URL: '${user_config.api_url}' }), 'http://127.0.0.1:3100');
+  const empty = mkdtempSync(join(tmpdir(), 'aid-nourl-'));
+  assert.equal(urlFromEnv({ AGENTIC_ID_URL: '${user_config.api_url}', AGENTIC_ID_CONFIG_DIR: empty }), 'http://127.0.0.1:3100');
   assert.equal(urlFromEnv({ AGENTIC_ID_URL: 'https://api.example.test/' }), 'https://api.example.test');
   const dir = mkdtempSync(join(tmpdir(), 'aid-key-'));
   writeFileSync(join(dir, 'key'), 'Agentic ID key: from-a-file\n');
@@ -763,7 +769,7 @@ test('cli: a CSV is validated in one call and written back with verdict columns'
   const client = fake({ validate: (b) => ({ request_id: 'r', summary: '1 email checked: 1 valid. 1 credit charged.', cost: { quoted_credits: 1, charged_credits: 1 }, results: b.emails.map((email) => ({ email, verdict: 'valid', role: false })) }) });
   assert.equal((await cli(['validate', '--file', file], client)).code, 3, 'a file run without --max-credits is refused, as a budget matter');
   assert.equal(client.calls.length, 0);
-  assert.match((await cli(['validate', '--file', file, '--dry-run'], client)).err, /5 rows, 4 with an email, 1 distinct work addresses to check \(3 repeats, personal or malformed are not sent\)\. At most 1 credits .*Columns used: email from "Email Address", company from "Company"/);
+  assert.match((await cli(['validate', '--file', file, '--dry-run'], client)).err, /5 rows, 4 with an email, 1 distinct work addresses to check \(not sent: 1 repeat, 1 personal, 1 malformed or disposable\)\. At most 1 credits .*Columns used: email from "Email Address", company from "Company"/);
   const out = join(dir, 'out.csv');
   const r = await cli(['validate', '--file', file, '--max-credits', '5', '--out', out], client);
   assert.equal(r.code, 0);

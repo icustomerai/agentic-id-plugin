@@ -53,7 +53,7 @@ const cfg = mkdtempSync(join(tmpdir(), 'agentic-id-protocol-'));
 const hookEnv = { PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_PLUGIN_ROOT: PLUGIN, AGENTIC_ID_CONFIG_DIR: cfg };
 
 // 2. MCP over stdio.
-const child = spawn(entry.command, entry.args.map(fill), { env: { PATH: process.env.PATH, HOME: process.env.HOME, ...Object.fromEntries(Object.entries(entry.env).map(([k, v]) => [k, fill(v)])) }, stdio: ['pipe', 'pipe', 'pipe'] });
+const child = spawn(entry.command, entry.args.map(fill), { env: { PATH: process.env.PATH, HOME: process.env.HOME, AGENTIC_ID_CONFIG_DIR: cfg, ...Object.fromEntries(Object.entries(entry.env).map(([k, v]) => [k, fill(v)])) }, stdio: ['pipe', 'pipe', 'pipe'] });
 let stderr = '';
 child.stderr.on('data', (d) => (stderr += d));
 const waiting = new Map();

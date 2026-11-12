@@ -83,8 +83,9 @@ export function needsConfirmation(payload, threshold, spent = 0) {
   if (cost === 0) return null;
   // Many small calls add up: ask again each time the session's spend would cross another
   // `threshold` credits (10, 20, 30 ... by default), so a run of 1-credit calls is not unattended.
-  if (cost <= threshold && threshold > 0 && Number.isFinite(cost) && spent > 0 && Math.floor((spent + cost) / threshold) > Math.floor(spent / threshold)) {
-    return `Agentic ID: this session has spent ${spent} credits and this call may add up to ${cost}. Approve to go past ${Math.floor((spent + cost) / threshold) * threshold} credits in this session (change "Ask before spending more than" in the plugin options).`;
+  // Past, not onto: with a threshold of 10, the tenth credit goes through and the eleventh asks.
+  if (cost <= threshold && threshold > 0 && Number.isFinite(cost) && spent > 0 && Math.ceil((spent + cost) / threshold) > Math.ceil(spent / threshold)) {
+    return `Agentic ID: this session has spent ${spent} credits and this call may add up to ${cost}. Approve to go past ${Math.ceil(spent / threshold) * threshold} credits in this session (change "Ask before spending more than" in the plugin options).`;
   }
   if (cost <= threshold) return null;
   return `Agentic ID: this call may spend ${Number.isFinite(cost) ? `up to ${cost} credits` : 'credits with no upper limit'}. Calls above ${threshold} credits need your approval (change "Ask before spending more than" in the plugin options).`;

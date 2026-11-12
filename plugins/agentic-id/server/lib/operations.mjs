@@ -431,7 +431,8 @@ export async function workspace(client, args = {}) {
     recent: c.recent,
     // What each charge was for: the ID delivered, the tool, the credits. A company carries its name
     // or domain; a person is an ID only.
-    delivered: c.recent_ids ?? [],
+    delivered: (c.recent_ids ?? []).map((d) => ({ ...d, charged: d.credits > 0 })),
+    delivered_note: 'An entry with 0 credits was free (an ID already held): do not count it as a charge.',
     times_are: 'UTC',
     utc_today: new Date().toISOString().slice(0, 10),
     contributes: w.contributes,
