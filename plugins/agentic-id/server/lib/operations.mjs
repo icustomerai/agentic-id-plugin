@@ -2,7 +2,12 @@
 // refuses what should never be sent, sets a credit cap, makes the call (in batches when the list is
 // longer than the API takes), and returns the API's answer with `input_notes` for anything it
 // changed or held back.
-import { login, logout } from './auth.mjs';
+import { spawn } from 'node:child_process';
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { logout } from './auth.mjs';
 import { AgenticIdError, CLIENT } from './client.mjs';
 import { AUTO_CAP, estimate } from './estimate.mjs';
 import { chunk, cleanCountry, cleanDomain, cleanEmails, cleanIdentifiers, cleanList, identityKey, isPersonalDomain } from './guards.mjs';
@@ -337,52 +342,75 @@ export async function status(client) {
   }
 }
 
-// One sign-in at a time per server process.
-let pendingLogin;
+// Sign-in runs in a small helper process of its own, not inside this server: Claude Code stops the
+// server when a conversation ends, and a sign-in the user finishes a moment later in the browser
+// must still be stored. The helper waits up to 5 minutes for the browser, stores the session and exits.
+let helper;
+
+function startLoginHelper(baseUrl, env) {
+  const dir = env.AGENTIC_ID_CONFIG_DIR?.trim() || join(homedir(), '.agentic-id');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const logFile = join(dir, 'login.log');
+  writeFileSync(logFile, '', { mode: 0o600 }); // the helper's own words only: a link, then "Signed in"
+  const fd = openSync(logFile, 'a', 0o600);
+  const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'agentic-id'), 'login'], {
+    detached: true,
+    stdio: ['ignore', fd, fd],
+    env: { PATH: env.PATH ?? process.env.PATH, HOME: env.HOME ?? process.env.HOME, AGENTIC_ID_URL: baseUrl, AGENTIC_ID_CONFIG_DIR: dir, ...(env.AGENTIC_ID_NO_BROWSER ? { AGENTIC_ID_NO_BROWSER: env.AGENTIC_ID_NO_BROWSER } : {}) },
+  });
+  child.unref();
+  closeSync(fd);
+  return { logFile, startedAt: Date.now(), baseUrl };
+}
+
+const readLog = (h) => {
+  try {
+    return readFileSync(h.logFile, 'utf8');
+  } catch {
+    return '';
+  }
+};
 
 /**
  * Sign in or out from inside Claude Code. The browser opens on the sign-in page; this returns at
- * once with the link, and the session is stored when the browser comes back. Free.
+ * once with the link, and the session is stored when the browser comes back, even if this
+ * conversation has ended by then. Free.
  */
 export async function signIn(client, args = {}) {
   const action = args.action ?? 'login';
   const env = client.env ?? process.env;
   if (action === 'logout') {
-    pendingLogin = undefined;
+    helper = undefined;
     const was = await logout(client.baseUrl, { env, fetchImpl: client.fetch });
     return { signed_in: false, summary: was ? 'Signed out on this machine and on the server.' : 'There was no sign-in for this server.', ...(client.apiKey ? { note: 'An API key is still configured and is being used.' } : {}) };
   }
   if (action !== 'login') throw new LocalRefusal('request.invalid', 'action must be login or logout.', 'Leave it out to sign in.');
-  if (pendingLogin?.state === 'done' || (!pendingLogin && client.authMode === 'signin')) {
-    pendingLogin = undefined;
+  if (client.authMode === 'signin') {
+    helper = undefined;
     const s = await status(client);
     return { signed_in: s.ok && s.auth !== 'none', summary: s.ok ? `Signed in. ${s.summary}` : s.summary, ...(s.workspace_id ? { workspace_id: s.workspace_id } : {}) };
   }
-  if (pendingLogin?.state === 'failed') {
-    const e = pendingLogin.error;
-    pendingLogin = undefined;
-    throw new LocalRefusal(e?.code ?? 'signin_failed', e?.message ?? 'Sign-in failed.', e?.fix ?? 'Call agentic_id_login again.');
+  const waiting = helper && helper.baseUrl === client.baseUrl && Date.now() - helper.startedAt < 5 * 60_000;
+  if (!waiting) helper = startLoginHelper(client.baseUrl, env);
+  // The helper prints the link within a second or two (discovery and client registration first).
+  let link;
+  let log = '';
+  for (let i = 0; i < 60; i += 1) {
+    log = readLog(helper);
+    link = log.match(/https?:\/\/\S+\/oauth\/authorize\?\S+/)?.[0];
+    if (link || /fix:|does not offer sign-in|Could not reach|failed/i.test(log)) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
-  if (!pendingLogin) {
-    const p = { state: 'waiting', link: undefined, error: undefined };
-    let gotLink;
-    const linked = new Promise((r) => (gotLink = r));
-    p.promise = login({ baseUrl: client.baseUrl, env, fetchImpl: client.fetch, io: { out: (line) => /^https?:\/\//.test(line) && ((p.link = line), gotLink()) } }).then(
-      () => (p.state = 'done'),
-      (e) => ((p.state = 'failed'), (p.error = e)),
-    );
-    pendingLogin = p;
-    await Promise.race([linked, p.promise]);
-    if (p.state === 'failed') {
-      pendingLogin = undefined;
-      throw new LocalRefusal(p.error?.code ?? 'signin_failed', p.error?.message ?? 'Sign-in failed.', p.error?.fix ?? 'Check the server address in the plugin options.');
-    }
+  if (!link) {
+    const said = log.trim().split('\n').filter(Boolean);
+    helper = undefined;
+    throw new LocalRefusal('signin_failed', said[0] ?? 'Sign-in could not be started.', said.find((l) => /fix:/.test(l))?.replace(/^\s*fix:\s*/, '') ?? 'Check the server address in the plugin options, or use an API key.');
   }
   return {
     signed_in: false,
     status: 'waiting_for_browser',
-    link: pendingLogin.link,
-    summary: `${env.AGENTIC_ID_NO_BROWSER ? 'Open the link in a browser on this machine' : 'The sign-in page should have opened in the browser; if it did not, open the link'}. Keep this conversation open while signing in (the link works for 5 minutes and only while Claude Code is running). When the page says you are signed in, call agentic_id_login again to confirm. On a machine with no browser, use an API key instead.`,
+    link,
+    summary: `${env.AGENTIC_ID_NO_BROWSER ? 'Open the link in a browser on this machine' : 'The sign-in page should have opened in the browser; if it did not, open the link'}. The link works for 5 minutes. Once the page says you are signed in, it is stored on this machine even if this conversation has ended; ask again and I will confirm. On a machine with no browser, use an API key instead.`,
     ...(client.apiKey ? { note: 'An API key is configured and takes precedence over a sign-in until it is removed from the plugin options.' } : {}),
   };
 }
