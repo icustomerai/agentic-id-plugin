@@ -401,6 +401,8 @@ export async function workspace(client, args = {}) {
     credits: w.credits,
     spent: c.spent,
     recent: c.recent,
+    // What each charge was for: the ID delivered, the tool, the credits. IDs only, never a value.
+    delivered: c.recent_ids ?? [],
     contributes: w.contributes,
     allowed_purposes: w.allowed_purposes,
     region: w.region,

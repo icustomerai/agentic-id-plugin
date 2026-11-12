@@ -426,6 +426,8 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
         io.out(w.summary);
         for (const t of w.spent.by_tool) io.out(`  ${t.tool.padEnd(10)} ${String(t.credits).padStart(6)} credits in ${t.calls} call${t.calls === 1 ? '' : 's'} (30 days)`);
         for (const l of w.recent) io.out(`  ${l.at.slice(0, 16).replace('T', ' ')}  ${l.kind === 'grant' ? '+' : '-'}${l.credits}  ${l.tool ?? l.note ?? l.kind}`);
+        if (w.delivered?.length) io.out('  delivered (what each charge was for):');
+        for (const d of w.delivered ?? []) io.out(`    ${d.at.slice(0, 16).replace('T', ' ')}  ${d.id}  ${d.tool}  ${d.credits} credit${d.credits === 1 ? '' : 's'}`);
       }
       return 0;
     }

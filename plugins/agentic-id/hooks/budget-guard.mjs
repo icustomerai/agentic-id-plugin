@@ -78,9 +78,15 @@ export function confirmAboveFrom(env = process.env) {
  * The person at the keyboard approves any call that could spend more than `threshold` credits:
  * Claude Code shows them the amount. null when no approval is needed.
  */
-export function needsConfirmation(payload, threshold) {
+export function needsConfirmation(payload, threshold, spent = 0) {
   const cost = worstCase(payload);
-  if (cost === 0 || cost <= threshold) return null;
+  if (cost === 0) return null;
+  // Many small calls add up: ask again each time the session's spend would cross another
+  // `threshold` credits (10, 20, 30 ... by default), so a run of 1-credit calls is not unattended.
+  if (cost <= threshold && threshold > 0 && Number.isFinite(cost) && spent > 0 && Math.floor((spent + cost) / threshold) > Math.floor(spent / threshold)) {
+    return `Agentic ID: this session has spent ${spent} credits and this call may add up to ${cost}. Approve to go past ${Math.floor((spent + cost) / threshold) * threshold} credits in this session (change "Ask before spending more than" in the plugin options).`;
+  }
+  if (cost <= threshold) return null;
   return `Agentic ID: this call may spend ${Number.isFinite(cost) ? `up to ${cost} credits` : 'credits with no upper limit'}. Calls above ${threshold} credits need your approval (change "Ask before spending more than" in the plugin options).`;
 }
 
@@ -107,7 +113,7 @@ async function main() {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: denied } }));
       return;
     }
-    const ask = needsConfirmation(payload, confirmAboveFrom());
+    const ask = needsConfirmation(payload, confirmAboveFrom(), spentInSession(payload.session_id));
     if (ask) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: ask } }));
   } catch {
     /* never block a call because the guard itself failed */

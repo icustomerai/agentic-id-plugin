@@ -288,6 +288,7 @@ test('workspace: one answer with credits, spend and how it shares', async () => 
   assert.equal(c.calls.find((x) => x.verb === 'credits').body, 10, 'asks for the last 10 by default');
   assert.match(w.summary, /85 credits available \(5 held by running calls\)\. Spent 4 today, 10 in 30 days \(enrich 8, resolve 2\)\. 1 ID held\. Private/);
   assert.equal(w.contact_values, 'masked');
+  assert.deepEqual(w.delivered, []);
   await assert.rejects(() => ops.workspace(c, { recent: 500 }), /recent/);
 });
 
@@ -377,6 +378,13 @@ test('budget hook: a call with no cap is priced at its estimate, and larger spen
   assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 50 } }, 10), /up to 50 credits/, 'priced even without max_credits');
   assert.equal(needsConfirmation({ tool_name: t('discover'), tool_input: { count_only: true, max_accounts: 300 } }, 10), null);
   assert.equal(needsConfirmation({ tool_name: t('workspace'), tool_input: {} }, 0), null, 'free calls never ask');
+  // Many small calls: approval again when the session's spend would cross another 10.
+  const one = { tool_name: t('resolve'), tool_input: { email: 'a@acme.io', max_credits: 1 } };
+  assert.equal(needsConfirmation(one, 10, 0), null);
+  assert.equal(needsConfirmation(one, 10, 8), null);
+  assert.match(needsConfirmation(one, 10, 9), /has spent 9 credits .* go past 10 credits/);
+  assert.equal(needsConfirmation(one, 10, 10), null);
+  assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 5, max_credits: 5 } }, 10, 17), /go past 20 credits/);
   assert.match(needsConfirmation({ tool_name: t('resolve'), tool_input: { email: 'a@acme.io' } }, 0), /up to 1 credits/, '0 asks before every paid call');
 });
 

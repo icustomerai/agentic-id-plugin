@@ -44,7 +44,7 @@
     "confirm_above": {
       "type": "string",
       "title": "Ask before spending more than (credits)",
-      "description": "Claude Code asks you to approve any single Agentic ID call that could spend more than this many credits, showing the amount. Default 10. Raise it for unattended runs; 0 asks before every paid call.",
+      "description": "Claude Code asks you to approve any single Agentic ID call that could spend more than this many credits, and again each time a session's total spend passes another multiple of it, showing the amount. Default 10. Raise it for unattended runs; 0 asks before every paid call.",
       "default": "10"
     }
   }

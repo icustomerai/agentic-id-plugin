@@ -195,7 +195,7 @@ export const TOOLS = [
     name: 'agentic_id_workspace',
     title: 'Show the workspace and its credits',
     description:
-      'The workspace this caller acts as: credits available and held, what was spent today and in the last 30 days by tool, the latest grants and charges, how many IDs it holds, and whether it contributes (identifiers it sends help everyone resolve) or is private. Use it for "how many credits do I have", "what did that cost", "why was I charged", and before any large job. Free.',
+      'The workspace this caller acts as: credits available and held, what was spent today and in the last 30 days by tool, the latest grants and charges, the IDs most recently delivered with what each cost (so a charge can be traced to its ID; use agentic_id_facts on one to see what it is), how many IDs it holds, and whether it contributes (identifiers it sends help everyone resolve) or is private. Use it for "how many credits do I have", "what did that cost", "why was I charged", and before any large job. Free.',
     inputSchema: { type: 'object', properties: { recent: { type: 'integer', minimum: 0, maximum: 200, description: 'How many of the latest grants and charges to list. Default 10.' } }, additionalProperties: false },
     annotations: free,
     run: ops.workspace,
