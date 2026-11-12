@@ -11,7 +11,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const VERBS = new Set(['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'estimate', 'status', 'workspace', 'report']);
+const VERBS = new Set(['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'estimate', 'status', 'workspace', 'report', 'list', 'login']);
 const REQUEST_ID_KEYS = ['request_id', 'requestId', 'x-request-id', 'x_request_id'];
 
 // Reads one named variable only; the environment object is never passed around or enumerated.

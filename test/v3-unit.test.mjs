@@ -307,6 +307,58 @@ test('report: aliases are read, repeats sent once, a bad row is marked and the r
   await assert.rejects(() => ops.report(down, { reports: [{ id: 'ic-abc1234', outcome: 'replied' }, { id: 'ic-abc1235', outcome: 'replied' }] }), (e) => e.status === 503);
 });
 
+test('status carries the credits, so "am I connected and what can I spend" is one call', async () => {
+  const c = fake({ me: { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' }, workspace: { credits: { balance: 40, held: 2, available: 38 } } });
+  const s = await ops.status(c);
+  assert.equal(s.credits_available, 38);
+  assert.match(s.summary, /38 credits available/);
+  const noBalance = await ops.status({ baseUrl: 'http://x', apiKey: 'k', me: async () => ({ workspace_id: 'ws_1', scopes: [], key_prefix: 'p' }), workspace: async () => { throw new AgenticIdError(503, 'service.unavailable', 'down'); } });
+  assert.equal(noBalance.ok, true, 'a missing balance does not make the connection look broken');
+});
+
+test('the server address is remembered for the command-line tool, and only the address', async () => {
+  const { mkdtempSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { rememberUrl, urlFromEnv, DEFAULT_URL } = await import('../plugins/agentic-id/server/lib/client.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'aid-url-'));
+  assert.equal(urlFromEnv({ AGENTIC_ID_CONFIG_DIR: dir }), DEFAULT_URL);
+  assert.equal(rememberUrl({ AGENTIC_ID_CONFIG_DIR: dir, AGENTIC_ID_URL: 'https://api.example.test/', AGENTIC_ID_API_KEY: 'ic-dev-secret' }), true);
+  assert.equal(urlFromEnv({ AGENTIC_ID_CONFIG_DIR: dir }), 'https://api.example.test');
+  assert.doesNotMatch(readFileSync(join(dir, 'server.json'), 'utf8'), /secret/);
+  assert.equal(urlFromEnv({ AGENTIC_ID_CONFIG_DIR: dir, AGENTIC_ID_URL: 'http://other.test' }), 'http://other.test', 'the environment wins');
+  assert.equal(rememberUrl({ AGENTIC_ID_CONFIG_DIR: dir, AGENTIC_ID_URL: '${user_config.api_url}' }), false, 'an unfilled option is not remembered');
+});
+
+test('list tool: a dry run is free, a paid run needs a cap, the result is a new file and rows never come back', async () => {
+  const { mkdtempSync, readFileSync, writeFileSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'aid-list-'));
+  const file = join(dir, 'leads.csv');
+  writeFileSync(file, 'email,company\njane@acme.io,Acme\nJANE@acme.io,Acme\nsomeone@gmail.com,Home\n');
+  const c = fake({ validate: (b) => ({ request_id: 'r', summary: 'ok', cost: { quoted_credits: 1, charged_credits: 1 }, results: b.emails.map((email) => ({ email, verdict: 'valid' })) }) });
+  const dry = await list(c, { action: 'validate', file, dry_run: true });
+  assert.equal(dry.dry_run, true);
+  assert.match(dry.summary, /3 rows/);
+  assert.equal(c.calls.length, 0, 'a dry run sends nothing');
+  await assert.rejects(() => list(c, { action: 'validate', file }), (e) => e.code === 'cap_required' && /dry_run/.test(e.fix));
+  const done = await list(c, { action: 'validate', file, max_credits: 5 });
+  assert.equal(done.out_file, join(dir, 'leads.agentic-id.csv'));
+  assert.equal(done.cost.charged_credits, 1);
+  assert.deepEqual(c.calls[0].body.emails, ['jane@acme.io'], 'the repeat is sent once and the personal address not at all');
+  assert.ok(!JSON.stringify(done).includes('jane@'), 'rows are not returned to the conversation');
+  const out = readFileSync(done.out_file, 'utf8');
+  assert.match(out, /email_verdict/);
+  assert.match(out, /someone@gmail\.com,Home,rejected/);
+  assert.equal(readFileSync(file, 'utf8').split('\n')[0], 'email,company', 'the input is untouched');
+  await assert.rejects(() => list(c, { action: 'validate', file, out: file, max_credits: 5 }), /must not be the input/);
+  await assert.rejects(() => list(c, { action: 'validate', file: join(dir, 'nope.csv') }), (e) => e.code === 'file_not_found');
+  await assert.rejects(() => list(c, { action: 'delete', file }), /action must be/);
+  assert.ok(existsSync(done.out_file));
+});
+
 // ------------------------------------------------------------------ the HTTP client
 async function withApi(handler, run) {
   const seen = [];

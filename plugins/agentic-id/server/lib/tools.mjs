@@ -1,5 +1,6 @@
 // The MCP tool catalog: name, description, JSON Schema and the operation each tool runs.
 // Field names are the V3 public API's, so REST, CLI and MCP speak one vocabulary.
+import { list as runList } from './list.mjs';
 import * as ops from './operations.mjs';
 
 const B2B = 'B2B only: work identities and companies. Personal mailboxes and phone numbers are held back on this machine and never sent.';
@@ -213,6 +214,41 @@ export const TOOLS = [
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     run: ops.report,
+  },
+  {
+    name: 'agentic_id_list',
+    title: 'Work a CSV file',
+    description:
+      'Run one action over a whole CSV file on disk: validate (adds email_verdict, email_reason), resolve (adds agentic_id, resolve_outcome, same_id_as_row: the duplicate report), enrich (adds one column per field plus its level) or report (sends outcomes from columns agentic_id, outcome[, field]; adds report_status). The rows are read and written by the plugin and never enter the conversation. Repeats are paid once; personal emails and phones never leave this machine. Always call it first with dry_run: true: that is free and gives the row count and the most it could cost; show the user, then call again with max_credits. The result is a new file next to the input, never the input itself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['validate', 'resolve', 'enrich', 'report'] },
+        file: str('Full path of the CSV file.'),
+        out: str('Where to write the result (.csv). Default: next to the input, named <name>.agentic-id.csv.'),
+        dry_run: { type: 'boolean', description: 'Free: count the rows and estimate the cost. Nothing is sent.' },
+        max_credits: maxCredits,
+        fields: list('enrich only: the fields to fill, e.g. ["title", "work_email"].'),
+        column: str('The email column, when it cannot be found by its name.'),
+        columns: { type: 'object', description: 'Column names, when they cannot be found by name.', properties: { email: str('Email column.'), linkedin: str('LinkedIn URL column.'), name: str('Full name column.'), company: str('Company name column.'), domain: str('Company domain column.') }, additionalProperties: false },
+        limit_rows: { type: 'integer', minimum: 1, description: 'Only the first N rows.' },
+        field: { type: 'string', enum: ['work_email', 'title', 'company_domain'], description: 'report only: the field every outcome is about, when the file has no field column.' },
+        purpose,
+      },
+      required: ['action', 'file'],
+      additionalProperties: false,
+    },
+    annotations: paid,
+    run: runList,
+  },
+  {
+    name: 'agentic_id_login',
+    title: 'Sign in to Agentic ID',
+    description:
+      'Sign in with an iCustomer account, or sign out. Opens the sign-in page in the browser and returns at once with the link; nothing secret passes through the conversation. Call it again after the user has signed in to confirm. Use it when status says not signed in. Never ask the user for a password, a code or an API key. Free.',
+    inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['login', 'logout'], description: 'Default login.' } }, additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    run: ops.signIn,
   },
   {
     name: 'agentic_id_estimate',

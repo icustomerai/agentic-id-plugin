@@ -2,6 +2,7 @@
 // refuses what should never be sent, sets a credit cap, makes the call (in batches when the list is
 // longer than the API takes), and returns the API's answer with `input_notes` for anything it
 // changed or held back.
+import { login, logout } from './auth.mjs';
 import { AgenticIdError, CLIENT } from './client.mjs';
 import { AUTO_CAP, estimate } from './estimate.mjs';
 import { chunk, cleanCountry, cleanDomain, cleanEmails, cleanIdentifiers, cleanList, identityKey, isPersonalDomain } from './guards.mjs';
@@ -291,15 +292,82 @@ export const ledger = (client, args = {}) => client.ledger(needId(args.id));
 export async function status(client) {
   const mode = client.authMode ?? (client.apiKey ? 'key' : undefined);
   const base = { client: CLIENT, server_url: client.baseUrl, key_configured: Boolean(client.apiKey), signed_in: mode === 'signin', auth: mode ?? 'none' };
-  if (!mode) return { ...base, ok: false, summary: 'Not signed in and no API key is configured.', fix: 'Run `agentic-id login` to sign in with your iCustomer account, or set an API key in the plugin options (Claude Code: /plugin, agentic-id, Configure) or AGENTIC_ID_API_KEY.' };
+  if (!mode) return { ...base, ok: false, summary: 'Not signed in and no API key is configured.', fix: 'Call agentic_id_login to sign in with an iCustomer account in the browser (or run `agentic-id login` in a terminal), or set an API key in the plugin options (Claude Code: /plugin, agentic-id, Configure).' };
   try {
     const me = await client.me();
     const how = mode === 'signin' ? 'signed in' : `key ${me.key_prefix}…`;
-    return { ...base, ok: true, summary: `Connected to ${client.baseUrl} as workspace ${me.workspace_id} (${how}).`, workspace_id: me.workspace_id, key_prefix: me.key_prefix, scopes: me.scopes, contact_values: me.scopes?.includes('pii:read') ? 'readable' : 'masked (this caller has no pii:read scope)' };
+    // Credits ride along, so "am I connected and what can I spend" is one call.
+    let credits;
+    try {
+      credits = typeof client.workspace === 'function' ? (await client.workspace())?.credits : undefined;
+    } catch {
+      /* the connection is fine; the balance is a bonus */
+    }
+    return {
+      ...base,
+      ok: true,
+      summary: `Connected to ${client.baseUrl} as workspace ${me.workspace_id} (${how}).${credits ? ` ${credits.available} credits available.` : ''}`,
+      workspace_id: me.workspace_id,
+      key_prefix: me.key_prefix,
+      scopes: me.scopes,
+      contact_values: me.scopes?.includes('pii:read') ? 'readable' : 'masked (this caller has no pii:read scope)',
+      ...(credits ? { credits_available: credits.available, credits_held: credits.held } : {}),
+      more: 'agentic_id_workspace shows spend by tool and recent charges.',
+    };
   } catch (e) {
     if (!(e instanceof AgenticIdError)) throw e;
     return { ...base, ok: false, summary: e.detail, ...e.toJSON() };
   }
+}
+
+// One sign-in at a time per server process.
+let pendingLogin;
+
+/**
+ * Sign in or out from inside Claude Code. The browser opens on the sign-in page; this returns at
+ * once with the link, and the session is stored when the browser comes back. Free.
+ */
+export async function signIn(client, args = {}) {
+  const action = args.action ?? 'login';
+  const env = client.env ?? process.env;
+  if (action === 'logout') {
+    pendingLogin = undefined;
+    const was = await logout(client.baseUrl, { env, fetchImpl: client.fetch });
+    return { signed_in: false, summary: was ? 'Signed out on this machine and on the server.' : 'There was no sign-in for this server.', ...(client.apiKey ? { note: 'An API key is still configured and is being used.' } : {}) };
+  }
+  if (action !== 'login') throw new LocalRefusal('request.invalid', 'action must be login or logout.', 'Leave it out to sign in.');
+  if (pendingLogin?.state === 'done' || (!pendingLogin && client.authMode === 'signin')) {
+    pendingLogin = undefined;
+    const s = await status(client);
+    return { signed_in: s.ok && s.auth !== 'none', summary: s.ok ? `Signed in. ${s.summary}` : s.summary, ...(s.workspace_id ? { workspace_id: s.workspace_id } : {}) };
+  }
+  if (pendingLogin?.state === 'failed') {
+    const e = pendingLogin.error;
+    pendingLogin = undefined;
+    throw new LocalRefusal(e?.code ?? 'signin_failed', e?.message ?? 'Sign-in failed.', e?.fix ?? 'Call agentic_id_login again.');
+  }
+  if (!pendingLogin) {
+    const p = { state: 'waiting', link: undefined, error: undefined };
+    let gotLink;
+    const linked = new Promise((r) => (gotLink = r));
+    p.promise = login({ baseUrl: client.baseUrl, env, fetchImpl: client.fetch, io: { out: (line) => /^https?:\/\//.test(line) && ((p.link = line), gotLink()) } }).then(
+      () => (p.state = 'done'),
+      (e) => ((p.state = 'failed'), (p.error = e)),
+    );
+    pendingLogin = p;
+    await Promise.race([linked, p.promise]);
+    if (p.state === 'failed') {
+      pendingLogin = undefined;
+      throw new LocalRefusal(p.error?.code ?? 'signin_failed', p.error?.message ?? 'Sign-in failed.', p.error?.fix ?? 'Check the server address in the plugin options.');
+    }
+  }
+  return {
+    signed_in: false,
+    status: 'waiting_for_browser',
+    link: pendingLogin.link,
+    summary: 'The sign-in page should have opened in the browser. If it did not, open the link. When the page says you are signed in, call agentic_id_login again (or agentic_id_status) to confirm.',
+    ...(client.apiKey ? { note: 'An API key is configured and takes precedence over a sign-in until it is removed from the plugin options.' } : {}),
+  };
 }
 
 const credit = (n) => `${n} credit${n === 1 ? '' : 's'}`;

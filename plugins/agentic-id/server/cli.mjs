@@ -256,6 +256,7 @@ async function runFile(cmd, client, f, io) {
   } else io.out(csv.trimEnd());
   io.err(reply.summary);
   for (const note of reply.input_notes ?? []) io.err(`note: ${note}`);
+  io.done?.({ summary: reply.summary, cost: reply.cost, rows: rows.length, out_file: f.out, added_columns: added });
   return 0;
 }
 
@@ -387,6 +388,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
         if (f.out) writeFileSync(f.out, csv);
         else io.out(csv.trimEnd());
         io.err(`${recorded} of ${reports.length} outcome(s) recorded. Nothing charged.${f.out ? ` Wrote ${f.out}.` : ''}`);
+        io.done?.({ summary: `${recorded} of ${reports.length} outcome(s) recorded. Nothing charged.`, cost: { quoted_credits: 0, charged_credits: 0 }, rows: sheet.rows.length, out_file: f.out, added_columns: ['report_status'] });
       } else io.out(f.json ? JSON.stringify(out[0], null, 2) : `${out[0].summary}${results[0]?.note ? `\n  ${results[0].note}` : ''}`);
       return recorded === reports.length ? 0 : 4;
     }

@@ -6,7 +6,9 @@
 // Failures throw AgenticIdError with the problem details the API sent (status, code, detail) and a
 // plain "fix" line that says what to do next.
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { accessToken, AuthError, hasSession } from './auth.mjs';
 
 export const DEFAULT_URL = 'http://127.0.0.1:3100';
@@ -84,9 +86,39 @@ export function keyFromEnv(env = process.env) {
   return undefined;
 }
 
+const configDir = (env) => env.AGENTIC_ID_CONFIG_DIR?.trim() || join(homedir(), '.agentic-id');
+
+/**
+ * Where the API is: the environment or the plugin option when set; else the address the plugin's
+ * own server last ran with (Claude Code does not pass plugin options to shell commands, so the
+ * `agentic-id` command would otherwise fall back to the default); else the default.
+ */
 export function urlFromEnv(env = process.env) {
   const u = (env.AGENTIC_ID_URL ?? env.CLAUDE_PLUGIN_OPTION_API_URL)?.trim();
-  return (u && !u.startsWith('${') ? u : DEFAULT_URL).replace(/\/+$/, '');
+  if (u && !u.startsWith('${')) return u.replace(/\/+$/, '');
+  try {
+    const saved = JSON.parse(readFileSync(join(configDir(env), 'server.json'), 'utf8')).api_url;
+    if (typeof saved === 'string' && /^https?:\/\/[^\s]+$/.test(saved)) return saved.replace(/\/+$/, '');
+  } catch {
+    /* nothing remembered */
+  }
+  return DEFAULT_URL;
+}
+
+/** Called by the plugin's server on start: the address only, never a credential. */
+export function rememberUrl(env = process.env) {
+  const u = (env.AGENTIC_ID_URL ?? env.CLAUDE_PLUGIN_OPTION_API_URL)?.trim();
+  if (!u || u.startsWith('${')) return false;
+  try {
+    const dir = configDir(env);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = join(dir, 'server.json');
+    writeFileSync(file, JSON.stringify({ api_url: u.replace(/\/+$/, ''), written_by: 'agentic-id plugin server' }), { mode: 0o600 });
+    chmodSync(file, 0o600);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

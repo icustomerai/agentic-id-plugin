@@ -191,6 +191,36 @@ Free. What happened after a value was used.
 - Up to 200 in `reports`. The same ID and field twice is sent once (the last one).
 - Answer: `recorded` (count), `results` (one per report, with `recorded` and a `note`), `summary`.
 
+## agentic_id_list
+
+One action over a whole CSV file. Paid as the action; `dry_run` is free.
+
+```json
+{ "action": "resolve", "file": "/full/path/leads.csv", "dry_run": true }
+```
+
+```json
+{ "action": "validate", "file": "/full/path/leads.csv", "max_credits": 200, "out": "/full/path/leads.checked.csv" }
+```
+
+- `action`: `validate`, `resolve`, `enrich`, `report`.
+- Always `dry_run: true` first, then the real call with `max_credits`. Without `max_credits` a
+  paid run is refused with the estimate.
+- `out` defaults to `<name>.agentic-id.csv` next to the input. The input is never overwritten.
+- `fields` (enrich), `column` / `columns` (when headers are unusual), `limit_rows` (a sample),
+  `field` (report: what every outcome is about).
+- Answer: `summary`, `cost`, `rows`, `out_file`, `added_columns`. Rows are not returned: read the
+  result file's first lines if the user wants a look.
+
+## agentic_id_login
+
+Free. `{}` to sign in, `{ "action": "logout" }` to sign out.
+
+- The first call opens the browser and answers `status: "waiting_for_browser"` with a `link`.
+  Show the link. After the user says they signed in, call again: it answers `signed_in: true`
+  with the workspace.
+- An API key in the plugin options takes precedence over a sign-in.
+
 ## agentic_id_estimate
 
 ```json

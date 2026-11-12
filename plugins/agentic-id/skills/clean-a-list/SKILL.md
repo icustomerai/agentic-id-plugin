@@ -10,38 +10,32 @@ deleted, merged or imported for them.
 
 ## 1. Look at the file first (free)
 
-Read the header and a few rows. Then:
+Read the header and a few rows. Then call `agentic_id_list` twice with `dry_run: true`, once with
+`action: "validate"` and once with `action: "resolve"`, giving the file's full path. Each answers
+with the rows, how many carry an identifier, and the most the run could cost. Tell the user: row
+count, which columns will be used, the estimate for each step, and what they get back. Agree a
+budget.
 
-```bash
-agentic-id validate --file <csv> --dry-run
-agentic-id resolve  --file <csv> --dry-run
-```
+If the columns are not found, name them in `columns` (`email`, `linkedin`, `name`, `company`,
+`domain`).
 
-Each prints the rows, how many carry an identifier, and the most the run could cost. Tell the
-user: row count, which columns will be used, the estimate for each step, and what they get back.
-Agree a budget.
+For a pasted list of under about 50 rows, use `agentic_id_validate` with `emails`, then
+`agentic_id_resolve_many` with `records`.
 
-If the columns are not found, pass them: `--email-column`, `--linkedin-column`, `--name-column`,
-`--company-column`, `--domain-column`.
-
-For a pasted list of under about 50 rows, use the MCP tools instead: `agentic_id_validate` with
-`emails`, then `agentic_id_resolve_many` with `records`.
+Use the `agentic_id_list` tool, not the `agentic-id` command, from inside Claude Code: the tool
+runs with the plugin's own sign-in or key, which shell commands do not get. In a terminal of
+their own the user can run the same steps as `agentic-id validate --file ...`
+([cli.md](../agentic-id/references/cli.md)).
 
 ## 2. Sample, then run
 
-```bash
-agentic-id validate --file <csv> --limit-rows 20 --max-credits 20 --out sample.csv
-```
+Run a sample first: `action: "validate"`, `limit_rows: 20`, `max_credits: 20`, `out` set to a
+sample file. Read its summary: if most addresses are `rejected` or `invalid`, tell the user before
+spending on the rest. Then the full run, each step writing a new file (`out`): validate the
+original into `<name>.checked.csv`, then resolve that file into `<name>.clean.csv`, each with the
+agreed `max_credits`.
 
-Read the sample's summary: if most addresses are `rejected` or `invalid`, tell the user before
-spending on the rest. Then the full run, each step writing a new file:
-
-```bash
-agentic-id validate --file <csv>          --max-credits <agreed> --out <name>.checked.csv
-agentic-id resolve  --file <name>.checked.csv --max-credits <agreed> --out <name>.clean.csv
-```
-
-Never overwrite the user's original file.
+The tool never overwrites the input. Never overwrite the user's original file yourself either.
 
 ## 3. Read the result
 

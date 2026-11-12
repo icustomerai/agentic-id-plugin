@@ -25,7 +25,9 @@ and every value comes with a **level** that says how far to trust it.
 | How many credits are left? What did I spend, and on what? | `agentic_id_workspace` | free |
 | This email bounced / they replied / wrong person / our CRM confirms it | `agentic_id_report` | free |
 | What would this call cost? | `agentic_id_estimate` | free |
-| Is the plugin set up? | `agentic_id_status` | free |
+| Work a whole CSV file | `agentic_id_list` | as the action; `dry_run` is free |
+| Is the plugin set up? How many credits? | `agentic_id_status` | free |
+| Sign in or out | `agentic_id_login` | free |
 
 Use the cheapest tool that answers the question and stop as soon as it is answered.
 
@@ -36,9 +38,11 @@ arguments. Unknown arguments are refused, not ignored.
 
 - If tools ending in `agentic_id_validate` ... `agentic_id_status` are in your tool list, use them.
   Claude Code prefixes them: `mcp__plugin_agentic-id_agentic-id__agentic_id_validate`.
-- A **CSV file**, or more than about 50 rows: use the `agentic-id` CLI with `--file`. It reads the
-  file itself, pays for repeats once and writes one row per input, so the rows never pass through
-  the conversation. See [references/cli.md](references/cli.md).
+- A **CSV file**, or more than about 50 rows: use `agentic_id_list` (validate, resolve, enrich or
+  report over a file). It reads and writes the file itself, pays for repeats once and writes one
+  row per input, so the rows never pass through the conversation. Always `dry_run: true` first.
+  Do not run the `agentic-id` command from a shell inside Claude Code for this: shell commands do
+  not get the plugin's key. In their own terminal the user can; see [references/cli.md](references/cli.md).
 - If neither is available, tell the user how to connect Agentic ID. Never answer from memory.
 
 ## Levels: how far to trust a value
@@ -104,7 +108,7 @@ means the plugin refused it locally and nothing was charged. The full table is i
 [references/errors.md](references/errors.md).
 
 - `auth.missing_key` / `auth.invalid_key` / `signed_out`: call `agentic_id_status`, then tell the user to
-  sign in with `/agentic-id-login` (or `agentic-id login` in a terminal), or to set an API key in
-  the plugin options. Never ask for a key, a password or a code in the chat.
+  sign in: call `agentic_id_login` (it opens the browser), or they set an API key in the plugin
+  options. Never ask for a key, a password or a code in the chat.
 - `unreachable`: the API URL is wrong or the server is down. Call `agentic_id_status`.
 - `request.invalid`: fix the fields in `issues`.

@@ -6,7 +6,7 @@ it, fill in a contact's title and company, list the people in a role at a known 
 account list from ideal customer profile filters or from your best customers, de-duplicate a CRM
 export, and tell you how far each value can be trusted.
 
-The plugin adds thirteen MCP tools, six skills, an agent that qualifies a list of leads end to end,
+The plugin adds fifteen MCP tools, six skills, an agent that qualifies a list of leads end to end,
 the `agentic-id` command for CSV files, an optional session credit budget and a local usage log.
 
 ## What you get
@@ -24,6 +24,8 @@ the `agentic-id` command for CSV files, an optional session credit budget and a 
 | `agentic_id_ledger` | What happened to this ID, with its hash chain re-checked | Free |
 | `agentic_id_workspace` | How many credits are left, what was spent and on what, and how this workspace shares | Free |
 | `agentic_id_report` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, confirmed | Free |
+| `agentic_id_list` | Work a whole CSV file: check emails, find duplicates, fill fields, report outcomes | As the action; a dry run is free |
+| `agentic_id_login` | Sign in with your iCustomer account, or sign out | Free |
 | `agentic_id_estimate` | What would this call cost at most | Free |
 | `agentic_id_status` | Is the plugin connected (signed in or by key), and what can it read | Free |
 
@@ -59,7 +61,8 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
    - **Agentic ID API URL.** Where the Agentic ID API runs. The default is a local V3 stack
      (`http://127.0.0.1:3100`); set the URL iCustomer gave you otherwise.
    - **Session credit budget (optional).** The most one Claude Code session may spend, e.g. `100`.
-2. Sign in: type `/agentic-id-login`, or run `agentic-id login` in a terminal. Your browser opens
+2. Sign in: type `/agentic-id-login` (or just ask Claude to sign you in), or run
+   `agentic-id login` in a terminal. Your browser opens
    the iCustomer sign-in page; when it says you are signed in, go back to Claude Code. The
    sign-in is kept in `~/.agentic-id/session.json`, readable by you only, and renews itself for
    30 days. `agentic-id logout` ends it. (Skip this step if you set an API key.)

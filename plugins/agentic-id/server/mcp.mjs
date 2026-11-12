@@ -10,7 +10,7 @@
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { AgenticId, AgenticIdError, CLIENT } from './lib/client.mjs';
+import { AgenticId, AgenticIdError, CLIENT , rememberUrl } from './lib/client.mjs';
 import { TOOLS, byName } from './lib/tools.mjs';
 
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -83,6 +83,8 @@ export function createServer({ client = new AgenticId(), log = () => {} } = {}) 
 
 export async function serve({ input = process.stdin, output = process.stdout, client } = {}) {
   const log = (line) => process.stderr.write(`[agentic-id] ${line}\n`);
+  // So the `agentic-id` command, run from a shell inside the same Claude Code, talks to the same server.
+  if (!client) rememberUrl();
   const server = createServer({ client, log });
   const send = (m) => output.write(`${JSON.stringify(m)}\n`);
   const pending = new Set();

@@ -42,7 +42,7 @@ node --input-type=module -e '
 
 PREFIX="mcp__plugin_agentic-id_agentic-id__agentic_id_"
 allowed=""
-for v in validate resolve resolve_many enrich find discover lookalike facts ledger estimate status; do allowed+="${allowed:+,}${PREFIX}${v}"; done
+for v in validate resolve resolve_many enrich find discover lookalike facts ledger workspace report list login estimate status; do allowed+="${allowed:+,}${PREFIX}${v}"; done
 args=(-p --plugin-dir "$PLUGIN" --settings "$TMP/settings.json" --output-format text --max-budget-usd "${E2E_MAX_BUDGET_USD:-1}" --allowedTools "$allowed")
 
 PROMPT="Do exactly two Agentic ID tool calls and nothing else. First the status tool. Then the discover tool \
