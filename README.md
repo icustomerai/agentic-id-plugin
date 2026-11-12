@@ -196,7 +196,7 @@ Agentic ID → **Configure options**:
 
 | Option | Default | Use |
 | --- | --- | --- |
-| `api_key` (sensitive) | empty | Leave empty to sign in through `/mcp`. For CI and headless runs, paste an `os_live_` key. Claude Code keeps it in the system keychain and sends it as `x-api-key`. |
+| `api_key` (sensitive) | empty | Leave empty to sign in through `/mcp`. For CI and headless runs, paste an `ic-live-` key. Claude Code keeps it in the system keychain and sends it as `x-api-key`. |
 
 The MCP endpoint is fixed in the plugin's `.mcp.json` (`https://mcp-onesource-development.icustomer.ai/mcp`); a plugin update changes it.
 

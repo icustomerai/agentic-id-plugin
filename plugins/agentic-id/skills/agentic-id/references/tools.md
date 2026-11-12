@@ -23,7 +23,7 @@ Three input shapes. Use exactly one.
 - One address: `identifiers.email`. Not `email` at the top level.
 - Two or more: `emails` (up to 1000). One call, one quote.
 - Domain only: free, no email check, no identity created.
-- An existing identity: `{ "identifiers": { "id": "os_..." }, "max_credits": 1 }`.
+- An existing identity: `{ "identifiers": { "id": "ic-..." }, "max_credits": 1 }`.
 
 CLI: `agentic-id validate --email jane@acme.com --max-credits 1 --json`. Batch:
 `echo '{"emails":[...],"max_credits":2}' | agentic-id validate --input - --json`.

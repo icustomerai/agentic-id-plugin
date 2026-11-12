@@ -16,7 +16,7 @@
     "api_key": {
       "type": "string",
       "title": "Agentic ID API key (optional)",
-      "description": "Leave empty to sign in with your iCustomer account (run /mcp, pick agentic-id, choose Authenticate). For CI and headless runs, paste an os_live_ key: Claude Code keeps it in your system keychain and sends it only to the Agentic ID server, as the x-api-key header.",
+      "description": "Leave empty to sign in with your iCustomer account (run /mcp, pick agentic-id, choose Authenticate). For CI and headless runs, paste an ic-live- key: Claude Code keeps it in your system keychain and sends it only to the Agentic ID server, as the x-api-key header.",
       "sensitive": true,
       "default": ""
     }
