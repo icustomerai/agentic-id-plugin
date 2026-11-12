@@ -72,7 +72,7 @@ enable the plugin; change them later with `/plugin configure agentic-id@icustome
 - The MCP endpoint is not an option: it is fixed in the plugin's `.mcp.json`
   (`https://mcp-onesource-development.icustomer.ai/mcp`). To test against a local server, pass your own
   server entry with `--mcp-config`.
-- `api_key` (sensitive): empty by default, which means OAuth sign-in. Paste an `os_live_` key for
+- `api_key` (sensitive): empty by default, which means OAuth sign-in. Paste an `ic-live-` key for
   API-key mode. Claude Code stores it in the system keychain and sends it as `x-api-key`.
 
 The plugin reads no credential from your environment or your files. The CLI's

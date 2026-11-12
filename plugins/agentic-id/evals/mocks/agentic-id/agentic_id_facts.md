@@ -2,7 +2,7 @@
 type: fixed
 ---
 {
-  "id": "os_evalPerson0000000001",
+  "id": "ic-evalPerson0000000001",
   "summary": "Not a Verified ID yet: the work email is claimed by one source.",
   "kind": "person",
   "verified_id": false,

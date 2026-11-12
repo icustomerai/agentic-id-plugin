@@ -55,7 +55,7 @@ agentic-id enrich   --file leads.csv --fields title,work_email --max-credits 400
   - validate: `email_verdict`, `email_reason`
   - resolve: `agentic_id`, `resolve_outcome`, `same_id_as_row` (the first row with the same ID:
     the duplicate marker)
-  - enrich: `agentic_id`, `enrich_status`, and for each field `os_<field>` and `os_<field>_level`
+  - enrich: `agentic_id`, `enrich_status`, and for each field `aid_<field>` and `aid_<field>_level`
 - Repeats are paid once. Personal emails and phone numbers never leave the machine.
 - `--limit-rows 20` runs a sample; use it to see the real price before the full file.
 - The run stops at the cap; rows not reached are marked `not_checked` or `not_run`.

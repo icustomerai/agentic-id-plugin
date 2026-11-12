@@ -8,7 +8,7 @@ type: fixed
   "ok": true,
   "summary": "Connected as workspace ws_eval.",
   "workspace_id": "ws_eval",
-  "key_prefix": "os_eval_xxxx",
+  "key_prefix": "ic-eval-xxxx",
   "scopes": [],
   "contact_values": "masked (this key has no pii:read scope)"
 }

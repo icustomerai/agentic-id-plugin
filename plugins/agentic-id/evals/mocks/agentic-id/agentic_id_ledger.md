@@ -2,7 +2,7 @@
 type: fixed
 ---
 {
-  "id": "os_evalPerson0000000001",
+  "id": "ic-evalPerson0000000001",
   "summary": "2 ledger entries (minted, linked); chain verified: every link re-checked.",
   "verified": true,
   "entries": [

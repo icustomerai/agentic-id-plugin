@@ -18,7 +18,7 @@ nothing was charged.
 | `phone_not_supported` | A phone field was asked for | Remove it from `fields` |
 | `account_required` | find without a company | Give `account.domain`, or use discover |
 | `not_a_company` | A mail provider was given as the company | Give the company's own domain |
-| `not_an_agentic_id` | facts or ledger was given something that is not an `os_...` ID | Resolve first |
+| `not_an_agentic_id` | facts or ledger was given something that is not an `ic-...` ID | Resolve first |
 | `too_many_rows` | More than 500 rows in `resolve_many` | Split it, or use the CLI with `--file` |
 | `request.invalid` | A missing, unknown or contradictory argument | Fix what the message names |
 

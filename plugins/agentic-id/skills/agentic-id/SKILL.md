@@ -5,7 +5,7 @@ description: Use for any B2B people or company data task - resolving a person or
 
 # Agentic ID
 
-iCustomer's B2B identity service. Every person and company resolves to one stable ID (`os_...`)
+iCustomer's B2B identity service. Every person and company resolves to one stable ID (`ic-...`)
 in a verified identity ledger (75M+ verified companies and people), every link needs evidence,
 and every value comes with a **level** that says how far to trust it.
 

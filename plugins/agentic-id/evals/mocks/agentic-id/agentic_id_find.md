@@ -8,19 +8,19 @@ type: fixed
     "quoted_credits": 4,
     "charged_credits": 4
   },
-  "account_id": "os_evalCompany000000001",
+  "account_id": "ic-evalCompany000000001",
   "people": [
     {
-      "id": "os_evalPerson0000000011",
-      "account_id": "os_evalCompany000000001",
+      "id": "ic-evalPerson0000000011",
+      "account_id": "ic-evalCompany000000001",
       "name": "Morgan Reyes",
       "title": "VP Marketing",
       "email": "m***@acme-analytics-synthetic.com",
       "level": "claimed"
     },
     {
-      "id": "os_evalPerson0000000012",
-      "account_id": "os_evalCompany000000001",
+      "id": "ic-evalPerson0000000012",
+      "account_id": "ic-evalCompany000000001",
       "name": "Sam Okafor",
       "title": "Head of Demand Generation",
       "email": "s***@acme-analytics-synthetic.com",

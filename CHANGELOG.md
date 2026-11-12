@@ -12,7 +12,10 @@ The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint i
   V3 public API (`/v1/*`) with an API key. OAuth sign-in through `/mcp` is gone until V3 offers it.
 - Plugin options: `api_key` is now required; new `api_url` (default `http://127.0.0.1:3100`) and
   optional `session_budget`.
-- Tool arguments and answers follow the V3 contract: `id` is an `os_...` ID; resolve returns
+- IDs are `ic-...` and keys `ic-dev-...` / `ic-live-...`, as V3 issues them since its rename; `os_` IDs are
+  refused locally. The CSV columns the CLI adds for enriched fields are `aid_<field>` and
+  `aid_<field>_level`.
+- Tool arguments and answers follow the V3 contract: `id` is an `ic-...` ID; resolve returns
   `outcome` (known, new, review, conflict, unresolvable); enrich returns `results[].fields[]` with a
   `level` per value; find and discover return `excluded` and `rejected`; discover takes
   `employees_min` / `employees_max` and `count_only`.
@@ -48,9 +51,12 @@ OneSource is now **Agentic ID**. Breaking: every name changed at once, with no a
   `/onesource-usage` is now `/agentic-id-usage`; the CLI binary is `agentic-id`.
 - Local files move from `~/.onesource/` to `~/.agentic-id/` (usage log, API key). Env vars
   `ONESOURCE_*` are now `AGENTIC_ID_*`. Client header `x-onesource-client` is now `x-agentic-id-client`.
+- API keys are now `ic-live-...` and IDs `ic-...` (iCustomer ID). Old `os_live_` keys and `os_` IDs
+  are refused: ask for a new key.
 
-**Migration:** uninstall `onesource@icustomer-onesource`, install `agentic-id@icustomer`, and move
-`~/.onesource/api-key` to `~/.agentic-id/api-key` if you use API-key mode.
+**Migration:** uninstall `onesource@icustomer-onesource`, install `agentic-id@icustomer`, then sign in
+again through `/mcp`. In API-key mode, get a new `ic-live-` key and set it with
+`/plugin configure agentic-id@icustomer`.
 
 The MCP endpoint (`https://mcp-onesource-development.icustomer.ai/mcp`) and the GitHub repository
 keep their names for now.

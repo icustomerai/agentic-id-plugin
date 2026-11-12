@@ -20,7 +20,7 @@ export class LocalRefusal extends AgenticIdError {
 
 const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && !(Array.isArray(v) && v.length === 0) && !(v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)));
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-const ID_RE = /^os_[A-Za-z0-9]{6,40}$/;
+const ID_RE = /^ic-[A-Za-z0-9]{6,40}$/;
 
 /** The cap to send. Small calls are capped at their own estimate; larger ones need the caller to say a number. */
 function capFor(tool, args) {
@@ -281,7 +281,7 @@ export async function lookalike(client, args = {}) {
 // ------------------------------------------------------------------ free reads
 const needId = (id) => {
   const s = typeof id === 'string' ? id.trim() : '';
-  if (!ID_RE.test(s)) throw new LocalRefusal('not_an_agentic_id', `"${s.slice(0, 40)}" is not an Agentic ID.`, 'Agentic IDs start with os_ and come from resolve, find or discover. Resolve the email or domain first.');
+  if (!ID_RE.test(s)) throw new LocalRefusal('not_an_agentic_id', `"${s.slice(0, 40)}" is not an Agentic ID.`, 'Agentic IDs start with ic- and come from resolve, find or discover. Resolve the email or domain first.');
   return s;
 };
 export const facts = (client, args = {}) => client.facts(needId(args.id));

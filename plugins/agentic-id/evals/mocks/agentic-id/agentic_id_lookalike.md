@@ -28,7 +28,7 @@ type: fixed
   "bigger_than_seeds": 0.7,
   "accounts": [
     {
-      "id": "os_evalCompany000000004",
+      "id": "ic-evalCompany000000004",
       "name": "Umbrella Metrics",
       "domain": "umbrella-synthetic.com",
       "country": "US",
@@ -46,7 +46,7 @@ type: fixed
       ]
     },
     {
-      "id": "os_evalCompany000000005",
+      "id": "ic-evalCompany000000005",
       "name": "Hooli Insights",
       "domain": "hooli-synthetic.com",
       "country": "US",

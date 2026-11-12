@@ -42,7 +42,7 @@ export const TOOLS = [
     name: 'agentic_id_resolve',
     title: 'Resolve to an Agentic ID',
     description:
-      'Turn a work email, LinkedIn profile URL, name plus company, or a company domain into one stable Agentic ID (os_...). outcome says what happened: known (already in the ledger), new (just created), review (probably a match, not sure enough to link), conflict (the identifiers point at two different IDs; nothing was merged) or unresolvable (not enough to go on; free). 1 credit per ID returned, 0 for one your workspace already holds. Use the ID with enrich, facts and ledger.',
+      'Turn a work email, LinkedIn profile URL, name plus company, or a company domain into one stable Agentic ID (ic-...). outcome says what happened: known (already in the ledger), new (just created), review (probably a match, not sure enough to link), conflict (the identifiers point at two different IDs; nothing was merged) or unresolvable (not enough to go on; free). 1 credit per ID returned, 0 for one your workspace already holds. Use the ID with enrich, facts and ledger.',
     inputSchema: {
       type: 'object',
       properties: { identifiers, kind: { type: 'string', enum: ['person', 'company'], description: 'Inferred when omitted: a person if any person field is given.' }, spend: { type: 'boolean', description: 'Ask paid sources when the ledger cannot resolve it. Default false.' }, purpose, max_credits: maxCredits },
@@ -170,7 +170,7 @@ export const TOOLS = [
     title: 'Check what Agentic ID can prove',
     description:
       'For one Agentic ID: each fact\'s level (verified, corroborated, claimed, contradicted), the reason, how many independent sources stand behind it, when it needs re-checking, and whether the ID is a Verified ID (and what is missing if not). Use it before acting on a value: to decide whether an email is safe to send to, or whether a title is still current. Free.',
-    inputSchema: { type: 'object', properties: { id: str('An Agentic ID (os_...) from resolve, find or discover.') }, required: ['id'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { id: str('An Agentic ID (ic-...) from resolve, find or discover.') }, required: ['id'], additionalProperties: false },
     annotations: free,
     run: ops.facts,
   },
@@ -178,7 +178,7 @@ export const TOOLS = [
     name: 'agentic_id_ledger',
     title: "Show an ID's history",
     description: 'Everything that ever happened to one Agentic ID (created, linked, merged, split), oldest first, each entry hash-linked to the one before, with the whole chain re-checked ("verified"). Use it to explain why two records are the same ID, or to audit a merge. Free.',
-    inputSchema: { type: 'object', properties: { id: str('An Agentic ID (os_...).') }, required: ['id'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { id: str('An Agentic ID (ic-...).') }, required: ['id'], additionalProperties: false },
     annotations: free,
     run: ops.ledger,
   },

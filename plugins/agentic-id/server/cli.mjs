@@ -230,14 +230,14 @@ async function runFile(cmd, client, f, io) {
     reply = await ops.enrich(client, { contacts: unique, fields, purpose: f.purpose, max_credits });
     const results = reply.results ?? [];
     const names = [...new Set(results.flatMap((x) => (x.fields ?? []).map((y) => y.field)))];
-    added = ['agentic_id', 'enrich_status', ...names.flatMap((n) => [`os_${n}`, `os_${n}_level`])];
+    added = ['agentic_id', 'enrich_status', ...names.flatMap((n) => [`aid_${n}`, `aid_${n}_level`])];
     rows.forEach((r, i) => {
       const x = rowKey[i] === undefined ? undefined : results[keyOf.get(rowKey[i])];
       r.agentic_id = x?.id ?? '';
       r.enrich_status = rowKey[i] === undefined ? 'skipped: no work identifier' : x?.status ?? 'not_run';
       for (const y of x?.fields ?? []) {
-        r[`os_${y.field}`] = y.value;
-        r[`os_${y.field}_level`] = y.level;
+        r[`aid_${y.field}`] = y.value;
+        r[`aid_${y.field}_level`] = y.level;
       }
     });
   } else throw new Usage(`--file works with validate, resolve and enrich, not ${cmd}.`);

@@ -116,15 +116,15 @@ try {
   const bad = await call('agentic_id_find', { account: { domain: DOMAIN }, roles: ['CTO'], limit: 1, max_credits: 0 });
   check((bad.structuredContent?.cost?.charged_credits ?? 0) === 0, 'find with max_credits 0 charges nothing', bad.structuredContent?.summary ?? bad.structuredContent?.message);
 
-  const facts = await call('agentic_id_facts', { id: 'os_doesNotExist000000000' });
+  const facts = await call('agentic_id_facts', { id: 'ic-doesNotExist000000000' });
   check(!facts.isError && Array.isArray(facts.structuredContent.facts) && facts.structuredContent.verified_id === false, 'facts for an unknown ID: empty, not an error');
-  const ledger = await call('agentic_id_ledger', { id: 'os_doesNotExist000000000' });
+  const ledger = await call('agentic_id_ledger', { id: 'ic-doesNotExist000000000' });
   check(!ledger.isError && ledger.structuredContent.entries.length === 0, 'ledger for an unknown ID: empty, not an error');
 
   if (PAID) {
     const r = await call('agentic_id_resolve', { identifiers: { company_domain: `https://www.${DOMAIN}/` } });
     const s = r.structuredContent;
-    check(!r.isError && ['known', 'new'].includes(s.outcome) && /^os_/.test(s.id) && s.cost.charged_credits <= 1, `resolve ${DOMAIN}`, s.summary);
+    check(!r.isError && ['known', 'new'].includes(s.outcome) && /^ic-/.test(s.id) && s.cost.charged_credits <= 1, `resolve ${DOMAIN}`, s.summary);
     runHook(prefixed('agentic_id_resolve'), r);
     rec = lastLog();
     check(rec.tool === 'resolve' && rec.credits_charged === s.cost.charged_credits && rec.request_id === s.request_id, 'hook logs the resolve with its credits', JSON.stringify(rec));

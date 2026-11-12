@@ -138,7 +138,7 @@ linked for review, never merged.
 ## agentic_id_facts
 
 ```json
-{ "id": "os_1VcQFNN5zwWguwAUaHEBNk" }
+{ "id": "ic-1VcQFNN5zwWguwAUaHEBNk" }
 ```
 
 Read back `verified_id` (true or false), `missing[]` (what stops it being a Verified ID) and
@@ -147,7 +147,7 @@ Read back `verified_id` (true or false), `missing[]` (what stops it being a Veri
 ## agentic_id_ledger
 
 ```json
-{ "id": "os_1VcQFNN5zwWguwAUaHEBNk" }
+{ "id": "ic-1VcQFNN5zwWguwAUaHEBNk" }
 ```
 
 Read back `entries[]` (`seq`, `kind`, `at`, `hash`, `prev_hash`, `detail`) and `verified` (the

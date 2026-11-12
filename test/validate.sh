@@ -70,7 +70,7 @@ else
   fail ".mcp.json: a credential header must be \${user_config.<sensitive option>}, and no headersHelper"
 fi
 # A value that is only an UPPER_SNAKE env var name (Codex env_http_headers) is a reference, not a key.
-if grep -RInE --exclude-dir=.git '(x-api-key"?\s*[:=]\s*"[A-Za-z0-9_-]{16,})|(sk-[A-Za-z0-9]{20,})|(os_(live|test)_[A-Za-z0-9]{8,})' "$ROOT" \
+if grep -RInE --exclude-dir=.git '(x-api-key"?\s*[:=]\s*"[A-Za-z0-9_-]{16,})|(sk-[A-Za-z0-9]{20,})|(ic-(live|test|dev)-[A-Za-z0-9_-]{8,})|(os_(live|test)_[A-Za-z0-9]{8,})' "$ROOT" \
   | grep -vE 'x-api-key"?\s*[:=]\s*"[A-Z][A-Z0-9_]*"' | grep -q .; then
   fail "secret-looking value found in the repo"
 else

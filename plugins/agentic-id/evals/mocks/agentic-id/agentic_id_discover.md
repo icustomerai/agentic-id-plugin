@@ -11,7 +11,7 @@ type: fixed
   "total_at_provider": 1637,
   "accounts": [
     {
-      "id": "os_evalCompany000000002",
+      "id": "ic-evalCompany000000002",
       "name": "Globex Data",
       "domain": "globex-synthetic.com",
       "country": "GB",
@@ -23,7 +23,7 @@ type: fixed
       "charged": true
     },
     {
-      "id": "os_evalCompany000000003",
+      "id": "ic-evalCompany000000003",
       "name": "Initech Cloud",
       "domain": "initech-synthetic.com",
       "country": "GB",

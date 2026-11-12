@@ -177,7 +177,7 @@ test('validate: a long list goes in batches of 1,000 and stops at the cap', asyn
 });
 
 test('resolve: cleaned, capped at 1, and refused locally when it cannot work', async () => {
-  const c = fake({ resolve: { request_id: 'r', summary: 'known', cost: { quoted_credits: 1, charged_credits: 0 }, id: 'os_abc123', outcome: 'known' } });
+  const c = fake({ resolve: { request_id: 'r', summary: 'known', cost: { quoted_credits: 1, charged_credits: 0 }, id: 'ic-abc123', outcome: 'known' } });
   const r = await ops.resolve(c, { identifiers: { email: 'JANE@Acme.io', company_domain: 'https://acme.io/x', phone: '+1 555 0100' } });
   assert.deepEqual(c.calls[0].body, { identifiers: { email: 'jane@acme.io', company_domain: 'acme.io' }, max_credits: 1 });
   assert.match(r.input_notes[0], /phone was not sent/);
@@ -187,16 +187,16 @@ test('resolve: cleaned, capped at 1, and refused locally when it cannot work', a
 });
 
 test('resolve_many: repeats paid once, duplicates grouped, personal rows skipped, cap honoured', async () => {
-  const ids = { 'jane@acme.io': 'os_jane00', 'https://www.linkedin.com/in/jane-doe': 'os_jane00', 'bob@acme.io': 'os_bob000' };
+  const ids = { 'jane@acme.io': 'ic-jane00', 'https://www.linkedin.com/in/jane-doe': 'ic-jane00', 'bob@acme.io': 'ic-bob000' };
   const c = fake({ resolve: (b) => ({ request_id: 'r', summary: '', cost: { quoted_credits: 1, charged_credits: 1 }, id: ids[b.identifiers.email ?? b.identifiers.linkedin_url], outcome: 'known' }) });
   const r = await ops.resolveMany(c, { records: [{ email: 'jane@acme.io' }, { email: 'Jane@Acme.io' }, { linkedin_url: 'linkedin.com/in/Jane-Doe?x=1' }, { email: 'bob@acme.io' }, { email: 'me@gmail.com' }], max_credits: 10 });
   assert.equal(c.calls.length, 3);
   assert.equal(r.cost.charged_credits, 3);
   assert.deepEqual(r.rows.map((x) => x.outcome), ['known', 'known', 'known', 'known', 'skipped']);
   assert.equal(r.rows[1].repeat_of_row, 1);
-  assert.deepEqual(r.same_id, [{ id: 'os_jane00', rows: [1, 2, 3] }]);
+  assert.deepEqual(r.same_id, [{ id: 'ic-jane00', rows: [1, 2, 3] }]);
 
-  const tight = fake({ resolve: () => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: 'os_x00000', outcome: 'new' }) });
+  const tight = fake({ resolve: () => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: 'ic-x00000', outcome: 'new' }) });
   const t = await ops.resolveMany(tight, { records: Array.from({ length: 6 }, (_, i) => ({ email: `p${i}@acme.io` })), max_credits: 2 }, { concurrency: 1 });
   assert.equal(tight.calls.length, 2);
   assert.equal(t.counts.not_run, 4);
@@ -204,7 +204,7 @@ test('resolve_many: repeats paid once, duplicates grouped, personal rows skipped
 });
 
 test('resolve_many: a bad row fails alone; no credits or an outage stops the run', async () => {
-  const c = fake({ resolve: (b) => { if (b.identifiers.email === 'bad@acme.io') throw new AgenticIdError(400, 'request.invalid', 'nope'); return { cost: { quoted_credits: 1, charged_credits: 1 }, id: 'os_ok0000', outcome: 'new' }; } });
+  const c = fake({ resolve: (b) => { if (b.identifiers.email === 'bad@acme.io') throw new AgenticIdError(400, 'request.invalid', 'nope'); return { cost: { quoted_credits: 1, charged_credits: 1 }, id: 'ic-ok0000', outcome: 'new' }; } });
   const r = await ops.resolveMany(c, { records: [{ email: 'bad@acme.io' }, { email: 'ok@acme.io' }], max_credits: 5 }, { concurrency: 1 });
   assert.deepEqual(r.rows.map((x) => x.outcome), ['error', 'new']);
   const broke = fake({ resolve: () => { throw new AgenticIdError(402, 'credits.insufficient', 'empty wallet'); } });
@@ -265,8 +265,8 @@ test('facts and ledger take only an Agentic ID', async () => {
   const c = fake();
   assert.equal((await refused(() => ops.facts(c, { id: 'jane@acme.io' }))).code, 'not_an_agentic_id');
   assert.equal((await refused(() => ops.ledger(c, {}))).code, 'not_an_agentic_id');
-  await ops.facts(c, { id: ' os_1VcQFNN5zwWguwAUaHEBNk ' });
-  assert.equal(c.calls[0].body, 'os_1VcQFNN5zwWguwAUaHEBNk');
+  await ops.facts(c, { id: ' ic-1VcQFNN5zwWguwAUaHEBNk ' });
+  assert.equal(c.calls[0].body, 'ic-1VcQFNN5zwWguwAUaHEBNk');
 });
 
 test('status never throws: no key, a bad key and an outage each say what to do', async () => {
@@ -274,7 +274,7 @@ test('status never throws: no key, a bad key and an outage each say what to do',
   const bad = await ops.status({ baseUrl: 'http://x', apiKey: 'k', me: async () => { throw new AgenticIdError(401, 'auth.invalid_key', 'bad key'); } });
   assert.equal(bad.ok, false);
   assert.equal(bad.error, 'auth.invalid_key');
-  const ok = await ops.status({ baseUrl: 'http://x', apiKey: 'k', me: async () => ({ workspace_id: 'ws_1', scopes: ['pii:read'], key_prefix: 'os_dev_abc' }) });
+  const ok = await ops.status({ baseUrl: 'http://x', apiKey: 'k', me: async () => ({ workspace_id: 'ws_1', scopes: ['pii:read'], key_prefix: 'ic-dev-abc' }) });
   assert.equal(ok.contact_values, 'readable');
 });
 
@@ -300,7 +300,7 @@ const json = (res, status, body, headers = {}) => res.writeHead(status, { 'conte
 
 test('client: Bearer key, problem details become a refusal with a fix', async () => {
   await withApi(
-    (req, res) => (req.url === '/v1/me' ? json(res, 200, { workspace_id: 'ws_1', scopes: [], key_prefix: 'os_dev_x' }) : json(res, 402, { code: 'credits.insufficient', detail: 'Not enough credits.', available: 3 })),
+    (req, res) => (req.url === '/v1/me' ? json(res, 200, { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' }) : json(res, 402, { code: 'credits.insufficient', detail: 'Not enough credits.', available: 3 })),
     async (baseUrl, seen) => {
       const c = new AgenticId({ apiKey: 'secret-key', baseUrl: `${baseUrl}/` });
       assert.equal((await c.me()).workspace_id, 'ws_1');
@@ -409,7 +409,7 @@ test('mcp: a crash inside a tool is contained and leaks nothing', async () => {
 });
 
 test('mcp: estimate and status work without touching the API', async () => {
-  const c = fake({ me: { workspace_id: 'ws_1', scopes: [], key_prefix: 'os_dev_x' } });
+  const c = fake({ me: { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' } });
   const s = createServer({ client: c });
   const e = (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool: 'agentic_id_find', arguments: { limit: 10 } } })).result.structuredContent;
   assert.deepEqual([e.max_credits, e.auto_capped], [20, false]);
@@ -481,17 +481,17 @@ test('cli: a CSV is resolved with duplicates marked, and enriched with level col
   const dir = mkdtempSync(join(tmpdir(), 'aid-csv-'));
   const file = join(dir, 'crm.csv');
   writeFileSync(file, 'email;linkedin;company\njane@acme.io;;Acme\n;linkedin.com/in/jane-doe;Acme\nbob@acme.io;;Acme\n');
-  const ids = { 'jane@acme.io': 'os_jane00', 'https://www.linkedin.com/in/jane-doe': 'os_jane00', 'bob@acme.io': 'os_bob000' };
+  const ids = { 'jane@acme.io': 'ic-jane00', 'https://www.linkedin.com/in/jane-doe': 'ic-jane00', 'bob@acme.io': 'ic-bob000' };
   const client = fake({
     resolve: (b) => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: ids[b.identifiers.email ?? b.identifiers.linkedin_url], outcome: 'known' }),
-    enrich: (b) => ({ request_id: 'r', summary: '3 enriched. 6 credits charged.', cost: { quoted_credits: 6, charged_credits: 6 }, results: b.contacts.map((c2, i) => ({ id: `os_p${i}0000`, status: 'enriched', reason: '', fields: [{ field: 'title', value: `Title ${i}`, level: i ? 'claimed' : 'verified', source: 's' }] })) }),
+    enrich: (b) => ({ request_id: 'r', summary: '3 enriched. 6 credits charged.', cost: { quoted_credits: 6, charged_credits: 6 }, results: b.contacts.map((c2, i) => ({ id: `ic-p${i}0000`, status: 'enriched', reason: '', fields: [{ field: 'title', value: `Title ${i}`, level: i ? 'claimed' : 'verified', source: 's' }] })) }),
   });
   const r = await cli(['resolve', '--file', file, '--max-credits', '10'], client);
   const rows = parseCsv(r.out).rows;
-  assert.deepEqual(rows.map((x) => [x.agentic_id, x.same_id_as_row]), [['os_jane00', ''], ['os_jane00', '1'], ['os_bob000', '']]);
+  assert.deepEqual(rows.map((x) => [x.agentic_id, x.same_id_as_row]), [['ic-jane00', ''], ['ic-jane00', '1'], ['ic-bob000', '']]);
   assert.match(r.err, /2 distinct IDs, 1 duplicate rows/);
   const e = await cli(['enrich', '--file', file, '--fields', 'title', '--max-credits', '10'], client);
-  assert.deepEqual(parseCsv(e.out).rows.map((x) => [x.os_title, x.os_title_level]), [['Title 0', 'verified'], ['Title 1', 'claimed'], ['Title 2', 'claimed']]);
+  assert.deepEqual(parseCsv(e.out).rows.map((x) => [x.aid_title, x.aid_title_level]), [['Title 0', 'verified'], ['Title 1', 'claimed'], ['Title 2', 'claimed']]);
   assert.equal((await cli(['find', '--file', file, '--max-credits', '1'], client)).code, 1);
   assert.match((await cli(['validate', '--file', join(dir, 'missing.csv'), '--max-credits', '1'], client)).err, /No such file/);
 });
