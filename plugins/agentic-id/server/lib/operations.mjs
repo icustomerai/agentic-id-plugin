@@ -289,11 +289,13 @@ export const ledger = (client, args = {}) => client.ledger(needId(args.id));
 
 /** Is the plugin set up? Never throws: says what is wrong and how to fix it. */
 export async function status(client) {
-  const base = { client: CLIENT, server_url: client.baseUrl, key_configured: Boolean(client.apiKey) };
-  if (!client.apiKey) return { ...base, ok: false, summary: 'No API key is configured.', fix: 'Set the Agentic ID API key in the plugin options (Claude Code: /plugin, agentic-id, Configure), or export AGENTIC_ID_API_KEY for the CLI. Never paste a key into the chat.' };
+  const mode = client.authMode;
+  const base = { client: CLIENT, server_url: client.baseUrl, key_configured: Boolean(client.apiKey), signed_in: mode === 'signin', auth: mode ?? 'none' };
+  if (!mode) return { ...base, ok: false, summary: 'Not signed in and no API key is configured.', fix: 'Run `agentic-id login` to sign in with your iCustomer account, or set an API key in the plugin options (Claude Code: /plugin, agentic-id, Configure) or AGENTIC_ID_API_KEY.' };
   try {
     const me = await client.me();
-    return { ...base, ok: true, summary: `Connected to ${client.baseUrl} as workspace ${me.workspace_id} (key ${me.key_prefix}…).`, workspace_id: me.workspace_id, key_prefix: me.key_prefix, scopes: me.scopes, contact_values: me.scopes?.includes('pii:read') ? 'readable' : 'masked (this key has no pii:read scope)' };
+    const how = mode === 'signin' ? 'signed in' : `key ${me.key_prefix}…`;
+    return { ...base, ok: true, summary: `Connected to ${client.baseUrl} as workspace ${me.workspace_id} (${how}).`, workspace_id: me.workspace_id, key_prefix: me.key_prefix, scopes: me.scopes, contact_values: me.scopes?.includes('pii:read') ? 'readable (pii:read)' : 'masked (no pii:read scope)' };
   } catch (e) {
     if (!(e instanceof AgenticIdError)) throw e;
     return { ...base, ok: false, summary: e.detail, ...e.toJSON() };

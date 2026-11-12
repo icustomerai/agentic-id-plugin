@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { AuthError, login, logout } from './lib/auth.mjs';
 import { AgenticId, AgenticIdError, CLIENT, keyFromEnv, urlFromEnv } from './lib/client.mjs';
 import { mapColumns, parseCsv, rowIdentifiers, toCsv } from './lib/csv.mjs';
 import { estimate } from './lib/estimate.mjs';
@@ -24,7 +25,9 @@ export const HELP = `agentic-id <command> [flags]      Agentic ID from a termina
   facts    <id>          every fact's level and the evidence behind it (free)
   ledger   <id>          the ID's history, hash chain re-checked (free)
   estimate <command> [the same flags]     the most it could cost, without calling (free)
-  doctor                 is the key set, is the server reachable, what can this key read
+  login                  sign in with your iCustomer account in the browser (no API key needed)
+  logout                 end that sign-in on this machine and on the server
+  doctor                 signed in or key set, is the server reachable, what can this caller read
   usage    [n]           credits per tool and the last n calls from the local log
 
 Lists (CSV in, CSV out; repeats are paid once; personal emails never leave this machine):
@@ -257,8 +260,9 @@ async function doctor(client, io) {
   const ok = (good, label, fix) => io.out(`${good ? ' ok ' : 'FAIL'}  ${label}${!good && fix ? `\n      fix: ${fix}` : ''}`);
   const major = Number(process.versions.node.split('.')[0]);
   ok(major >= 18, `Node ${process.versions.node}`, 'Install Node 18 or later.');
-  const keyed = Boolean(keyFromEnv());
-  ok(keyed, keyed ? `API key found (${process.env.AGENTIC_ID_API_KEY && !process.env.AGENTIC_ID_API_KEY.startsWith('${') ? 'AGENTIC_ID_API_KEY' : 'AGENTIC_ID_API_KEY_FILE'})` : 'No API key', 'export AGENTIC_ID_API_KEY=..., or AGENTIC_ID_API_KEY_FILE=<a file that holds it>.');
+  const signedIn = client.authMode === 'signin';
+  const keyed = Boolean(keyFromEnv()) || signedIn;
+  ok(keyed, signedIn ? 'Signed in (session in ~/.agentic-id/session.json)' : keyed ? `API key found (${process.env.AGENTIC_ID_API_KEY && !process.env.AGENTIC_ID_API_KEY.startsWith('${') ? 'AGENTIC_ID_API_KEY' : 'AGENTIC_ID_API_KEY_FILE'})` : 'Not signed in and no API key', 'Run agentic-id login, or export AGENTIC_ID_API_KEY=..., or AGENTIC_ID_API_KEY_FILE=<a file that holds it>.');
   io.out(`      server: ${client.baseUrl}`);
   const started = Date.now();
   const s = await ops.status(client);
@@ -314,6 +318,23 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       return 0;
     }
     const real = client ?? new AgenticId();
+    if (cmd === 'login') {
+      if (real.apiKey) io.out('Note: an API key is configured and takes precedence over a sign-in. Unset it to use the sign-in.');
+      try {
+        await login({ baseUrl: real.baseUrl, io });
+      } catch (e) {
+        if (!(e instanceof AuthError)) throw e;
+        io.err(`${e.message}${e.fix ? `\n  fix: ${e.fix}` : ''}`);
+        return e.code === 'unreachable' ? 5 : 2;
+      }
+      const s = await ops.status(new AgenticId({ baseUrl: real.baseUrl, apiKey: '' }));
+      io.out(s.ok ? `Signed in. ${s.summary}` : `Signed in, but the check failed: ${s.summary}`);
+      return s.ok ? 0 : 5;
+    }
+    if (cmd === 'logout') {
+      io.out((await logout(real.baseUrl)) ? 'Signed out.' : 'There was no sign-in for this server.');
+      return 0;
+    }
     if (cmd === 'doctor') return await doctor(real, io);
     if (cmd === 'status') {
       const s = await ops.status(real);

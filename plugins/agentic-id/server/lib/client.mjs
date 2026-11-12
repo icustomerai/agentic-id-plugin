@@ -6,13 +6,16 @@
 // Failures throw AgenticIdError with the problem details the API sent (status, code, detail) and a
 // plain "fix" line that says what to do next.
 import { readFileSync } from 'node:fs';
+import { accessToken, AuthError, hasSession } from './auth.mjs';
 
 export const DEFAULT_URL = 'http://127.0.0.1:3100';
 export const CLIENT = 'agentic-id-plugin/0.5.0';
 
 const FIXES = {
-  'auth.invalid_key': 'Set a valid Agentic ID API key in the plugin options (or AGENTIC_ID_API_KEY). Never paste a key into the chat.',
-  'auth.missing_key': 'Set an Agentic ID API key in the plugin options (or AGENTIC_ID_API_KEY). Never paste a key into the chat.',
+  'auth.invalid_key': 'Sign in with `agentic-id login`, or set a valid Agentic ID API key in the plugin options (or AGENTIC_ID_API_KEY). Never paste a key into the chat.',
+  'auth.missing_key': 'Sign in with `agentic-id login`, or set an Agentic ID API key in the plugin options (or AGENTIC_ID_API_KEY). Never paste a key into the chat.',
+  'auth.token_expired': 'The sign-in has run out. Run `agentic-id login` again.',
+  signed_out: 'Run `agentic-id login` again.',
   'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap.',
   'credits.cap_too_low': 'max_credits is below the cheapest result. Ask the user before raising it.',
   rate_limited: 'Too many requests for this key. Wait for retry_after_seconds, then send the same call once.',
@@ -88,10 +91,29 @@ export class AgenticId {
     this.fetch = opts.fetch ?? globalThis.fetch;
     this.maxRetryWaitS = opts.maxRetryWaitS ?? 20;
     this.client = opts.client ?? CLIENT;
+    this.env = opts.env ?? process.env;
+  }
+
+  /** 'key' when an API key is configured, 'signin' when a sign-in is stored, else undefined. */
+  get authMode() {
+    return this.apiKey ? 'key' : hasSession(this.baseUrl, this.env) ? 'signin' : undefined;
+  }
+
+  /** The bearer credential: the API key when one is set, else the sign-in's access token. */
+  async credential(force = false) {
+    if (this.apiKey) return this.apiKey;
+    try {
+      return await accessToken(this.baseUrl, { env: this.env, fetchImpl: this.fetch, force });
+    } catch (e) {
+      if (e instanceof AuthError) throw new AgenticIdError(e.code === 'unreachable' ? 0 : 401, e.code, e.message);
+      throw e;
+    }
   }
 
   async call(method, path, body) {
-    if (!this.apiKey) throw new AgenticIdError(401, 'auth.missing_key', 'No Agentic ID API key is configured.');
+    let bearer = await this.credential();
+    if (!bearer) throw new AgenticIdError(401, 'auth.missing_key', 'Not signed in and no Agentic ID API key is configured.');
+    let renewed = false;
     // A paid POST is never replayed blindly: only a 429 (refused before any work) is retried, once,
     // and a network failure on a GET. A timeout on a POST may have charged, so it is reported.
     for (let attempt = 0; ; attempt += 1) {
@@ -100,7 +122,7 @@ export class AgenticId {
         res = await this.fetch(`${this.baseUrl}${path}`, {
           method,
           headers: {
-            authorization: `Bearer ${this.apiKey}`,
+            authorization: `Bearer ${bearer}`,
             accept: 'application/json',
             'user-agent': this.client,
             'x-agentic-id-client': this.client,
@@ -119,6 +141,12 @@ export class AgenticId {
       }
       const json = await res.json().catch(() => ({}));
       if (res.ok) return json;
+      // A 401 is refused before any work, so renewing the sign-in and sending once more is safe.
+      if (res.status === 401 && !this.apiKey && !renewed) {
+        renewed = true;
+        bearer = await this.credential(true);
+        if (bearer) continue;
+      }
       if (res.status === 429 && attempt === 0) {
         const wait = Number(res.headers.get('retry-after') ?? json.retryAfterSeconds ?? 1);
         if (wait <= this.maxRetryWaitS) {
