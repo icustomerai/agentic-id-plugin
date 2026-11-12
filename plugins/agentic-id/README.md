@@ -1,7 +1,7 @@
 # Agentic ID for Claude Code
 
-Agentic ID is iCustomer's B2B identity service. This plugin connects Claude Code to it, so Claude
-can resolve a person or company to one stable Agentic ID, fill in a contact's title, company and
+Agentic ID is one open ID for every person, company and agent: an open identity protocol and a
+shared ledger, started at iCustomer. This plugin connects Claude Code to it, so Claude can resolve a person or company to one stable Agentic ID, fill in a contact's title, company and
 work email, list the people in a role at a known company, build a prospect list from ideal
 customer profile filters, and check that a work mailbox is deliverable before you send to it.
 
@@ -23,7 +23,7 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
 
 | Component | What it does |
 | --- | --- |
-| Skill `agentic-id` | Picks the right tool, gives Claude the exact arguments, and applies the credit and B2B-only rules |
+| Skill `agentic-id` | Picks the right tool, gives Claude the exact arguments, and applies the credit and work-identifier rules |
 | Skill `who-matters` | A playbook: validate, resolve, enrich, find and discover inside a budget agreed with you first |
 | Skill `agentic-id-credits` | Prices, how to estimate and cap a call, and how to read what was charged |
 | Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a list grouped by account |
@@ -82,8 +82,9 @@ The plugin reads no credentials from your environment or your files, installs no
 does not change Claude Code's permission settings. The `evals/` folder holds test cases for
 `claude plugin eval`. Claude Code doesn't load them when you use the plugin.
 
-**B2B data only.** Agentic ID accepts work emails, LinkedIn profile URLs, names with a company, and
-company domains. It refuses personal email addresses, phone numbers and device IDs. Test
+**Work identifiers only for now.** Agentic ID accepts work emails, LinkedIn profile URLs, names with
+a company, and company domains. Personal email addresses, phone numbers and device IDs are refused
+until consumer identity ships with consent controls. Test
 addresses and placeholder names are refused before any lookup runs, so they cost nothing.
 
 ## Errors you may see

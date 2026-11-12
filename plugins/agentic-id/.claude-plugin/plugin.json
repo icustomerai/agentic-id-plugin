@@ -2,7 +2,7 @@
   "name": "agentic-id",
   "displayName": "Agentic ID",
   "version": "0.4.0",
-  "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then enrich, find, discover and validate with the five Agentic ID tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
+  "description": "One open ID for every person, company and agent. Resolve any person or company to one stable ID, with the evidence behind the match, then enrich, find, discover and validate with the five Agentic ID tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
   "author": {
     "name": "iCustomer",
     "url": "https://icustomer.ai"
@@ -11,7 +11,7 @@
   "privacyPolicyUrl": "https://icustomer.ai/privacy-policy",
   "repository": "https://github.com/icustomerai/onesource-plugin",
   "license": "MIT",
-  "keywords": ["agentic-id", "b2b", "enrichment", "identity", "email-validation", "prospecting", "gtm", "mcp"],
+  "keywords": ["agentic-id", "identity", "identity-resolution", "open-ledger", "enrichment", "email-validation", "prospecting", "gtm", "mcp"],
   "userConfig": {
     "api_key": {
       "type": "string",
