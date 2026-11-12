@@ -298,9 +298,18 @@ async function runFile(cmd, client, f, io) {
     });
     const dupes = rows.filter((r) => r.same_id_as_row !== '').length;
     // Which rows got no ID, by number, so nobody has to open the file (or guess) to say which.
-    const noId = rows.map((r, i) => (!r.agentic_id && r.resolve_outcome !== 'not_run' ? i + 1 : 0)).filter(Boolean);
+    // In a few plain words per row, never a value from the row.
+    const why = (r) => {
+      const n = String(r.resolve_note ?? '');
+      if (/no identifier/.test(n) || !n) return r.resolve_outcome === 'skipped' ? 'empty or nothing usable' : r.resolve_outcome;
+      if (/not enough to identify/.test(n)) return /held back/.test(n) ? 'only a name; its personal data was held back' : 'only a name';
+      if (r.resolve_outcome === 'review' || r.resolve_outcome === 'conflict') return `needs a person to look (${r.resolve_outcome})`;
+      if (r.resolve_outcome === 'unresolvable') return 'not enough to resolve';
+      return r.resolve_outcome;
+    };
+    const noId = rows.map((r, i) => (!r.agentic_id && r.resolve_outcome !== 'not_run' ? `${i + 1} (${why(r)})` : '')).filter(Boolean);
     const notRun = rows.filter((r) => r.resolve_outcome === 'not_run').length;
-    reply = { summary: `${rows.length} rows: ${firstRowOf.size} distinct IDs, ${dupes} duplicate rows, ${rows.filter((r) => !r.agentic_id).length} without an ID (${rows.filter((r) => r.resolve_outcome === 'skipped').length} skipped: personal data only, a name alone, or empty; see resolve_note). ${pairs.length ? `Duplicates (data row = the earlier data row it repeats): ${pairs.slice(0, 25).join(', ')}${pairs.length > 25 ? `, and ${pairs.length - 25} more in the file` : ''}. ` : ''}${noId.length ? `Without an ID: data row${noId.length === 1 ? '' : 's'} ${noId.slice(0, 25).join(', ')}${noId.length > 25 ? `, and ${noId.length - 25} more` : ''} (the reason is in resolve_note). ` : ''}Data rows are counted from 1 under the header. ${cost.charged_credits} credits charged.${capReached ? ` Stopped at the ${max_credits}-credit cap: ${notRun} rows not run.` : ''}${stoppedBy ? ` Stopped early: ${stoppedBy.message ?? stoppedBy.error}.` : ''}`, cost };
+    reply = { summary: `${rows.length} rows: ${firstRowOf.size} distinct IDs, ${dupes} duplicate rows, ${rows.filter((r) => !r.agentic_id).length} without an ID (${rows.filter((r) => r.resolve_outcome === 'skipped').length} skipped: personal data only, a name alone, or empty; see resolve_note). ${pairs.length ? `Duplicates (data row = the earlier data row it repeats): ${pairs.slice(0, 25).join(', ')}${pairs.length > 25 ? `, and ${pairs.length - 25} more in the file` : ''}. ` : ''}${noId.length ? `Without an ID: data row${noId.length === 1 ? '' : 's'} ${noId.slice(0, 25).join(', ')}${noId.length > 25 ? `, and ${noId.length - 25} more (see resolve_note)` : ''}. ` : ''}Data rows are counted from 1 under the header. ${cost.charged_credits} credits charged.${capReached ? ` Stopped at the ${max_credits}-credit cap: ${notRun} rows not run.` : ''}${stoppedBy ? ` Stopped early: ${stoppedBy.message ?? stoppedBy.error}.` : ''}`, cost };
   } else if (cmd === 'enrich') {
     const fields = many(f.fields);
     const unique = [];
