@@ -72,7 +72,11 @@ suggest ways around it.
 
 ## Balance and history
 
-- There is no balance tool. `credits.insufficient` reports `available_credits`.
-- `/agentic-id-usage` (or `agentic-id usage`) shows credits per tool and the latest calls from the
-  local log at `~/.agentic-id/usage.jsonl`. The log holds no inputs. It covers calls made through
-  this plugin on this machine only; Agentic ID's own record is the billing record.
+- `agentic_id_workspace` (free) is the billing record: credits `available` and `held`, what was
+  spent today and in the last 30 days by tool, and the latest grants and charges. Use it for "how
+  many credits do I have", "what did that cost" and "why was I charged", and before any job over
+  about 50 credits. If `available` is below the estimate, say so and stop before calling.
+- `held` credits are reserved by calls still running; they come back if not used.
+- `/agentic-id-usage` (or `agentic-id usage`) shows this machine's own log
+  (`~/.agentic-id/usage.jsonl`): calls made through this plugin here only, with no inputs. When
+  the two disagree, the workspace answer is right.

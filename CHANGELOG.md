@@ -7,6 +7,17 @@ All notable changes to this marketplace and the `agentic-id` plugin (named `ones
 
 The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint is no longer used.
 
+### Added
+- **Sign in with an iCustomer account**, no API key needed: `/agentic-id-login` or `agentic-id login`
+  (OAuth 2.1 with PKCE against the API; the session is kept in `~/.agentic-id/session.json` and
+  renews itself for 30 days). `agentic-id logout` ends it. The API key option is now optional.
+- `agentic_id_workspace` / `agentic-id workspace`: credits available and held, spend by tool, the
+  latest grants and charges, IDs held, contributing or private.
+- `agentic_id_report` / `agentic-id report`: bounced, replied, wrong person or confirmed for an ID
+  the workspace holds; one, a list, or a CSV.
+- Every paid call carries an idempotency key, so a dropped connection or a timeout inside the API
+  is asked again without paying twice. Errors carry a `request_id`.
+
 ### Changed
 - `.mcp.json` starts a bundled, dependency-free stdio MCP server (`server/mcp.mjs`) that calls the
   V3 public API (`/v1/*`) with an API key. OAuth sign-in through `/mcp` is gone until V3 offers it.

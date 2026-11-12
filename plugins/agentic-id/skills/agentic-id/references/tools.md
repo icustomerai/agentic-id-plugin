@@ -153,6 +153,42 @@ Read back `verified_id` (true or false), `missing[]` (what stops it being a Veri
 Read back `entries[]` (`seq`, `kind`, `at`, `hash`, `prev_hash`, `detail`) and `verified` (the
 whole hash chain re-checked). Free.
 
+## agentic_id_workspace
+
+Free. The workspace this caller acts as, in one answer.
+
+```json
+{ "recent": 10 }
+```
+
+- `recent` (0 to 200, default 10): how many of the latest grants and charges to list.
+- Answer: `credits` (`balance`, `held`, `available`), `spent` (`today`, `last_30_days`, `by_tool`),
+  `recent` (each with `at`, `kind` grant or charge, `credits`, `tool`), `ids_held`, `contributes`,
+  `allowed_purposes`, `signed_in_as` (`account` or `api_key`), `contact_values`.
+- `available` is what a new call can spend. `held` is reserved by calls still running.
+- `contributes: true`: identifiers this workspace sends help every workspace resolve the same
+  entity, and resolving an ID it already holds is free. `false`: they stay private to it.
+
+## agentic_id_report
+
+Free. What happened after a value was used.
+
+```json
+{ "id": "ic-1VcQFNN5zwWguwAUaHEBNk", "field": "work_email", "outcome": "bounced" }
+```
+
+```json
+{ "reports": [ { "id": "ic-...", "outcome": "replied" }, { "id": "ic-...", "field": "title", "outcome": "wrong_person" } ] }
+```
+
+- `outcome`: `bounced`, `replied`, `wrong_person`, `confirmed`. Nothing else.
+- `field`: `work_email` (default), `title`, `company_domain`. Phones and personal emails are
+  refused on this machine.
+- `id` must be an Agentic ID the workspace holds; otherwise that row comes back
+  `feedback.not_held` and the rest still go.
+- Up to 200 in `reports`. The same ID and field twice is sent once (the last one).
+- Answer: `recorded` (count), `results` (one per report, with `recorded` and a `note`), `summary`.
+
 ## agentic_id_estimate
 
 ```json

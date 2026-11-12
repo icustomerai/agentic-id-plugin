@@ -6,7 +6,7 @@ it, fill in a contact's title and company, list the people in a role at a known 
 account list from ideal customer profile filters or from your best customers, de-duplicate a CRM
 export, and tell you how far each value can be trusted.
 
-The plugin adds eleven MCP tools, six skills, an agent that qualifies a list of leads end to end,
+The plugin adds thirteen MCP tools, six skills, an agent that qualifies a list of leads end to end,
 the `agentic-id` command for CSV files, an optional session credit budget and a local usage log.
 
 ## What you get
@@ -22,8 +22,10 @@ the `agentic-id` command for CSV files, an optional session credit budget and a 
 | `agentic_id_lookalike` | Which companies look like these seed companies | 1 per company |
 | `agentic_id_facts` | How sure is Agentic ID about each value of this ID, and why | Free |
 | `agentic_id_ledger` | What happened to this ID, with its hash chain re-checked | Free |
+| `agentic_id_workspace` | How many credits are left, what was spent and on what, and how this workspace shares | Free |
+| `agentic_id_report` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, confirmed | Free |
 | `agentic_id_estimate` | What would this call cost at most | Free |
-| `agentic_id_status` | Is the plugin connected, and what can this key read | Free |
+| `agentic_id_status` | Is the plugin connected (signed in or by key), and what can it read | Free |
 
 Every value comes with a level: **verified** (proved by a direct check or something the person
 did), **corroborated** (independent sources agree), **claimed** (one source said so) or
@@ -42,6 +44,7 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
 | Skill `lookalike-prospecting` | From your best customers to a shared profile to a list of similar companies |
 | Skill `trust-check` | Whether a record is safe to act on, and why two records are the same ID |
 | Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a list grouped by account |
+| Command `/agentic-id-login` | Signs you in with your iCustomer account, in the browser |
 | Command `/agentic-id-status` | Checks the connection |
 | Command `/agentic-id-clean-list <csv>` | Starts `clean-a-list` on a file, estimate first |
 | Command `/agentic-id-usage` | Credits used per tool and the last 20 calls, from the local usage log |
@@ -49,14 +52,23 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
 
 ## Set up
 
-1. Install and enable the plugin. Claude Code asks for three options:
-   - **Agentic ID API key.** Your key. Claude Code stores it in your system keychain.
+1. Install and enable the plugin. Claude Code asks for three options, all optional:
+   - **Agentic ID API key.** Leave it empty to sign in with your iCustomer account (step 2). For
+     CI and headless runs, paste a key: Claude Code stores it in your system keychain. A key,
+     when set, is used instead of a sign-in.
    - **Agentic ID API URL.** Where the Agentic ID API runs. The default is a local V3 stack
      (`http://127.0.0.1:3100`); set the URL iCustomer gave you otherwise.
    - **Session credit budget (optional).** The most one Claude Code session may spend, e.g. `100`.
-2. Type `/agentic-id-status`. It should say which workspace you are connected as.
-3. Ask Claude something like "Who are the VP-level marketing people at tallpinesoftware.com? Two
-   people, at most 4 credits."
+2. Sign in: type `/agentic-id-login`, or run `agentic-id login` in a terminal. Your browser opens
+   the iCustomer sign-in page; when it says you are signed in, go back to Claude Code. The
+   sign-in is kept in `~/.agentic-id/session.json`, readable by you only, and renews itself for
+   30 days. `agentic-id logout` ends it. (Skip this step if you set an API key.)
+3. Type `/agentic-id-status`. It should say which workspace you are connected as.
+4. Ask Claude something like "Who are the VP-level marketing people at tallpinesoftware.com? Two
+   people, at most 4 credits." Then "how many credits do I have left?"
+
+Each signed-in account has a workspace and a credit wallet of its own. An API key belongs to one
+workspace and draws on that workspace's wallet.
 
 To change an option later, run `/plugin configure agentic-id@icustomer`, or open `/plugin`,
 select Agentic ID on the **Installed** tab, and choose **Configure options**.

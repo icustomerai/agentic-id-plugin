@@ -37,6 +37,20 @@ nothing was charged.
 | `rate_limited` | 429 | Too many requests | The plugin waits and retries once. If it still fails, wait `retry_after_seconds` |
 | `service.unavailable` | 503 | Agentic ID's service is down behind the API | Nothing was charged. Try once more later |
 
+## Retried for you, safely
+
+Every paid call carries an idempotency key, so the plugin can ask again without paying twice. It does so by itself for: a dropped connection, `rate_limited`, `service.unavailable` marked as never sent, `service.timeout`, and `idempotency.in_progress` (its own earlier attempt still running). If one of these still reaches you, the waiting ran out: tell the user and stop; do not loop.
+
+| Code | What it means | What to do |
+| --- | --- | --- |
+| `service.unavailable` | Agentic ID is not taking requests for a moment | Wait for `retry_after_seconds`, then once more. Nothing was charged. |
+| `service.timeout` | The call may have completed | Check `agentic_id_workspace` for a charge before sending it again. |
+| `idempotency.in_progress` | The same request is still running | Wait; ask again later. It is charged once. |
+| `signed_out` / `auth.token_expired` | The sign-in ended | The user runs `/agentic-id-login`. |
+| `feedback.not_held` | An outcome was reported for an ID this workspace does not hold | Resolve or enrich it first, or drop that row. |
+
+Every error carries a `request_id`: quote it when reporting a problem.
+
 ## No answer
 
 | Code | Means | What to do |

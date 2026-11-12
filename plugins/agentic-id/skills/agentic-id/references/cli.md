@@ -13,9 +13,18 @@ Use it when:
 agentic-id doctor
 ```
 
-It checks Node, the key, the server and what the key can read, and prints a fix for anything
-wrong. The key comes from `AGENTIC_ID_API_KEY`, or from the file named in
-`AGENTIC_ID_API_KEY_FILE`; the server from `AGENTIC_ID_URL`.
+It checks Node, the sign-in or key, the server and what the caller can read, and prints a fix for
+anything wrong.
+
+Two ways to be let in:
+- **Sign in:** `agentic-id login` opens the browser on the iCustomer sign-in page and keeps the
+  session in `~/.agentic-id/session.json` (renews itself for 30 days). `agentic-id logout` ends
+  it. On a machine with no browser, set `AGENTIC_ID_NO_BROWSER=1` and open the printed link
+  elsewhere on the same machine.
+- **API key:** `AGENTIC_ID_API_KEY`, or the file named in `AGENTIC_ID_API_KEY_FILE`. A key, when
+  set, is used instead of a sign-in.
+
+The server comes from `AGENTIC_ID_URL`.
 
 Never ask the user to paste a key into the chat, never put a key on a command line, and never
 write one into a file in the repository.
@@ -35,6 +44,16 @@ write one into a file in the repository.
 | `agentic_id_status` | `agentic-id status --json` |
 
 Always pass `--json` when you will read the answer yourself.
+
+Workspace and outcomes (both free):
+
+```bash
+agentic-id workspace            # credits available, spend by tool, the last 10 movements
+agentic-id workspace 50 --json  # the last 50, as JSON
+agentic-id report ic-... --outcome bounced            # the work email bounced
+agentic-id report ic-... --outcome confirmed --field title
+agentic-id report --file outcomes.csv --out reported.csv   # columns agentic_id, outcome[, field]; adds report_status
+```
 
 ## Files and budgets
 

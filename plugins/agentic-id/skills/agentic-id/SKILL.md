@@ -22,6 +22,8 @@ and every value comes with a **level** that says how far to trust it.
 | Which companies look like my best customers? | `agentic_id_lookalike` | 1 per account |
 | How sure are we about this ID's values? | `agentic_id_facts` | free |
 | Why are these two records the same ID? | `agentic_id_ledger` | free |
+| How many credits are left? What did I spend, and on what? | `agentic_id_workspace` | free |
+| This email bounced / they replied / wrong person / our CRM confirms it | `agentic_id_report` | free |
 | What would this call cost? | `agentic_id_estimate` | free |
 | Is the plugin set up? | `agentic_id_status` | free |
 
@@ -71,6 +73,19 @@ Always show the level next to a value you report. Never upgrade a level in your 
    could not be read.
 6. **Stop on money errors.** `credits.insufficient` and `cap_required` mean stop and ask.
 
+## After the user acts on a value: report the outcome
+
+When the user tells you what happened to a value Agentic ID gave them, report it with
+`agentic_id_report` (free): an email **bounced**, the person **replied**, it reached the
+**wrong_person**, or their CRM **confirmed** it. Only for IDs the workspace holds.
+
+- A bounced or wrong-person value is no longer served to this workspace, and it counts against the
+  source that supplied it. A reply or a confirmation is proof for this workspace.
+- Nothing reported is shown to another workspace. Say so if the user asks.
+- Offer it once, after a send or a campaign: "Tell me which bounced or replied and I'll report
+  them." Do not report an outcome the user did not state. A file of outcomes goes through
+  `agentic-id report --file`.
+
 ## B2B only
 
 - Accept work emails, LinkedIn profile URLs, names with a company, and company domains.
@@ -88,7 +103,8 @@ Errors are `{ "error": "<code>", "message": "...", "fix": "..." }`. Follow `fix`
 means the plugin refused it locally and nothing was charged. The full table is in
 [references/errors.md](references/errors.md).
 
-- `auth.missing_key` / `auth.invalid_key`: call `agentic_id_status`, then tell the user to set the
-  key in the plugin options. Never ask them to paste a key into the chat.
+- `auth.missing_key` / `auth.invalid_key` / `signed_out`: call `agentic_id_status`, then tell the user to
+  sign in with `/agentic-id-login` (or `agentic-id login` in a terminal), or to set an API key in
+  the plugin options. Never ask for a key, a password or a code in the chat.
 - `unreachable`: the API URL is wrong or the server is down. Call `agentic_id_status`.
 - `request.invalid`: fix the fields in `issues`.
