@@ -265,7 +265,11 @@ async function runFile(cmd, client, f, io) {
       if (part.stopped) {
         if (part.stopped.error === 'cap_reached') capReached = true;
         // A refused credential is not a partial result: stop here, write nothing.
-        else if (part.stopped.status === 401 || part.stopped.status === 403) throw new AgenticIdError(part.stopped.status, part.stopped.error, part.stopped.message ?? 'The credential was refused.', {});
+        else if (part.stopped.status === 401 || part.stopped.status === 403) {
+          const refused = new AgenticIdError(part.stopped.status, part.stopped.error, part.stopped.message ?? 'The credential was refused.', {});
+          if (part.stopped.fix) refused.fix = part.stopped.fix; // keeps "the configured key was refused" over the generic hint
+          throw refused;
+        }
         else stoppedBy = part.stopped;
         break;
       }
