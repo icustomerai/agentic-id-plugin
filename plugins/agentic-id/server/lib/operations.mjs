@@ -401,14 +401,17 @@ export async function workspace(client, args = {}) {
     credits: w.credits,
     spent: c.spent,
     recent: c.recent,
-    // What each charge was for: the ID delivered, the tool, the credits. IDs only, never a value.
+    // What each charge was for: the ID delivered, the tool, the credits. A company carries its name
+    // or domain; a person is an ID only.
     delivered: c.recent_ids ?? [],
+    times_are: 'UTC',
+    utc_today: new Date().toISOString().slice(0, 10),
     contributes: w.contributes,
     allowed_purposes: w.allowed_purposes,
     region: w.region,
     ids_held: w.ids_held,
     contact_values: w.scopes?.includes('pii:read') ? 'readable' : 'masked',
-    summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today, ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
+    summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today (the UTC day, now ${new Date().toISOString().slice(0, 10)}), ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
   };
 }
 

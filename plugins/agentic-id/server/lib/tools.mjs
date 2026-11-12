@@ -195,7 +195,7 @@ export const TOOLS = [
     name: 'agentic_id_workspace',
     title: 'Show the workspace and its credits',
     description:
-      'The workspace this caller acts as: credits available and held, what was spent today and in the last 30 days by tool, the latest grants and charges, the IDs most recently delivered with what each cost (so a charge can be traced to its ID; use agentic_id_facts on one to see what it is), how many IDs it holds, and whether it contributes (identifiers it sends help everyone resolve) or is private. Use it for "how many credits do I have", "what did that cost", "why was I charged", and before any large job. Free.',
+      'The workspace this caller acts as: credits available and held, what was spent today and in the last 30 days by tool, the latest grants and charges, the IDs most recently delivered with what each cost (companies with their name or domain, people by ID only), so a charge can be traced to what it was for. This is the billing record: use it, not the local log, for any question about spend. Times and "today" are UTC. how many IDs it holds, and whether it contributes (identifiers it sends help everyone resolve) or is private. Use it for "how many credits do I have", "what did that cost", "why was I charged", and before any large job. Free.',
     inputSchema: { type: 'object', properties: { recent: { type: 'integer', minimum: 0, maximum: 200, description: 'How many of the latest grants and charges to list. Default 10.' } }, additionalProperties: false },
     annotations: free,
     run: ops.workspace,
@@ -234,6 +234,7 @@ export const TOOLS = [
         action: { type: 'string', enum: ['validate', 'resolve', 'enrich', 'report'] },
         file: str('Full path of the CSV file.'),
         out: str('Where to write the result (.csv). Default: next to the input, named <name>.agentic-id.csv.'),
+        replace_original: { type: 'boolean', description: 'Only when the user asked for the result in the same file: the original is first saved beside it as <name>.original.csv, then the result takes its place. Tell the user both names.' },
         dry_run: { type: 'boolean', description: 'Free: count the rows and estimate the cost. Nothing is sent.' },
         max_credits: maxCredits,
         fields: list('enrich only: the fields to fill, e.g. ["title", "work_email"].'),

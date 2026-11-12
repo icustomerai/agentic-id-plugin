@@ -3,7 +3,7 @@
 // Why a tool and not only the `agentic-id` command: Claude Code keeps an API key set in the
 // plugin options away from shell commands, so the command cannot use it. The server can. The
 // rows are read from and written to disk here and never pass through the conversation.
-import { existsSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { main, sameFile } from '../cli.mjs';
 import { AgenticIdError } from './client.mjs';
@@ -19,7 +19,12 @@ export async function list(client, args = {}) {
   const file = isAbsolute(args.file) ? args.file : resolve(process.cwd(), args.file);
   if (!existsSync(file) || !statSync(file).isFile()) throw new LocalRefusal('file_not_found', `No such file: ${file}`, 'Give the full path of the CSV file.');
   if (statSync(file).size > MAX_BYTES) throw new LocalRefusal('file_too_large', `${basename(file)} is over 20 MB.`, 'Split the file, or use --limit-rows with the agentic-id command in a terminal.');
-  const out = args.out ? (isAbsolute(args.out) ? args.out : resolve(process.cwd(), args.out)) : join(dirname(file), `${basename(file, extname(file))}.agentic-id.csv`);
+  // "Put it back in the same file": the result is written beside the input first; only when the run
+  // has finished is the original saved as <name>.original.csv and the result moved into its place.
+  const replace = args.replace_original === true && !args.dry_run;
+  if (replace && args.out) throw new LocalRefusal('request.invalid', 'Give either out or replace_original, not both.', 'Leave out empty with replace_original.');
+  const stem = join(dirname(file), basename(file, extname(file)));
+  const out = replace ? `${stem}.agentic-id.tmp.csv` : args.out ? (isAbsolute(args.out) ? args.out : resolve(process.cwd(), args.out)) : `${stem}.agentic-id.csv`;
   if (sameFile(out, file)) throw new LocalRefusal('request.invalid', 'The result file must not be the input file, or a link to it.', 'Leave "out" empty to write next to the input.');
   if (extname(out).toLowerCase() !== '.csv') throw new LocalRefusal('request.invalid', 'The result file must end in .csv.', 'Leave "out" empty to write next to the input.');
 
@@ -51,6 +56,24 @@ export async function list(client, args = {}) {
     e.local = code === 1 || code === 3;
     if (needsCap) e.fix = 'Run it once with dry_run: true to get the estimate, show the user the arithmetic, then call again with max_credits.';
     throw e;
+  }
+  if (replace) {
+    if (code !== 0) {
+      // A run that stopped part way never replaces the original: the partial result stays beside it.
+      const partial = `${stem}.agentic-id.csv`;
+      renameSync(out, partial);
+      return { summary: `${done?.summary ?? text} The run did not finish, so the original was left as it is; what was done is in ${partial}.`, cost: done?.cost ?? { quoted_credits: 0, charged_credits: 0 }, rows: done?.rows, out_file: partial, original_kept: file, partial: true };
+    }
+    let backup = `${stem}.original.csv`;
+    for (let n = 2; existsSync(backup); n += 1) backup = `${stem}.original-${n}.csv`;
+    copyFileSync(file, backup);
+    try {
+      renameSync(out, file);
+    } catch (e) {
+      try { unlinkSync(backup); } catch { /* leave it */ }
+      throw e;
+    }
+    return { summary: `${done?.summary ?? text} The result is now in ${file}; the original was saved as ${backup}.`, cost: done?.cost ?? { quoted_credits: 0, charged_credits: 0 }, rows: done?.rows, out_file: file, original_saved_as: backup, added_columns: done?.added_columns };
   }
   return {
     summary: `${done?.summary ?? text} Result written to ${out}.`,

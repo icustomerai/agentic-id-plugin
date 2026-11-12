@@ -286,7 +286,7 @@ test('workspace: one answer with credits, spend and how it shares', async () => 
   });
   const w = await ops.workspace(c, {});
   assert.equal(c.calls.find((x) => x.verb === 'credits').body, 10, 'asks for the last 10 by default');
-  assert.match(w.summary, /85 credits available \(5 held by running calls\)\. Spent 4 today, 10 in 30 days \(enrich 8, resolve 2\)\. 1 ID held\. Private/);
+  assert.match(w.summary, /85 credits available \(5 held by running calls\)\. Spent 4 today \(the UTC day, now \d{4}-\d\d-\d\d\), 10 in 30 days \(enrich 8, resolve 2\)\. 1 ID held\. Private/);
   assert.equal(w.contact_values, 'masked');
   assert.deepEqual(w.delivered, []);
   await assert.rejects(() => ops.workspace(c, { recent: 500 }), /recent/);
@@ -486,6 +486,47 @@ test('cli files: two email columns are both read, and skipped rows say why', asy
   assert.match(rows[2].resolve_note, /not enough to identify/);
   assert.ok(rows[3].resolve_note.length > 0, 'a skipped row always says why');
   assert.doesNotMatch(rows[2].resolve_note, /gmail|cy@/, 'the note never repeats the held-back value');
+});
+
+test('prompt hint: company, people, list and credit questions get the reminder; other work does not', async () => {
+  const { hintFor } = await import('../plugins/agentic-id/hooks/prompt-hint.mjs');
+  for (const p of ['How many fintech companies are there in Germany?', 'Identify notion.so for me.', 'What did I spend today, and on which companies?', 'find 50 leads like these', 'is jane@acme.io a real email? check it', 'sign me in']) assert.match(hintFor(p), /agentic_id/, p);
+  for (const p of ['write me a haiku about spreadsheets', 'fix the failing unit test in src/app.ts', 'refactor this function', 'what is identity resolution?']) assert.equal(hintFor(p), null, p);
+  assert.match(hintFor('what did I spend'), /agentic_id_workspace .*never the local log/);
+  assert.equal(hintFor(undefined), null);
+});
+
+test('list tool: replace_original saves the original first, and never replaces it after a partial run', async () => {
+  const { mkdtempSync, readFileSync, writeFileSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'aid-replace-'));
+  const file = join(dir, 'leads.csv');
+  const original = 'email\na@alpha-synthetic.com\nb@beta-synthetic.com\nc@gamma-synthetic.com\n';
+  writeFileSync(file, original);
+  const c = fake({ resolve: () => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: `ic-id${Math.random().toString(36).slice(2, 8)}0`, outcome: 'new' }) });
+  const partial = await list(c, { action: 'resolve', file, max_credits: 2, replace_original: true });
+  assert.equal(readFileSync(file, 'utf8'), original, 'a run stopped by its cap leaves the original alone');
+  assert.equal(partial.partial, true);
+  assert.ok(existsSync(join(dir, 'leads.agentic-id.csv')));
+  const done = await list(c, { action: 'resolve', file, max_credits: 5, replace_original: true });
+  assert.equal(done.original_saved_as, join(dir, 'leads.original.csv'));
+  assert.equal(readFileSync(done.original_saved_as, 'utf8'), original, 'the original is saved byte for byte');
+  assert.match(readFileSync(file, 'utf8'), /agentic_id/, 'and the result is now in the file');
+  await assert.rejects(() => list(c, { action: 'resolve', file, out: join(dir, 'x.csv'), replace_original: true, max_credits: 5 }), /either out or replace_original/);
+});
+
+test('cli files: a refused key stops the run with exit 2 and writes nothing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aid-401-'));
+  const file = join(dir, 'in.csv');
+  writeFileSync(file, 'email\na@alpha-synthetic.com\nb@beta-synthetic.com\n');
+  const out = join(dir, 'out.csv');
+  const denied = fake({ resolve: () => { throw new AgenticIdError(401, 'auth.invalid_key', 'refused'); } });
+  const r = await cli(['resolve', '--file', file, '--max-credits', '5', '--out', out], denied);
+  assert.equal(r.code, 2);
+  const { existsSync } = await import('node:fs');
+  assert.equal(existsSync(out), false);
 });
 
 // ------------------------------------------------------------------ the HTTP client
