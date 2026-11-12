@@ -25,6 +25,8 @@ export const HELP = `agentic-id <command> [flags]      Agentic ID from a termina
   facts    <id>          every fact's level and the evidence behind it (free)
   ledger   <id>          the ID's history, hash chain re-checked (free)
   estimate <command> [the same flags]     the most it could cost, without calling (free)
+  workspace [n]          credits available, what was spent, the last n charges, how this workspace shares (free)
+  report   <id> --outcome bounced|replied|wrong_person|confirmed [--field work_email]   what happened to a value (free)
   login                  sign in with your iCustomer account in the browser (no API key needed)
   logout                 end that sign-in on this machine and on the server
   doctor                 signed in or key set, is the server reachable, what can this caller read
@@ -34,6 +36,7 @@ Lists (CSV in, CSV out; repeats are paid once; personal emails never leave this 
   validate --file leads.csv [--column email]            adds email_verdict, email_reason
   resolve  --file leads.csv                             adds agentic_id, resolve_outcome, same_id_as_row
   enrich   --file leads.csv [--fields title,work_email] adds one column per field plus its level
+  report   --file outcomes.csv                          columns agentic_id, outcome and optionally field; adds report_status
   ... --out result.csv    write there instead of stdout       --limit-rows N    only the first N rows
 
 Everywhere:
@@ -51,6 +54,7 @@ const OPTIONS = {
   industry: { type: 'string', multiple: true }, country: { type: 'string', multiple: true }, min: { type: 'string' }, max: { type: 'string' },
   tech: { type: 'string', multiple: true }, keyword: { type: 'string', multiple: true }, title: { type: 'string', multiple: true },
   'per-account': { type: 'string' }, 'max-accounts': { type: 'string' }, 'max-credits': { type: 'string' }, purpose: { type: 'string' }, kind: { type: 'string' },
+  outcome: { type: 'string' }, field: { type: 'string' },
   file: { type: 'string', short: 'f' }, out: { type: 'string', short: 'o' }, column: { type: 'string' }, 'limit-rows': { type: 'string' },
   'email-column': { type: 'string' }, 'linkedin-column': { type: 'string' }, 'name-column': { type: 'string' }, 'company-column': { type: 'string' }, 'domain-column': { type: 'string' },
 };
@@ -340,6 +344,51 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       const s = await ops.status(real);
       io.out(f.json ? JSON.stringify(s, null, 2) : `${s.summary}${s.ok ? `\n  contact values: ${s.contact_values}` : `\n  fix: ${s.fix ?? 'run agentic-id doctor'}`}`);
       return s.ok ? 0 : s.key_configured ? 5 : 2;
+    }
+    if (cmd === 'credits') cmd = 'workspace';
+    if (cmd === 'workspace') {
+      const w = await ops.workspace(real, { recent: args[0] === undefined ? undefined : Number(args[0]) });
+      if (f.json) io.out(JSON.stringify(w, null, 2));
+      else {
+        io.out(w.summary);
+        for (const t of w.spent.by_tool) io.out(`  ${t.tool.padEnd(10)} ${String(t.credits).padStart(6)} credits in ${t.calls} call${t.calls === 1 ? '' : 's'} (30 days)`);
+        for (const l of w.recent) io.out(`  ${l.at.slice(0, 16).replace('T', ' ')}  ${l.kind === 'grant' ? '+' : '-'}${l.credits}  ${l.tool ?? l.note ?? l.kind}`);
+      }
+      return 0;
+    }
+    if (cmd === 'report') {
+      let reports;
+      let sheet;
+      if (f.file) {
+        sheet = parseCsv(readFileSync(f.file, 'utf8'));
+        const col = (names) => sheet.header.find((h) => names.includes(h.trim().toLowerCase().replace(/[\s-]+/g, '_')));
+        const idCol = col(['agentic_id', 'id', 'ic_id']);
+        const outCol = col(['outcome', 'result', 'status']);
+        const fieldCol = col(['field', 'value', 'attribute']);
+        if (!idCol || !outCol) throw new Usage(`${f.file} needs an agentic_id column and an outcome column. Columns: ${sheet.header.join(', ')}.`);
+        reports = sheet.rows.map((r) => ({ id: r[idCol], outcome: r[outCol], ...(fieldCol && r[fieldCol] ? { field: r[fieldCol] } : f.field ? { field: f.field } : {}), row: r })).filter((r) => r.id && r.outcome);
+        if (!reports.length) throw new Usage(`No row in ${f.file} has both an Agentic ID and an outcome.`);
+        if (f['dry-run']) return io.err(`Dry run: ${reports.length} outcome(s) would be reported. Nothing sent, nothing is charged for reports.`), 0;
+      } else {
+        if (!args[0] || !f.outcome) throw new Usage('report needs an ID and an outcome: agentic-id report ic-... --outcome bounced [--field work_email]');
+        reports = [{ id: args[0], outcome: f.outcome, ...(f.field ? { field: f.field } : {}) }];
+      }
+      const out = [];
+      for (let i = 0; i < reports.length; i += 200) out.push(await ops.report(real, { reports: reports.slice(i, i + 200).map(({ id, outcome, field }) => ({ id, outcome, ...(field ? { field } : {}) })) }));
+      const results = out.flatMap((o) => o.results);
+      const recorded = results.filter((r) => r.recorded).length;
+      if (sheet) {
+        const by = new Map(results.map((r) => [`${r.id}\n${r.field}`, r]));
+        for (const r of reports) {
+          const hit = by.get(`${String(r.id).trim()}\n${(r.field ?? 'work_email').toLowerCase()}`) ?? results.find((x) => x.id === String(r.id).trim());
+          r.row.report_status = hit ? (hit.recorded ? 'recorded' : hit.error ?? 'not_recorded') : 'not_sent';
+        }
+        const csv = toCsv([...sheet.header.filter((h) => h !== 'report_status'), 'report_status'], sheet.rows, sheet.delimiter);
+        if (f.out) writeFileSync(f.out, csv);
+        else io.out(csv.trimEnd());
+        io.err(`${recorded} of ${reports.length} outcome(s) recorded. Nothing charged.${f.out ? ` Wrote ${f.out}.` : ''}`);
+      } else io.out(f.json ? JSON.stringify(out[0], null, 2) : `${out[0].summary}${results[0]?.note ? `\n  ${results[0].note}` : ''}`);
+      return recorded === reports.length ? 0 : 4;
     }
     if (!OPS[cmd]) throw new Usage(`Unknown command "${cmd}". Run agentic-id --help.`);
     if (f.file) return await runFile(cmd, real, f, io);

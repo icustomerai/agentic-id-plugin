@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const EVALS = process.argv[2] ?? join(ROOT, 'plugins/agentic-id/evals');
-const TOOLS = ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'estimate', 'status'].map((v) => `agentic_id_${v}`);
+const TOOLS = ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'workspace', 'report', 'estimate', 'status'].map((v) => `agentic_id_${v}`);
 const GRADERS = {
   tool_used: ['tool'],
   tool_order: ['before', 'after'],

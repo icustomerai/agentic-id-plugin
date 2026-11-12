@@ -183,6 +183,38 @@ export const TOOLS = [
     run: ops.ledger,
   },
   {
+    name: 'agentic_id_workspace',
+    title: 'Show the workspace and its credits',
+    description:
+      'The workspace this caller acts as: credits available and held, what was spent today and in the last 30 days by tool, the latest grants and charges, how many IDs it holds, and whether it contributes (identifiers it sends help everyone resolve) or is private. Use it for "how many credits do I have", "what did that cost", "why was I charged", and before any large job. Free.',
+    inputSchema: { type: 'object', properties: { recent: { type: 'integer', minimum: 0, maximum: 200, description: 'How many of the latest grants and charges to list. Default 10.' } }, additionalProperties: false },
+    annotations: free,
+    run: ops.workspace,
+  },
+  {
+    name: 'agentic_id_report',
+    title: 'Report what happened to a value',
+    description:
+      'Tell Agentic ID the outcome after a value was used: bounced (the email bounced), replied (the person answered), wrong_person (it reached someone else), confirmed (your CRM confirms it). Only for IDs this workspace holds. A bounced or wrong-person value is no longer served to this workspace and counts against the source that supplied it; a reply or confirmation is proof for this workspace. Nothing reported is shown to another workspace. One report, or up to 200 in "reports". Free.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: str('The Agentic ID (ic-...) the value belongs to.'),
+        field: { type: 'string', enum: ['work_email', 'title', 'company_domain'], description: 'Which value was used. Default work_email.' },
+        outcome: { type: 'string', enum: ['bounced', 'replied', 'wrong_person', 'confirmed'] },
+        reports: {
+          type: 'array',
+          maxItems: 200,
+          description: 'Several reports in one call, in place of id / field / outcome.',
+          items: { type: 'object', properties: { id: str('Agentic ID.'), field: { type: 'string', enum: ['work_email', 'title', 'company_domain'] }, outcome: { type: 'string', enum: ['bounced', 'replied', 'wrong_person', 'confirmed'] } }, required: ['id', 'outcome'], additionalProperties: false },
+        },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    run: ops.report,
+  },
+  {
     name: 'agentic_id_estimate',
     title: 'Estimate a call before making it',
     description: 'What a planned call could cost at most, worked out on this machine without contacting Agentic ID. Give the tool name and the arguments you would send. Use it to show the user the arithmetic before any call over 10 credits. Free.',

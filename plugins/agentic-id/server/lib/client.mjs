@@ -20,6 +20,7 @@ const FIXES = {
   'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap.',
   'credits.cap_too_low': 'max_credits is below the cheapest result. Ask the user before raising it.',
   rate_limited: 'Too many requests for this key. Wait for retry_after_seconds, then send the same call once.',
+  'feedback.not_held': 'Outcomes can only be reported for IDs this workspace holds. Resolve or enrich the person first, then report.',
   'request.invalid': 'Fix the fields listed in "issues" and call again. Nothing was charged.',
   'find.persona_unreadable': 'Give at least one job title in roles, or a seniority (e.g. "director+").',
   'lookalike.no_profile': 'The seeds share nothing we could read. Use company domains that resolve, ideally 3 or more of a similar kind.',
@@ -206,6 +207,18 @@ export class AgenticId {
   /** Every fact's level and the evidence behind it. Free. */
   facts(id) {
     return this.call('GET', `/v1/facts/${encodeURIComponent(id)}`);
+  }
+  /** The workspace: wallet, contribution setting, IDs held. Free. */
+  workspace() {
+    return this.call('GET', '/v1/workspace');
+  }
+  /** Balance, spend by tool, and the latest grants and charges. Free. */
+  credits(limit = 20) {
+    return this.call('GET', `/v1/credits?limit=${encodeURIComponent(limit)}`);
+  }
+  /** What happened after a value was used: bounced, replied, wrong_person, confirmed. Free. */
+  feedback(body) {
+    return this.call('POST', '/v1/feedback', body);
   }
   /** Which workspace and scopes this key has. Free. */
   me() {

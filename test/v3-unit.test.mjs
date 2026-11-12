@@ -24,7 +24,7 @@ function fake(replies = {}) {
     const r = replies[name];
     return typeof r === 'function' ? r(body, calls.filter((c) => c.verb === name).length) : r ?? { request_id: `req_${calls.length}`, summary: `${name} ok`, cost: { quoted_credits: 0, charged_credits: 0 }, results: [] };
   };
-  return { calls, apiKey: 'k', baseUrl: 'http://fake', validate: verb('validate'), resolve: verb('resolve'), enrich: verb('enrich'), find: verb('find'), discover: verb('discover'), lookalike: verb('lookalike'), facts: verb('facts'), ledger: verb('ledger'), me: verb('me') };
+  return { calls, apiKey: 'k', baseUrl: 'http://fake', validate: verb('validate'), resolve: verb('resolve'), enrich: verb('enrich'), find: verb('find'), discover: verb('discover'), lookalike: verb('lookalike'), facts: verb('facts'), ledger: verb('ledger'), me: verb('me'), workspace: verb('workspace'), credits: verb('credits'), feedback: verb('feedback') };
 }
 const refused = async (fn) => {
   try {
@@ -276,6 +276,35 @@ test('status never throws: no key, a bad key and an outage each say what to do',
   assert.equal(bad.error, 'auth.invalid_key');
   const ok = await ops.status({ baseUrl: 'http://x', apiKey: 'k', me: async () => ({ workspace_id: 'ws_1', scopes: ['pii:read'], key_prefix: 'ic-dev-abc' }) });
   assert.equal(ok.contact_values, 'readable');
+});
+
+test('workspace: one answer with credits, spend and how it shares', async () => {
+  const c = fake({
+    workspace: { workspace_id: 'ws_1', signed_in_as: 'account', scopes: [], credits: { balance: 90, held: 5, available: 85 }, contributes: false, allowed_purposes: ['b2b_outbound'], region: 'us', ids_held: 1 },
+    credits: { workspace_id: 'ws_1', credits: { balance: 90, held: 5, available: 85 }, spent: { today: 4, last_30_days: 10, by_tool: [{ tool: 'enrich', credits: 8, calls: 4 }, { tool: 'resolve', credits: 2, calls: 2 }] }, recent: [] },
+  });
+  const w = await ops.workspace(c, {});
+  assert.equal(c.calls.find((x) => x.verb === 'credits').body, 10, 'asks for the last 10 by default');
+  assert.match(w.summary, /85 credits available \(5 held by running calls\)\. Spent 4 today, 10 in 30 days \(enrich 8, resolve 2\)\. 1 ID held\. Private/);
+  assert.equal(w.contact_values, 'masked');
+  await assert.rejects(() => ops.workspace(c, { recent: 500 }), /recent/);
+});
+
+test('report: aliases are read, repeats sent once, a bad row is marked and the rest still go, phones are refused', async () => {
+  const c = fake({ feedback: (b) => { if (b.id === 'ic-nothld0') throw new AgenticIdError(404, 'feedback.not_held', 'not held'); return { recorded: true, summary: 'ok' }; } });
+  const one = await ops.report(c, { id: ' ic-abc1234 ', outcome: 'Bounce' });
+  assert.deepEqual(c.calls[0].body, { id: 'ic-abc1234', field: 'work_email', outcome: 'bounced' });
+  assert.match(one.summary, /1 of 1 outcome recorded \(1 bounced\)\. Nothing charged/);
+  await assert.rejects(() => ops.report(c, { id: 'ic-abc1234', outcome: 'exploded' }), /outcome must be one of/);
+  await assert.rejects(() => ops.report(c, { id: 'ic-abc1234', outcome: 'bounced', field: 'mobile_phone' }), (e) => e.code === 'personal_data');
+  await assert.rejects(() => ops.report(c, {}), /Nothing to report/);
+  const many = await ops.report(c, { reports: [{ id: 'ic-abc1234', outcome: 'replied' }, { id: 'ic-abc1234', outcome: 'confirmed' }, { id: 'ic-nothld0', outcome: 'bounced' }, { id: 'nope', outcome: 'bounced' }, { id: 'ic-zzz9999', outcome: 'meh' }] });
+  assert.equal(many.recorded, 1);
+  assert.deepEqual(many.results.map((r) => [r.id, r.recorded, r.error]), [['nope', false, 'not_an_agentic_id'], ['ic-zzz9999', false, 'request.invalid'], ['ic-abc1234', true, undefined], ['ic-nothld0', false, 'feedback.not_held']]);
+  assert.match(many.summary, /1 of 5 outcomes recorded \(1 confirmed\)/);
+  assert.match(many.input_notes[0], /repeated report/);
+  const down = fake({ feedback: () => { throw new AgenticIdError(503, 'service.unavailable', 'down'); } });
+  await assert.rejects(() => ops.report(down, { reports: [{ id: 'ic-abc1234', outcome: 'replied' }, { id: 'ic-abc1235', outcome: 'replied' }] }), (e) => e.status === 503);
 });
 
 // ------------------------------------------------------------------ the HTTP client
@@ -552,7 +581,7 @@ test('budget hook: off by default, lets free calls through, blocks paid calls pa
   assert.equal(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 20), null);
   assert.match(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 100), /budget of 100 credits is spent/);
   assert.match(decide({ tool_name: t('enrich'), tool_input: { max_credits: 30 } }, 100, 80), /Lower max_credits to 20/);
-  for (const free of ['facts', 'ledger', 'estimate', 'status']) assert.equal(decide({ tool_name: t(free), tool_input: {} }, 100, 500), null, free);
+  for (const free of ['facts', 'ledger', 'estimate', 'status', 'workspace', 'report']) assert.equal(decide({ tool_name: t(free), tool_input: {} }, 100, 500), null, free);
   assert.equal(decide({ tool_name: t('discover'), tool_input: { count_only: true } }, 100, 500), null);
   assert.match(decide({ tool_name: t('discover'), tool_input: {} }, 100, 500), /spent/);
   assert.equal(decide({ tool_name: 'mcp__github__create_issue', tool_input: {} }, 100, 500), null, 'other servers are never touched');

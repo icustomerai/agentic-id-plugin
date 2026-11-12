@@ -302,6 +302,93 @@ export async function status(client) {
   }
 }
 
+const credit = (n) => `${n} credit${n === 1 ? '' : 's'}`;
+
+/** Who this workspace is and what it can spend, with the latest charges when asked. Free. */
+export async function workspace(client, args = {}) {
+  const recent = args.recent === undefined ? 10 : Number(args.recent);
+  if (!Number.isInteger(recent) || recent < 0 || recent > 200) throw new LocalRefusal('request.invalid', 'recent must be a whole number from 0 to 200.', 'Leave it out for the last 10 movements.');
+  const [w, c] = await Promise.all([client.workspace(), client.credits(recent)]);
+  const top = c.spent.by_tool.slice(0, 3).map((t) => `${t.tool} ${t.credits}`).join(', ');
+  return {
+    workspace_id: w.workspace_id,
+    signed_in_as: w.signed_in_as,
+    credits: w.credits,
+    spent: c.spent,
+    recent: c.recent,
+    contributes: w.contributes,
+    allowed_purposes: w.allowed_purposes,
+    region: w.region,
+    ids_held: w.ids_held,
+    contact_values: w.scopes?.includes('pii:read') ? 'readable' : 'masked',
+    summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today, ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
+  };
+}
+
+const OUTCOMES = ['bounced', 'replied', 'wrong_person', 'confirmed'];
+const REPORT_FIELDS = ['work_email', 'title', 'company_domain'];
+const OUTCOME_ALIASES = { bounce: 'bounced', hard_bounce: 'bounced', reply: 'replied', responded: 'replied', wrong: 'wrong_person', 'wrong person': 'wrong_person', not_them: 'wrong_person', confirm: 'confirmed', crm_confirmed: 'confirmed', correct: 'confirmed' };
+
+function cleanReport(r, where = '') {
+  const outcome = OUTCOME_ALIASES[String(r?.outcome ?? '').trim().toLowerCase()] ?? String(r?.outcome ?? '').trim().toLowerCase();
+  const field = FIELD_ALIASES?.[String(r?.field ?? 'work_email').trim().toLowerCase()] ?? String(r?.field ?? 'work_email').trim().toLowerCase();
+  if (!OUTCOMES.includes(outcome)) throw new LocalRefusal('request.invalid', `${where}outcome must be one of ${OUTCOMES.join(', ')}.`, 'bounced: the email bounced. replied: they answered. wrong_person: it reached someone else. confirmed: your CRM confirms the value.');
+  if (!REPORT_FIELDS.includes(field)) throw new LocalRefusal(/phone|personal/.test(field) ? 'personal_data' : 'request.invalid', `${where}field must be one of ${REPORT_FIELDS.join(', ')}.`, 'Report on the work email, the title or the company domain. Phone numbers and personal emails are not handled here.');
+  return { id: needId(r?.id), field, outcome };
+}
+
+/**
+ * Tell Agentic ID what happened after a value was used. One report (id, field, outcome) or up to
+ * 200 in `reports`. Free. A bounced or wrong-person value is no longer served to this workspace;
+ * nothing reported here is shown to another workspace.
+ */
+export async function report(client, args = {}) {
+  const list = Array.isArray(args.reports) ? args.reports : args.id !== undefined ? [args] : [];
+  if (!list.length) throw new LocalRefusal('request.invalid', 'Nothing to report.', 'Give id, field and outcome, or a "reports" list of them.');
+  if (list.length > 200) throw new LocalRefusal('request.invalid', `${list.length} reports in one call.`, 'Send at most 200 at a time.');
+  // One report: a mistake is refused outright. A list: a bad row is marked and the rest still go.
+  const bad = [];
+  const cleaned = [];
+  list.forEach((r, i) => {
+    try {
+      cleaned.push(cleanReport(r, list.length > 1 ? `Report ${i + 1}: ` : ''));
+    } catch (e) {
+      if (list.length === 1 || !(e instanceof LocalRefusal)) throw e;
+      bad.push({ id: String(r?.id ?? '').slice(0, 40), field: r?.field, outcome: r?.outcome, recorded: false, error: e.code, note: e.detail ?? e.message });
+    }
+  });
+  if (!cleaned.length) throw new LocalRefusal('request.invalid', `None of the ${list.length} reports could be read.`, bad[0]?.note ?? 'Each needs an Agentic ID (ic-...) and an outcome.');
+  // The same (id, field) twice: the last word wins, sent once.
+  const unique = [...new Map(cleaned.map((r) => [`${r.id}\n${r.field}`, r])).values()];
+  const results = [...bad];
+  let stopped;
+  for (const r of unique) {
+    try {
+      const out = await client.feedback(r);
+      results.push({ ...r, recorded: out.recorded !== false, note: out.summary });
+    } catch (e) {
+      if (!(e instanceof AgenticIdError)) throw e;
+      // One bad row does not sink the rest; an auth problem or an outage does.
+      if (e.status === 401 || e.status === 403 || e.status === 0 || e.status >= 500) {
+        if (results.length === bad.length) throw e;
+        stopped = e.toJSON();
+        break;
+      }
+      results.push({ ...r, recorded: false, error: e.code ?? `http_${e.status}`, note: e.detail });
+    }
+  }
+  const ok = results.filter((r) => r.recorded).length;
+  const counts = Object.fromEntries(OUTCOMES.map((o) => [o, results.filter((r) => r.recorded && r.outcome === o).length]).filter(([, n]) => n));
+  return {
+    summary: `${ok} of ${list.length} outcome${list.length === 1 ? '' : 's'} recorded${Object.keys(counts).length ? ` (${Object.entries(counts).map(([o, n]) => `${n} ${o}`).join(', ')})` : ''}. Nothing charged.${stopped ? ` Stopped early: ${stopped.message}` : ''}`,
+    cost: { quoted_credits: 0, charged_credits: 0 },
+    recorded: ok,
+    results,
+    ...(cleaned.length !== unique.length ? { input_notes: [`${cleaned.length - unique.length} repeated report(s) for the same ID and field were sent once.`] } : {}),
+    ...(stopped ? { stopped, not_sent: unique.length - (results.length - bad.length) } : {}),
+  };
+}
+
 export function estimateCall(_client, args = {}) {
   const tool = String(args.tool ?? '').replace(/^agentic_id_/, '');
   const est = estimate(tool, args.arguments ?? {});

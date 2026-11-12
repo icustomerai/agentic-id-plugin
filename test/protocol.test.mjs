@@ -90,7 +90,7 @@ try {
   child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
 
   const tools = (await rpc('tools/list')).result.tools.map((t) => t.name);
-  const expected = ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'estimate', 'status'].map((v) => `agentic_id_${v}`);
+  const expected = ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'workspace', 'report', 'estimate', 'status'].map((v) => `agentic_id_${v}`);
   check(expected.every((t) => tools.includes(t)) && tools.length === expected.length, `tools/list returns the ${expected.length} tools`, tools.join(', '));
 
   const status = await call('agentic_id_status', {});

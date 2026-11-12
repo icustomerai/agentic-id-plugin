@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { configDir, parseToolName } from './log-usage.mjs';
 
-const FREE = new Set(['facts', 'ledger', 'estimate', 'status']);
+const FREE = new Set(['facts', 'ledger', 'estimate', 'status', 'workspace', 'report']);
 
 export function budgetFrom(env = process.env) {
   const raw = env.AGENTIC_ID_SESSION_BUDGET ?? env.CLAUDE_PLUGIN_OPTION_SESSION_BUDGET ?? env.CLAUDE_PLUGIN_OPTION_session_budget;
