@@ -17,7 +17,10 @@ Before any paid call, settle in one short message:
   ("3 accounts x 5 people x 2 = up to 30 credits").
 
 If the user already gave all three, do not ask again. If the budget is smaller than the plan,
-shrink the plan (fewer people per account, or fewer accounts) and say what you cut.
+shrink the plan (fewer people per account, or fewer accounts) so the `max_credits` of all calls
+add up to the budget or less. Say so before the first paid call, in one line with the arithmetic
+and what you cut ("4 accounts x 5 people x 2 = 40, over your 12: I'll take up to 2 people at two
+accounts and 1 at the other two"). Do not shrink silently.
 
 ## 1. Start from what the user has
 

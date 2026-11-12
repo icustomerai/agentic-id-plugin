@@ -75,8 +75,10 @@ for (const d of mockDirs) {
   for (const f of readdirSync(d).filter((n) => n.endsWith('.md'))) {
     const file = join(d, f);
     if (!TOOLS.includes(f.replace(/\.md$/, ''))) fail(file, 'mock for a tool the server does not expose');
-    const { body } = frontmatter(file);
-    try { JSON.parse(body); } catch (e) { fail(file, `mock body is not JSON: ${e.message}`); }
+    const { fields, body } = frontmatter(file);
+    // type: agent mocks hold instructions for the judge model that plays the server, not a JSON answer.
+    if (fields.type === 'agent') { if (body.length < 40) fail(file, 'agent mock needs instructions'); }
+    else try { JSON.parse(body); } catch (e) { fail(file, `mock body is not JSON: ${e.message}`); }
     for (const [, domain] of body.matchAll(/[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/g)) {
       if (!domain.endsWith('-synthetic.com')) fail(file, `mock email on a real-looking domain (${domain}); use a -synthetic.com domain`);
     }
