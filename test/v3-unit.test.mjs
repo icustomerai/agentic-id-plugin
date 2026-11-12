@@ -298,6 +298,49 @@ async function withApi(handler, run) {
 }
 const json = (res, status, body, headers = {}) => res.writeHead(status, { 'content-type': status >= 400 ? 'application/problem+json' : 'application/json', ...headers }).end(JSON.stringify(body));
 
+test('client: a paid call carries one idempotency key across its retries; a GET carries none', async () => {
+  await withApi(
+    (req, res, n) => {
+      if (req.url === '/v1/me') return json(res, 200, { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' });
+      if (n === 1) return json(res, 503, { code: 'service.unavailable', detail: 'recovering', sent: false, retryAfterSeconds: 0.2 }, { 'retry-after': '0' });
+      if (n === 2) return json(res, 409, { code: 'idempotency.in_progress', detail: 'still running', retryAfterSeconds: 0.2 }, { 'retry-after': '0' });
+      return json(res, 200, { request_id: 'r', id: 'ic-abc123', outcome: 'known', cost: { quoted_credits: 1, charged_credits: 1 } });
+    },
+    async (baseUrl, seen) => {
+      const c = new AgenticId({ apiKey: 'k', baseUrl });
+      const r = await c.resolve({ identifiers: { company_domain: 'acme.io' } });
+      assert.equal(r.id, 'ic-abc123');
+      const keys = seen.map((x) => x.headers['idempotency-key']);
+      assert.equal(keys.length, 3);
+      assert.match(keys[0], /^[0-9a-f-]{36}$/);
+      assert.ok(keys.every((k) => k === keys[0]), 'every retry of one call uses the same key');
+      await c.resolve({ identifiers: { company_domain: 'acme.io' } });
+      assert.notEqual(seen[3].headers['idempotency-key'], keys[0], 'a new call gets a new key');
+      await c.me();
+      assert.equal(seen[4].headers['idempotency-key'], undefined);
+    },
+  );
+});
+
+test('client: a fault that may have charged is not retried, and the error carries the request ID', async () => {
+  await withApi(
+    (req, res) => json(res, 503, { code: 'service.unavailable', detail: 'down', request_id: 'req_abc' }),
+    async (baseUrl, seen) => {
+      const e = await refused(() => new AgenticId({ apiKey: 'k', baseUrl }).enrich({ contact: { email: 'a@acme.io' }, max_credits: 2 }));
+      assert.equal(seen.length, 1, 'a 503 without sent: false is reported, not replayed');
+      assert.equal(e.toJSON().request_id, 'req_abc');
+    },
+  );
+  await withApi(
+    (req, res, n) => (n === 1 ? json(res, 504, { code: 'service.timeout', detail: 'slow', ambiguous: true }, { 'retry-after': '0' }) : json(res, 200, { request_id: 'r', results: [] })),
+    async (baseUrl, seen) => {
+      await new AgenticId({ apiKey: 'k', baseUrl }).enrich({ contact: { email: 'a@acme.io' }, max_credits: 2 });
+      assert.equal(seen.length, 2, 'a timeout inside the API is asked again once, with the same key');
+      assert.equal(seen[0].headers['idempotency-key'], seen[1].headers['idempotency-key']);
+    },
+  );
+});
+
 test('client: Bearer key, problem details become a refusal with a fix', async () => {
   await withApi(
     (req, res) => (req.url === '/v1/me' ? json(res, 200, { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' }) : json(res, 402, { code: 'credits.insufficient', detail: 'Not enough credits.', available: 3 })),

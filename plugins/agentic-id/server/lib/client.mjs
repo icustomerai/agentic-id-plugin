@@ -5,6 +5,7 @@
 //
 // Failures throw AgenticIdError with the problem details the API sent (status, code, detail) and a
 // plain "fix" line that says what to do next.
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { accessToken, AuthError, hasSession } from './auth.mjs';
 
@@ -26,7 +27,11 @@ const FIXES = {
   'purpose.mismatch': 'The data was collected for a different purpose and cannot be reused for this one.',
   'pii.scope_required': 'This key cannot read contact values; they come back masked. Ask the workspace owner for a key with pii:read.',
   'identity.merge_blocked': 'These two records disagree on a strong identifier, so they were not merged. Review them; do not force it.',
-  'service.unavailable': 'Agentic ID is up but its service behind the API is not. Try again in a minute; nothing was charged.',
+  'service.unavailable': 'Agentic ID is not taking requests right now. Wait for retry_after_seconds and try again; nothing was charged.',
+  'service.timeout': 'The call may have completed. Check the usage log or the result before sending it again.',
+  'service.error': 'Agentic ID hit a fault. Try once more; if it repeats, report the request_id.',
+  'idempotency.in_progress': 'The same request is still running. Wait, then ask again; it is not charged twice.',
+  'idempotency.key_reused': 'Internal: a retry key was reused for a different request. Send the call again.',
   unreachable: 'The Agentic ID API did not answer. Check the server URL in the plugin options and run `agentic-id doctor`.',
   timeout: 'The call took too long. Discover and lookalike can take minutes: narrow the filters or lower max_accounts, then retry once.',
 };
@@ -44,7 +49,7 @@ export class AgenticIdError extends Error {
 
   /** The shape tools and the CLI print: { error, message, fix, ... }. Never includes the request body. */
   toJSON() {
-    const { issues, rejected, retryAfterSeconds, available } = this.problem;
+    const { issues, rejected, retryAfterSeconds, available, request_id: requestId } = this.problem;
     return {
       error: this.code ?? `http_${this.status}`,
       status: this.status,
@@ -54,6 +59,7 @@ export class AgenticIdError extends Error {
       ...(Array.isArray(rejected) && rejected.length ? { rejected } : {}),
       ...(typeof retryAfterSeconds === 'number' ? { retry_after_seconds: retryAfterSeconds } : {}),
       ...(typeof available === 'number' ? { available_credits: available } : {}),
+      ...(typeof requestId === 'string' ? { request_id: requestId } : {}),
     };
   }
 }
@@ -114,8 +120,11 @@ export class AgenticId {
     let bearer = await this.credential();
     if (!bearer) throw new AgenticIdError(401, 'auth.missing_key', 'Not signed in and no Agentic ID API key is configured.');
     let renewed = false;
-    // A paid POST is never replayed blindly: only a 429 (refused before any work) is retried, once,
-    // and a network failure on a GET. A timeout on a POST may have charged, so it is reported.
+    // One key for this call and every retry of it: the API runs a keyed request at most once and
+    // answers a repeat from the first result, so a timeout or a dropped connection can be retried
+    // without paying twice.
+    const idempotencyKey = method === 'POST' ? randomUUID() : undefined;
+    const started = Date.now();
     for (let attempt = 0; ; attempt += 1) {
       let res;
       try {
@@ -126,6 +135,7 @@ export class AgenticId {
             accept: 'application/json',
             'user-agent': this.client,
             'x-agentic-id-client': this.client,
+            ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
             ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
           },
           ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -133,7 +143,9 @@ export class AgenticId {
         });
       } catch (e) {
         const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
-        if (!timedOut && method === 'GET' && attempt === 0) {
+        // A dropped connection is retried once (the key makes that safe for a paid call too).
+        // Our own timeout is not: the call ran for minutes and the caller should decide.
+        if (!timedOut && attempt === 0) {
           await sleep(300);
           continue;
         }
@@ -147,12 +159,17 @@ export class AgenticId {
         bearer = await this.credential(true);
         if (bearer) continue;
       }
-      if (res.status === 429 && attempt === 0) {
-        const wait = Number(res.headers.get('retry-after') ?? json.retryAfterSeconds ?? 1);
-        if (wait <= this.maxRetryWaitS) {
-          await sleep(Math.max(wait, 0.2) * 1000);
-          continue;
-        }
+      const wait = Number(res.headers.get('retry-after') ?? json.retryAfterSeconds ?? 1);
+      const withinBudget = wait <= this.maxRetryWaitS && Date.now() - started + wait * 1000 < this.timeoutMs;
+      // Retried, each at most a few times and only when nothing can be charged twice:
+      //   429  refused before any work
+      //   503 with sent: false  the API never passed the request on
+      //   409 idempotency.in_progress  our own earlier attempt is still running; its answer is coming
+      //   504 service.timeout  may have run: the same key returns that result or says it is still running
+      const retryable = (res.status === 429 && attempt === 0) || (res.status === 503 && json.sent === false && attempt === 0) || (res.status === 409 && json.code === 'idempotency.in_progress' && attempt < 12) || (res.status === 504 && json.code === 'service.timeout' && idempotencyKey && attempt === 0);
+      if (retryable && withinBudget) {
+        await sleep(Math.max(wait, 0.2) * 1000);
+        continue;
       }
       throw new AgenticIdError(res.status, json.code, String(json.detail ?? res.statusText ?? 'Request failed.'), json);
     }
