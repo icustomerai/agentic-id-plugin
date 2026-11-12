@@ -1,12 +1,13 @@
 ---
 name: agentic-id
-description: Use for any B2B people or company data task - resolving a person or company (from a work email, LinkedIn URL, or name plus company) to one stable Agentic ID from its verified identity ledger, filling in a contact's title / company / work email, listing the people in a role at a known company, building a net-new prospect list from ICP filters, or checking a mailbox is deliverable before sending. Covers the five Agentic ID tools (validate, resolve, enrich, find, discover) through MCP or the agentic-id CLI, with the credit and B2B-only rules for every call.
+description: Use for any work-identity task about people or companies - resolving a person or company (from a work email, LinkedIn URL, or name plus company) to one stable Agentic ID from its verified identity ledger, filling in a contact's title / company / work email, listing the people in a role at a known company, building a net-new prospect list from ICP filters, or checking a mailbox is deliverable before sending. Covers the five Agentic ID tools (validate, resolve, enrich, find, discover) through MCP or the agentic-id CLI, with the credit and work-identifier rules for every call.
 ---
 
 # Agentic ID
 
-iCustomer's B2B identity resolution service: every person and company resolves to one stable ID
-in a verified identity ledger (75M+ companies and people), and every link needs evidence. Five verbs, each available as an MCP tool and as
+One open ID for every person, company and agent: an open identity protocol and a shared ledger.
+Every person and company resolves to one stable ID (75M+ people and companies resolved and
+verified), and every link needs evidence. Five verbs, each available as an MCP tool and as
 a CLI command with the same inputs, outputs, errors and credits.
 
 ## Which verb
@@ -52,7 +53,7 @@ exact arguments. Each verb has a specific input shape (for example validate take
 5. **Stop on money errors.** `insufficient_credits` and `credit_cap_reached` mean stop and ask;
    never retry them.
 
-## B2B only
+## Work identifiers only (for now)
 
 - Accept work emails, LinkedIn profile URLs, names with a company, and company domains.
 - Never send, ask for or look up personal emails (gmail.com, outlook.com, ...), phone or mobile

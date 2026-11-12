@@ -9,7 +9,7 @@ A refused request never reaches a data provider and costs nothing.
 | Code | Means | What to do |
 | --- | --- | --- |
 | `invalid_input` | A field is missing, malformed, or test data | Fix the named field. Placeholders (`test@`, `demo@`, `Test User`, `example.com`, `.test` domains, `aaaa@`, `1234@`) are refused on purpose: ask the user for real input. |
-| `consumer_data_v2` | Personal data was sent (free-mail address, phone, mobile, device ID) | Drop those values. Use B2B identifiers only. Do not retry with the same data. |
+| `consumer_data_v2` | Personal data was sent (free-mail address, phone, mobile, device ID) | Drop those values. Use work identifiers only. Do not retry with the same data. |
 | `purpose_not_allowed` | `purpose` is not one of `b2b_outbound`, `ad_audience`, `own_customer_enrichment`, `fraud_check` | Omit `purpose` (the server default applies) or use an allowed value. |
 | `name_only` | A person's name with nothing to anchor it | Ask for a company name or domain, a work email or a LinkedIn URL. |
 | `verification_needed` | The input is well-formed but too weak to create or reuse an identity safely | Add corroborating evidence: a LinkedIn URL, a work email at the company domain, or a company domain for the name. |
