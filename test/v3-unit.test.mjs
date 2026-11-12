@@ -289,7 +289,7 @@ test('workspace: one answer with credits, spend and how it shares', async () => 
   });
   const w = await ops.workspace(c, {});
   assert.equal(c.calls.find((x) => x.verb === 'credits').body, 10, 'asks for the last 10 by default');
-  assert.match(w.summary, /85 credits available \(5 held by running calls\)\. Spent 4 today \(the UTC day, now \d{4}-\d\d-\d\d\), 10 in 30 days \(enrich 8, resolve 2\)\. 1 ID held\. Private/);
+  assert.match(w.summary, /85 credits available \(5 held by running calls\)\. Spent 4 today, counted since \d\d:\d\d (today|yesterday) on this machine's clock \(the day is the UTC day \d{4}-\d\d-\d\d, whatever the local date\), 10 in 30 days \(enrich 8, resolve 2\)\. 1 ID held\. Private/);
   assert.equal(w.contact_values, 'masked');
   assert.deepEqual(w.delivered, []);
   await assert.rejects(() => ops.workspace(c, { recent: 500 }), /recent/);
@@ -489,6 +489,7 @@ test('cli files: two email columns are both read, and skipped rows say why', asy
   const rows = parseCsv(readFileSync(o, 'utf8')).rows;
   assert.deepEqual(rows.map((x) => x.resolve_outcome), ['new', 'new', 'skipped', 'skipped']);
   assert.match(rows[2].resolve_note, /not enough to identify/);
+  // (the summary names the rows without an ID, so nobody has to guess which)
   assert.ok(rows[3].resolve_note.length > 0, 'a skipped row always says why');
   assert.doesNotMatch(rows[2].resolve_note, /gmail|cy@/, 'the note never repeats the held-back value');
 });

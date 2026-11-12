@@ -415,6 +415,14 @@ export async function signIn(client, args = {}) {
   };
 }
 
+/** When the current UTC day began, in this machine's own time: "05:30 today" or "17:00 yesterday". */
+function utcDayStartLocal(now = new Date()) {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const hhmm = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+  const sameLocalDay = start.getFullYear() === now.getFullYear() && start.getMonth() === now.getMonth() && start.getDate() === now.getDate();
+  return `${hhmm} ${sameLocalDay ? 'today' : 'yesterday'}`;
+}
+
 const credit = (n) => `${n} credit${n === 1 ? '' : 's'}`;
 
 /** Who this workspace is and what it can spend, with the latest charges when asked. Free. */
@@ -440,7 +448,7 @@ export async function workspace(client, args = {}) {
     region: w.region,
     ids_held: w.ids_held,
     contact_values: w.scopes?.includes('pii:read') ? 'readable' : 'masked',
-    summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today (the UTC day, now ${new Date().toISOString().slice(0, 10)}), ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
+    summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today, counted since ${utcDayStartLocal()} on this machine's clock (the day is the UTC day ${new Date().toISOString().slice(0, 10)}, whatever the local date), ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
   };
 }
 
