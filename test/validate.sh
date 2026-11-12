@@ -92,7 +92,7 @@ else
 fi
 
 echo "== unit tests (node --test)"
-if node --test "$ROOT/test/log-usage.test.mjs" "$ROOT/test/v3-unit.test.mjs test/signin.test.mjs" 2>&1 | grep -E '^(not ok|# (tests|pass|fail))' | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
+if node --test "$ROOT/test/log-usage.test.mjs" "$ROOT/test/v3-unit.test.mjs" "$ROOT/test/signin.test.mjs" 2>&1 | grep -E '^(not ok|# (tests|pass|fail))' | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
   pass "usage hook and summary; V3 client, guards, operations, MCP server, CLI"
 else
   fail "unit tests"
