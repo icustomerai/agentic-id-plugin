@@ -205,7 +205,10 @@ export class AgenticId {
         await sleep(Math.max(wait, 0.2) * 1000);
         continue;
       }
-      throw new AgenticIdError(res.status, json.code, String(json.detail ?? res.statusText ?? 'Request failed.'), json);
+      const err = new AgenticIdError(res.status, json.code, String(json.detail ?? res.statusText ?? 'Request failed.'), json);
+      // A refused key blocks a stored sign-in: signing in again cannot help until the key is fixed or removed.
+      if (res.status === 401 && this.apiKey) err.fix = `The configured API key was refused. Replace it or remove it in the plugin options (or AGENTIC_ID_API_KEY)${hasSession(this.baseUrl, this.env) ? '; a sign-in is stored and will be used once the key is removed' : ', or remove it and sign in'}. Never paste a key into the chat.`;
+      throw err;
     }
   }
 

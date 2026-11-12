@@ -18,6 +18,19 @@ The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint i
 - Every paid call carries an idempotency key, so a dropped connection or a timeout inside the API
   is asked again without paying twice. Errors carry a `request_id`.
 
+- `agentic_id_list`: a whole CSV in one tool call, run inside the plugin's own server (a key set in
+  the plugin options never reaches shell commands). `agentic_id_login`: sign in or out from a tool
+  call. `agentic_id_status` shows the credits available.
+- **Approval before larger spends:** Claude Code asks the user to approve any call that could
+  spend more than 10 credits (option "Ask before spending more than"). The session budget now
+  prices calls that carry no cap.
+- Fixes from system testing: a list resolve could exceed its cap and could crash after charging;
+  the CSV writer dropped blank rows, repeated column names, extra cells, the BOM and CRLF, and
+  turned phone numbers into text; the command could overwrite its input; an unrecognised email
+  column was ignored silently; free-mail addresses on country domains (yahoo.de, hotmail.fr) were
+  not held back; simultaneous commands could sign the user out while renewing; failed calls were
+  missing from the usage log.
+
 ### Changed
 - `.mcp.json` starts a bundled, dependency-free stdio MCP server (`server/mcp.mjs`) that calls the
   V3 public API (`/v1/*`) with an API key. OAuth sign-in through `/mcp` is gone until V3 offers it.

@@ -6,7 +6,7 @@
 // ~/.agentic-id/session.json, readable by the user only, one entry per server URL.
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -124,6 +124,8 @@ export async function login({ baseUrl, env = process.env, fetchImpl = fetch, io 
     const { res, body } = await json(fetchImpl, meta.registration_endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_name: 'Agentic ID plugin (CLI)', redirect_uris: ['http://127.0.0.1/callback'] }) }, 'client registration');
     if (!res.ok || !body.client_id) throw new AuthError('signin_failed', `Client registration failed (${body.error ?? res.status}).`, 'Run "agentic-id login" again.');
     clientId = body.client_id;
+    // Kept at once, so a sign-in that is never finished does not register a new client next time.
+    saveSession(baseUrl, { ...stored, client_id: clientId }, env);
   }
 
   const { verifier, challenge } = pkcePair();
@@ -170,10 +172,45 @@ export async function login({ baseUrl, env = process.env, fetchImpl = fetch, io 
   }
 }
 
-// One refresh at a time per process: two tools starting together must not both spend the token.
+// One renewal at a time, in this process and across processes. It matters: the server ends the
+// whole sign-in when a refresh token is presented twice, so two commands renewing at the same
+// moment would sign the user out.
 const refreshing = new Map();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const LOCK_STALE_MS = 30_000;
 
-/** A usable access token for this server, refreshed when it is about to run out; undefined when signed out. */
+async function withRenewalLock(env, fn) {
+  const dir = configDir(env);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const lock = join(dir, 'session.lock');
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    try {
+      closeSync(openSync(lock, 'wx', 0o600)); // fails if another process holds it
+      break;
+    } catch (e) {
+      if (e?.code !== 'EEXIST') break; // cannot lock here (read-only folder): go on without it
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) unlinkSync(lock); // its holder died
+      } catch {
+        /* gone already */
+      }
+      if (Date.now() > deadline) break;
+      await sleep(100 + Math.floor(Math.random() * 150));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    try {
+      unlinkSync(lock);
+    } catch {
+      /* already removed */
+    }
+  }
+}
+
+/** A usable access token for this server, renewed when it is about to run out; undefined when signed out. */
 export async function accessToken(baseUrl, { env = process.env, fetchImpl = fetch, force = false } = {}) {
   const session = loadSession(baseUrl, env);
   if (!session) return undefined;
@@ -182,24 +219,25 @@ export async function accessToken(baseUrl, { env = process.env, fetchImpl = fetc
   if (!refreshing.has(k)) {
     refreshing.set(
       k,
-      (async () => {
-        try {
-          // Another process may have refreshed since we read the file.
-          const latest = loadSession(baseUrl, env);
-          if (latest && latest.refresh_token !== session.refresh_token && latest.expires_at - Date.now() > REFRESH_SKEW_MS) return latest.access_token;
-          const meta = await discover(baseUrl, fetchImpl);
-          const { res, body } = await json(fetchImpl, meta.token_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: (latest ?? session).refresh_token, client_id: session.client_id }).toString() }, 'refresh');
-          if (res.status === 400 || res.status === 401) {
-            clearSession(baseUrl, env);
-            throw new AuthError('signed_out', 'Your sign-in has ended.', 'Run "agentic-id login" again.');
-          }
-          if (!res.ok || !body.access_token) throw new AuthError('refresh_failed', `Could not renew the sign-in (${body.error ?? res.status}).`, 'Try again in a minute. The sign-in is still stored.');
-          saveSession(baseUrl, { client_id: session.client_id, access_token: body.access_token, refresh_token: body.refresh_token ?? session.refresh_token, expires_at: Date.now() + Number(body.expires_in ?? 3600) * 1000 }, env);
-          return body.access_token;
-        } finally {
-          refreshing.delete(k);
+      withRenewalLock(env, async () => {
+        // Whoever held the lock before us may already have renewed: use theirs, spend nothing.
+        const latest = loadSession(baseUrl, env);
+        if (!latest) return undefined;
+        const renewedByAnother = latest.refresh_token !== session.refresh_token;
+        if (latest.access_token && latest.expires_at - Date.now() > REFRESH_SKEW_MS && (renewedByAnother || !force)) return latest.access_token;
+        const meta = await discover(baseUrl, fetchImpl);
+        const { res, body } = await json(fetchImpl, meta.token_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: latest.refresh_token, client_id: latest.client_id }).toString() }, 'refresh');
+        if (res.status === 400 || res.status === 401) {
+          // Refused. If the stored session changed while we asked, someone else renewed: keep theirs.
+          const now = loadSession(baseUrl, env);
+          if (now && now.refresh_token !== latest.refresh_token && now.expires_at - Date.now() > REFRESH_SKEW_MS) return now.access_token;
+          clearSession(baseUrl, env);
+          throw new AuthError('signed_out', 'Your sign-in has ended.', 'Sign in again: `agentic-id login`, or ask Claude to sign you in.');
         }
-      })(),
+        if (!res.ok || !body.access_token) throw new AuthError('refresh_failed', `Could not renew the sign-in (${body.error ?? res.status}).`, 'Try again in a minute. The sign-in is still stored.');
+        saveSession(baseUrl, { client_id: latest.client_id, access_token: body.access_token, refresh_token: body.refresh_token ?? latest.refresh_token, expires_at: Date.now() + Number(body.expires_in ?? 3600) * 1000 }, env);
+        return body.access_token;
+      }).finally(() => refreshing.delete(k)),
     );
   }
   return refreshing.get(k);

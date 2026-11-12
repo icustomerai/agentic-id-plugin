@@ -12,9 +12,11 @@ deleted, merged or imported for them.
 
 Read the header and a few rows. Then call `agentic_id_list` twice with `dry_run: true`, once with
 `action: "validate"` and once with `action: "resolve"`, giving the file's full path. Each answers
-with the rows, how many carry an identifier, and the most the run could cost. Tell the user: row
-count, which columns will be used, the estimate for each step, and what they get back. Agree a
-budget.
+with the rows, how many distinct lookups will really be sent, the columns it will read, and the
+most the run could cost. Tell the user: row count, the columns used (and any warning about a
+column that looks like emails but was not recognised), the estimate for each step, and what they
+get back. If the user already gave a budget in credits, go on within it; if not, ask for one and
+stop.
 
 If the columns are not found, name them in `columns` (`email`, `linkedin`, `name`, `company`,
 `domain`).
@@ -36,6 +38,9 @@ original into `<name>.checked.csv`, then resolve that file into `<name>.clean.cs
 agreed `max_credits`.
 
 The tool never overwrites the input. Never overwrite the user's original file yourself either.
+
+If a run stops at its cap, the result file holds what was done and marks the rest `not_run`:
+say how many rows were left and what it would cost to finish.
 
 ## 3. Read the result
 
@@ -69,4 +74,6 @@ Do none of it without a yes.
   Do not move them into another column to get them through.
 - A duplicate is two rows with the same `agentic_id`, not two rows that look alike. Same name at
   two companies is two people until Agentic ID says otherwise.
-- Do not paste rows from the file into the chat beyond a short sample the user can already see.
+- Do not paste rows from the file into the chat beyond a short sample the user can already see,
+  and never repeat a personal email address or phone number from the file: say "row 7" instead.
+- Read only the header and the first few lines of a file to understand it; the tool reads the rest.

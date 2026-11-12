@@ -40,6 +40,12 @@
       "title": "Session credit budget (optional)",
       "description": "The most credits one Claude Code session may spend through this plugin, e.g. 100. Once the session's logged calls reach it, further paid calls are blocked until you raise it. Leave empty for no session budget; each call is still capped by its own max_credits.",
       "default": ""
+    },
+    "confirm_above": {
+      "type": "string",
+      "title": "Ask before spending more than (credits)",
+      "description": "Claude Code asks you to approve any single Agentic ID call that could spend more than this many credits, showing the amount. Default 10. Raise it for unattended runs; 0 asks before every paid call.",
+      "default": "10"
     }
   }
 }

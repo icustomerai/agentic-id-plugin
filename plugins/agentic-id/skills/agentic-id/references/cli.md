@@ -81,11 +81,13 @@ agentic-id enrich   --file leads.csv --fields title,work_email --max-credits 400
 
 ## Exit codes
 
-| Code | Means |
+| Code | Meaning |
 | --- | --- |
-| 0 | ok |
-| 1 | bad input; nothing was sent |
-| 2 | no key, or the key was refused |
-| 3 | not enough credits, or a cap is needed |
-| 4 | the API refused the request |
-| 5 | the API could not be reached, or failed |
+| 0 | Done |
+| 1 | The command or the file was wrong (a missing column, `--out` equal to the input, a bad flag). Nothing was sent |
+| 2 | Not signed in, or the key was refused |
+| 3 | A budget matter: no `--max-credits` on a paid file run, the cap stopped the run (the result file holds what was done), or the wallet is short |
+| 4 | Agentic ID refused the request, or some rows of a report were not recorded |
+| 5 | Agentic ID could not be reached, or an outage stopped a run part way |
+
+With `--file --json --out <file>`, a JSON summary (`summary`, `cost`, `rows`, `out_file`, `cap_reached`) is printed; the rows go to the file. Every file command prints the columns it read.

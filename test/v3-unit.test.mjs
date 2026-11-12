@@ -126,7 +126,8 @@ test('estimates follow the rate card', () => {
 // ------------------------------------------------------------------ csv
 test('csv: quotes, embedded newlines, CRLF, BOM, semicolons', () => {
   const a = parseCsv('﻿Name,Note\r\n"Doe, Jane","said ""hi""\nthen left"\r\n\r\nBob,x\r\n');
-  assert.deepEqual(a.rows, [{ Name: 'Doe, Jane', Note: 'said "hi"\nthen left' }, { Name: 'Bob', Note: 'x' }]);
+  assert.deepEqual(a.rows, [{ Name: 'Doe, Jane', Note: 'said "hi"\nthen left' }, { Name: '', Note: '' }, { Name: 'Bob', Note: 'x' }], 'a blank row is kept, so row numbers hold');
+  assert.deepEqual([a.bom, a.eol], [true, '\r\n']);
   const b = parseCsv('Email;Firma\na@acme.io;Acme GmbH\n');
   assert.equal(b.delimiter, ';');
   assert.equal(b.rows[0].Firma, 'Acme GmbH');
@@ -357,6 +358,86 @@ test('list tool: a dry run is free, a paid run needs a cap, the result is a new 
   await assert.rejects(() => list(c, { action: 'validate', file: join(dir, 'nope.csv') }), (e) => e.code === 'file_not_found');
   await assert.rejects(() => list(c, { action: 'delete', file }), /action must be/);
   assert.ok(existsSync(done.out_file));
+});
+
+test('budget hook: a call with no cap is priced at its estimate, and larger spends need the user to approve', async () => {
+  const { decide, needsConfirmation, confirmAboveFrom, worstCase } = await import('../plugins/agentic-id/hooks/budget-guard.mjs');
+  const t = (verb) => `mcp__plugin_agentic-id_agentic-id__agentic_id_${verb}`;
+  const five = { tool_name: t('resolve_many'), tool_input: { records: [{ email: 'a@acme.io' }, { email: 'b@acme.io' }, { email: 'c@acme.io' }, { email: 'd@acme.io' }, { email: 'e@acme.io' }] } };
+  assert.equal(worstCase(five), 5);
+  assert.match(decide(five, 2, 0), /could spend up to 5 credits/, 'no max_credits is not a way round the session budget');
+  assert.equal(decide(five, 10, 0), null);
+  assert.equal(worstCase({ tool_name: t('list'), tool_input: { action: 'resolve', file: '/x.csv', dry_run: true } }), 0);
+  assert.equal(worstCase({ tool_name: t('list'), tool_input: { action: 'resolve', file: '/x.csv' } }), Infinity);
+  assert.equal(confirmAboveFrom({}), 10);
+  assert.equal(confirmAboveFrom({ CLAUDE_PLUGIN_OPTION_CONFIRM_ABOVE: '${user_config.confirm_above}' }), 10);
+  assert.equal(confirmAboveFrom({ CLAUDE_PLUGIN_OPTION_CONFIRM_ABOVE: '250' }), 250);
+  assert.equal(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 5, max_credits: 5 } }, 10), null);
+  assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 300, max_credits: 300 } }, 10), /may spend up to 300 credits/);
+  assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 50 } }, 10), /up to 50 credits/, 'priced even without max_credits');
+  assert.equal(needsConfirmation({ tool_name: t('discover'), tool_input: { count_only: true, max_accounts: 300 } }, 10), null);
+  assert.equal(needsConfirmation({ tool_name: t('workspace'), tool_input: {} }, 0), null, 'free calls never ask');
+  assert.match(needsConfirmation({ tool_name: t('resolve'), tool_input: { email: 'a@acme.io' } }, 0), /up to 1 credits/, '0 asks before every paid call');
+});
+
+test('resolve_many never goes past its cap, even with lookups running side by side', async () => {
+  let charged = 0;
+  const slow = fake({ resolve: async () => { await new Promise((r) => setTimeout(r, 15)); charged += 1; return { cost: { quoted_credits: 1, charged_credits: 1 }, id: `ic-row${charged}00`, outcome: 'new' }; } });
+  const r = await ops.resolveMany(slow, { records: Array.from({ length: 12 }, (_, i) => ({ email: `p${i}@acme.io` })), max_credits: 3 });
+  assert.equal(charged, 3, 'exactly the cap, not cap + workers');
+  assert.equal(r.cost.charged_credits, 3);
+  assert.ok(r.cost.quoted_credits <= 3, 'the quote is never above the cap');
+  assert.equal(r.stopped.error, 'cap_reached');
+  assert.equal(r.rows.filter((x) => x.outcome === 'not_run').length, 9);
+});
+
+test('resolve_many: a row that cannot identify anyone is skipped, not sent and not a crash', async () => {
+  const c = fake({ resolve: () => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: 'ic-abc1234', outcome: 'known' }) });
+  const r = await ops.resolveMany(c, { records: [{ email: 'jane@acme.io' }, { name: 'Sam Home', email: 'sam@gmail.com' }, { name: 'Only A Name' }], max_credits: 5 });
+  assert.equal(c.calls.length, 1);
+  assert.deepEqual(r.rows.map((x) => x.outcome), ['known', 'skipped', 'skipped']);
+  assert.match(r.rows[1].reason, /not enough to identify: name alone \(held back: email\)/);
+});
+
+test('free-mail providers under any country ending are held back', () => {
+  for (const e of ['a@yahoo.de', 'a@hotmail.fr', 'a@outlook.de', 'a@live.co.uk', 'a@gmx.at', 'a@yahoo.com.br', 'a@icloud.com']) assert.equal(cleanEmail(e).ok, false, e);
+  for (const e of ['a@acme.io', 'a@mailchimp.com', 'a@outlook-consulting.de', 'a@livepeer.org']) assert.equal(cleanEmail(e).ok, true, e);
+});
+
+test('csv: nothing is lost on the way through', () => {
+  const src = '﻿email,note,email,phone\r\n  spaced@acme.io  ,"a, b",second@acme.io,+1 555 0100\r\n\r\nx@acme.io,=SUM(A1),,-42\r\nextra@acme.io,n,,,overflow\r\n';
+  const sheet = parseCsv(src);
+  assert.equal(sheet.rows.length, 4, 'the blank row is a row');
+  assert.equal(sheet.header.length, 5, 'a cell beyond the header gets a column');
+  const out = toCsv(sheet.header, sheet.rows, sheet.delimiter, sheet);
+  assert.ok(out.startsWith('﻿email,note,email,phone,\r\n'), 'BOM, both email columns and CRLF are kept');
+  assert.match(out, /"  spaced@acme\.io  ","a, b",second@acme\.io,\+1 555 0100,/, 'cell text is untouched and a phone number is not turned into text');
+  assert.match(out, /x@acme\.io,'=SUM\(A1\),,-42,/, 'a formula is neutralised, a negative number is not');
+  assert.match(out, /extra@acme\.io,n,,,overflow\r\n$/);
+  assert.equal(parseCsv(out).rows.length, 4, 'and it reads back the same');
+});
+
+test('cli files: the input is never overwritten, unrecognised email columns are flagged, a cap stop exits 3', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aid-cli-'));
+  const file = join(dir, 'in.csv');
+  writeFileSync(file, 'Kontakt;Firma;Web\nada@alpha-synthetic.com;Alpha;alpha-synthetic.com\nbo@beta-synthetic.com;Beta;beta-synthetic.com\ncy@gamma-synthetic.com;Gamma;gamma-synthetic.com\n');
+  const client = fake({ resolve: () => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: `ic-id${Math.random().toString(36).slice(2, 8)}0`, outcome: 'new' }) });
+  const same = await cli(['resolve', '--file', file, '--out', file, '--max-credits', '5'], client);
+  assert.equal(same.code, 1);
+  assert.match(same.err, /must not be the input file/);
+  assert.equal(client.calls.length, 0);
+  const dry = await cli(['resolve', '--file', file, '--dry-run'], client);
+  assert.match(dry.err, /Columns used: company from "Firma", company domain from "Web"\. Warning: "Kontakt" looks like emails/);
+  assert.match((await cli(['resolve', '--file', file, '--column', 'nope', '--dry-run'], client)).err, /No column "nope"/);
+  assert.equal((await cli(['resolve', '--file', file, '--limit-rows', '0', '--dry-run'], client)).code, 1);
+  const out = join(dir, 'out.csv');
+  const capped = await cli(['resolve', '--file', file, '--max-credits', '2', '--out', out, '--json'], client);
+  assert.equal(capped.code, 3, 'stopped by the cap');
+  const summary = JSON.parse(capped.out);
+  assert.equal(summary.cost.charged_credits, 2);
+  assert.equal(summary.cap_reached, true);
+  assert.equal(parseCsv(readFileSync(out, 'utf8')).rows.filter((x) => x.resolve_outcome === 'not_run').length, 1, 'the file holds what was done');
+  assert.equal(readFileSync(file, 'utf8').split('\n')[0], 'Kontakt;Firma;Web');
 });
 
 // ------------------------------------------------------------------ the HTTP client
@@ -591,9 +672,9 @@ test('cli: a CSV is validated in one call and written back with verdict columns'
   const file = join(dir, 'leads.csv');
   writeFileSync(file, 'Email Address,Company\n"Jane <jane@acme.io>",Acme\njane@acme.io,Acme\nme@gmail.com,Home\n,NoEmail\nbroken@,Bad\n');
   const client = fake({ validate: (b) => ({ request_id: 'r', summary: '1 email checked: 1 valid. 1 credit charged.', cost: { quoted_credits: 1, charged_credits: 1 }, results: b.emails.map((email) => ({ email, verdict: 'valid', role: false })) }) });
-  assert.equal((await cli(['validate', '--file', file], client)).code, 1, 'a file run without --max-credits is refused');
+  assert.equal((await cli(['validate', '--file', file], client)).code, 3, 'a file run without --max-credits is refused, as a budget matter');
   assert.equal(client.calls.length, 0);
-  assert.match((await cli(['validate', '--file', file, '--dry-run'], client)).err, /4 with an email\. At most 4 credits/);
+  assert.match((await cli(['validate', '--file', file, '--dry-run'], client)).err, /5 rows, 4 with an email, 1 distinct work addresses to check \(3 repeats, personal or malformed are not sent\)\. At most 1 credits .*Columns used: email from "Email Address", company from "Company"/);
   const out = join(dir, 'out.csv');
   const r = await cli(['validate', '--file', file, '--max-credits', '5', '--out', out], client);
   assert.equal(r.code, 0);
@@ -632,7 +713,7 @@ test('budget hook: off by default, lets free calls through, blocks paid calls pa
   assert.equal(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, null, 999), null, 'no budget, no opinion');
   assert.equal(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 20), null);
   assert.match(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 100), /budget of 100 credits is spent/);
-  assert.match(decide({ tool_name: t('enrich'), tool_input: { max_credits: 30 } }, 100, 80), /Lower max_credits to 20/);
+  assert.match(decide({ tool_name: t('enrich'), tool_input: { max_credits: 30 } }, 100, 80), /Set max_credits to 20 or less/);
   for (const free of ['facts', 'ledger', 'estimate', 'status', 'workspace', 'report']) assert.equal(decide({ tool_name: t(free), tool_input: {} }, 100, 500), null, free);
   assert.equal(decide({ tool_name: t('discover'), tool_input: { count_only: true } }, 100, 500), null);
   assert.match(decide({ tool_name: t('discover'), tool_input: {} }, 100, 500), /spent/);

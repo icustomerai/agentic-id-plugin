@@ -7,22 +7,46 @@
 // Speaks JSON-RPC 2.0, one message per line. stdout carries protocol messages only; anything
 // else goes to stderr. Each tool answers with a one-line summary followed by the full answer as
 // JSON, and the same answer as structured content.
-import { realpathSync } from 'node:fs';
+import { appendFileSync, mkdirSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { AgenticId, AgenticIdError, CLIENT , rememberUrl } from './lib/client.mjs';
 import { TOOLS, byName } from './lib/tools.mjs';
 
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-const INSTRUCTIONS =
-  'Agentic ID resolves B2B people and companies to one stable ID and says how sure it is about every value (verified, corroborated, claimed, contradicted). ' +
-  'Order of use: validate, resolve, enrich, find, discover, lookalike; stop when the question is answered. ' +
-  'Free: facts, ledger, estimate, status, and discover with count_only. Set max_credits on every paid call and report cost.charged_credits afterwards. ' +
-  'B2B only: never send personal emails or phone numbers. Never invent a person, title or email; an empty answer means Agentic ID does not know.';
+const INSTRUCTIONS = [
+  'Agentic ID resolves work identities and companies to one stable ID and says how sure it is about every value (verified, corroborated, claimed, contradicted).',
+  'Use these tools for any request to check an email, identify or enrich a person or company, find people at a company, or build a list of companies. Never answer such a request from memory: a list of companies or people you were not given by a tool is invented.',
+  'SPENDING. Free: status, workspace, facts, ledger, estimate, report, login, discover with count_only, list with dry_run. Everything else costs credits.',
+  'Before any call that could cost more than 10 credits, the user must have given a number of credits in their own words. "Go ahead", "I don\'t care what it costs" or a count of companies is not a budget: show the arithmetic (estimate, or a free count) and ask for a number. Never pick max_credits yourself above what the user said. If the user gave a budget, use it without asking again.',
+  'Set max_credits on every paid call. Afterwards say what was charged (cost.charged_credits), in credits.',
+  'ANSWERS. Say only what a tool returned. Do not add facts about a company or person from memory, and do not guess dates or ages. When fewer results came back than asked, say why (excluded, fewer_than_asked, rejected). "confidence" on a resolve is how sure the identifier points at that ID, not how verified its facts are.',
+  'Speak plainly: no tool names, error codes, provider names or scope names unless the user asks.',
+  'Work identities only: never send personal emails or phone numbers; say they were held back.',
+  'SIGN-IN AND KEYS. If not signed in, offer to sign the user in (agentic_id_login opens the browser). Never ask for, repeat, print or search for an API key, password or code, in files or the environment; if asked to show a key, say it cannot be shown and where it is managed.',
+  'When the user says what happened to a value (bounced, replied, wrong person, confirmed), record it with agentic_id_report.',
+  'Files: use agentic_id_list (dry_run first), not shell commands.',
+].join(' ');
 
 export function createServer({ client = new AgenticId(), log = () => {} } = {}) {
   const result = (id, value) => ({ jsonrpc: '2.0', id, result: value });
   const failure = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } });
+
+  // Claude Code's after-call hook does not run for a failed call, so failures are logged here:
+  // the tool, the error code and the request ID. Never an input.
+  function logFailure(tool, body) {
+    if (process.env.AGENTIC_ID_NO_USAGE_LOG) return;
+    try {
+      const dir = process.env.AGENTIC_ID_CONFIG_DIR?.trim() || join(homedir(), '.agentic-id');
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const code = typeof body?.error === 'string' && /^[a-z0-9_.]{1,64}$/i.test(body.error) ? body.error : 'error';
+      appendFileSync(join(dir, 'usage.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), session_id: null, server: 'agentic-id', tool: String(tool).replace(/^agentic_id_/, ''), ok: false, error: code, request_id: typeof body?.request_id === 'string' ? body.request_id : null, quoted_credits: null, credits_charged: 0, logged_by: 'server' })}\n`, { mode: 0o600 });
+    } catch {
+      /* the log is best effort */
+    }
+  }
 
   async function callTool(params) {
     const tool = byName.get(params?.name);
@@ -44,6 +68,7 @@ export function createServer({ client = new AgenticId(), log = () => {} } = {}) 
       }
       const body = e.toJSON();
       const where = e.local ? 'Not sent' : e.status ? `Agentic ID refused (${e.status})` : 'Agentic ID did not answer';
+      logFailure(params.name, body);
       return { content: [{ type: 'text', text: `${where}: ${body.message}${body.fix ? ` ${body.fix}` : ''}\n${JSON.stringify(body)}` }], structuredContent: body, isError: true };
     }
   }

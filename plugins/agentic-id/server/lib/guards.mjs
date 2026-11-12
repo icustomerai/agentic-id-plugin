@@ -12,6 +12,9 @@ const PERSONAL = new Set(
    yandex.com yandex.ru mail.ru qq.com 163.com 126.com sina.com naver.com hey.com fastmail.com tutanota.com rediffmail.com
    comcast.net verizon.net att.net sbcglobal.net btinternet.com orange.fr free.fr t-online.de libero.it`.split(/\s+/),
 );
+// Free-mail providers under any country ending (yahoo.de, hotmail.fr, outlook.de, live.co.uk ...).
+const PERSONAL_LABELS = /^(gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|icloud|aol|protonmail|proton|gmx|yandex|zoho|zohomail|fastmail|tutanota|tuta|mail|email|inbox|hushmail|rediffmail)\.(com?\.)?[a-z]{2,3}$/;
+const isPersonal = (d) => PERSONAL.has(d) || PERSONAL_LABELS.test(d);
 const TEST_DOMAINS = new Set(['example.com', 'example.org', 'example.net', 'test.com', 'domain.com', 'email.com', 'company.com']);
 const TEST_LOCALS = new Set(['test', 'testing', 'example', 'foo', 'asdf', 'null', 'none', 'na', 'noemail', 'abc']);
 const ROLE_LOCALS = new Set(
@@ -34,7 +37,7 @@ export function cleanEmail(raw) {
   s = s.replace(/^mailto:/i, '').split('?')[0].replace(/^["'\s]+|["'\s,;.]+$/g, '').toLowerCase();
   if (!EMAIL_RE.test(s) || s.length > 320 || s.includes('..')) return { ok: false, email: s, reason: 'malformed' };
   const [local, domain] = [s.slice(0, s.lastIndexOf('@')), s.slice(s.lastIndexOf('@') + 1)];
-  if (PERSONAL.has(domain)) return { ok: false, email: s, reason: 'personal_email' };
+  if (isPersonal(domain)) return { ok: false, email: s, reason: 'personal_email' };
   if (TEST_DOMAINS.has(domain) || TEST_LOCALS.has(local)) return { ok: true, email: s, domain, role: false, warning: 'looks_like_test_data' };
   return { ok: true, email: s, domain, role: ROLE_LOCALS.has(local) };
 }
@@ -130,7 +133,7 @@ export function cleanIdentifiers(raw = {}) {
   if (domain) {
     const d = cleanDomain(domain);
     if (!d) dropped.push({ field: 'company_domain', reason: 'not_a_domain' });
-    else if (PERSONAL.has(d)) dropped.push({ field: 'company_domain', reason: 'personal_mail_provider_is_not_a_company' });
+    else if (isPersonal(d)) dropped.push({ field: 'company_domain', reason: 'personal_mail_provider_is_not_a_company' });
     else out.company_domain = d;
   }
   // The email's own domain is the employer's when nothing else names the company.
@@ -170,4 +173,4 @@ export function cleanEmails(raw) {
 
 export const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, (i + 1) * size));
 
-export const isPersonalDomain = (d) => PERSONAL.has(String(d).toLowerCase());
+export const isPersonalDomain = (d) => isPersonal(String(d).toLowerCase());

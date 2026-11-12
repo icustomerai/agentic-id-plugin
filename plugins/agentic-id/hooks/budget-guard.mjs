@@ -8,8 +8,9 @@
 //
 // It reads the local usage log written by log-usage.mjs: tool, credits, session id; no inputs.
 // With no budget set, or on any error, it stays out of the way: exit 0, no output.
-import { readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { estimate } from '../server/lib/estimate.mjs';
 import { configDir, parseToolName } from './log-usage.mjs';
 
 const FREE = new Set(['facts', 'ledger', 'estimate', 'status', 'workspace', 'report', 'login']);
@@ -38,29 +39,76 @@ export function spentInSession(sessionId, dir = configDir()) {
   return total;
 }
 
+/** The most a call could spend: its own max_credits, or the list-price estimate when it carries none. 0 for a free call. */
+export function worstCase(payload) {
+  const parsed = parseToolName(payload?.tool_name);
+  if (!parsed || FREE.has(parsed.verb)) return 0;
+  const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  if (parsed.verb === 'discover' && input.count_only === true) return 0;
+  if (parsed.verb === 'list' && (input.dry_run === true || input.action === 'report')) return 0;
+  if (typeof input.max_credits === 'number' && input.max_credits >= 0) return input.max_credits;
+  if (parsed.verb === 'list') return Infinity; // a paid file run with no cap is refused by the tool anyway
+  try {
+    return estimate(parsed.verb, input)?.max_credits ?? Infinity;
+  } catch {
+    return Infinity;
+  }
+}
+
 /** null to let the call through, or the reason it is denied. */
 export function decide(payload, budget, spent) {
   if (!budget || !payload || typeof payload !== 'object') return null;
-  const parsed = parseToolName(payload.tool_name);
-  if (!parsed || FREE.has(parsed.verb)) return null;
-  const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
-  if (parsed.verb === 'discover' && input.count_only === true) return null;
+  const cost = worstCase(payload);
+  if (cost === 0) return null;
   const left = budget - spent;
-  if (left <= 0) return `The Agentic ID session budget of ${budget} credits is spent (${spent} charged so far in this session). Tell the user the total and ask before going further; they can raise "Session credit budget" in the plugin options. Free tools (facts, ledger, estimate, status, discover with count_only) still work.`;
-  const cap = typeof input.max_credits === 'number' ? input.max_credits : null;
-  if (cap !== null && cap > left) return `This call's max_credits (${cap}) is more than what is left of the ${budget}-credit session budget (${left} left, ${spent} charged so far). Lower max_credits to ${left} or less, or ask the user to raise the budget.`;
+  if (left <= 0) return `The Agentic ID session budget of ${budget} credits is spent (${spent} charged so far in this session). Tell the user the total and ask before going further; they can raise "Session credit budget" in the plugin options.`;
+  if (cost > left) return `This call could spend ${Number.isFinite(cost) ? `up to ${cost} credits` : 'an unbounded number of credits (it has no max_credits)'}, more than what is left of the ${budget}-credit session budget (${left} left, ${spent} charged so far). Set max_credits to ${left} or less, or ask the user to raise "Session credit budget" in the plugin options.`;
   return null;
+}
+
+export function confirmAboveFrom(env = process.env) {
+  const raw = env.AGENTIC_ID_CONFIRM_ABOVE ?? env.CLAUDE_PLUGIN_OPTION_CONFIRM_ABOVE ?? env.CLAUDE_PLUGIN_OPTION_confirm_above;
+  const text = String(raw ?? '').trim();
+  if (text === '' || text.startsWith('${')) return 10;
+  const n = Number(text);
+  return Number.isFinite(n) && n >= 0 ? n : 10;
+}
+
+/**
+ * The person at the keyboard approves any call that could spend more than `threshold` credits:
+ * Claude Code shows them the amount. null when no approval is needed.
+ */
+export function needsConfirmation(payload, threshold) {
+  const cost = worstCase(payload);
+  if (cost === 0 || cost <= threshold) return null;
+  return `Agentic ID: this call may spend ${Number.isFinite(cost) ? `up to ${cost} credits` : 'credits with no upper limit'}. Calls above ${threshold} credits need your approval (change "Ask before spending more than" in the plugin options).`;
+}
+
+function logDenied(payload, error) {
+  try {
+    const parsed = parseToolName(payload.tool_name);
+    const dir = configDir();
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    appendFileSync(join(dir, 'usage.jsonl'), `${JSON.stringify({ ts: new Date().toISOString(), session_id: payload.session_id ?? null, server: parsed?.server ?? null, tool: parsed?.verb ?? null, ok: false, error, request_id: null, quoted_credits: null, credits_charged: 0 })}\n`, { mode: 0o600 });
+  } catch {
+    /* the log is best effort */
+  }
 }
 
 async function main() {
   try {
-    const budget = budgetFrom();
-    if (!budget) return;
     const chunks = [];
     for await (const c of process.stdin) chunks.push(c);
     const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    const reason = decide(payload, budget, spentInSession(payload.session_id));
-    if (reason) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+    const budget = budgetFrom();
+    const denied = budget ? decide(payload, budget, spentInSession(payload.session_id)) : null;
+    if (denied) {
+      logDenied(payload, 'budget_denied');
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: denied } }));
+      return;
+    }
+    const ask = needsConfirmation(payload, confirmAboveFrom());
+    if (ask) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: ask } }));
   } catch {
     /* never block a call because the guard itself failed */
   }

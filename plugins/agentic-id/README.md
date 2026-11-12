@@ -54,13 +54,15 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
 
 ## Set up
 
-1. Install and enable the plugin. Claude Code asks for three options, all optional:
+1. Install and enable the plugin. Claude Code asks for four options, all optional:
    - **Agentic ID API key.** Leave it empty to sign in with your iCustomer account (step 2). For
      CI and headless runs, paste a key: Claude Code stores it in your system keychain. A key,
      when set, is used instead of a sign-in.
    - **Agentic ID API URL.** Where the Agentic ID API runs. The default is a local V3 stack
      (`http://127.0.0.1:3100`); set the URL iCustomer gave you otherwise.
    - **Session credit budget (optional).** The most one Claude Code session may spend, e.g. `100`.
+   - **Ask before spending more than.** Claude Code asks you to approve any single call that could
+     spend more than this many credits (default 10), showing the amount.
 2. Sign in: type `/agentic-id-login` (or just ask Claude to sign you in), or run
    `agentic-id login` in a terminal. Your browser opens
    the iCustomer sign-in page; when it says you are signed in, go back to Claude Code. The

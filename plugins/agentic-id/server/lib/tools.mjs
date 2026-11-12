@@ -6,7 +6,7 @@ import * as ops from './operations.mjs';
 const B2B = 'B2B only: work identities and companies. Personal mailboxes and phone numbers are held back on this machine and never sent.';
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
 const list = (description, extra = {}) => ({ type: 'array', items: { type: 'string' }, description, ...extra });
-const maxCredits = { type: 'integer', minimum: 0, maximum: 100000, description: 'The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it.' };
+const maxCredits = { type: 'integer', minimum: 0, maximum: 100000, description: 'The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them.' };
 const purpose = { type: 'string', enum: ['b2b_outbound', 'ad_audience', 'own_customer_enrichment', 'fraud_check'], description: 'Why you are asking. Defaults to b2b_outbound.' };
 
 const identifiers = {
@@ -43,11 +43,19 @@ export const TOOLS = [
     name: 'agentic_id_resolve',
     title: 'Resolve to an Agentic ID',
     description:
-      'Turn a work email, LinkedIn profile URL, name plus company, or a company domain into one stable Agentic ID (ic-...). outcome says what happened: known (already in the ledger), new (just created), review (probably a match, not sure enough to link), conflict (the identifiers point at two different IDs; nothing was merged) or unresolvable (not enough to go on; free). 1 credit per ID returned, 0 for one your workspace already holds. Use the ID with enrich, facts and ledger.',
+      'Turn a work email, LinkedIn profile URL, name plus company, or a company domain into one stable Agentic ID (ic-...). "confidence" is how sure the identifier points at this ID, not how verified its facts are (see agentic_id_facts). outcome says what happened: known (already in the ledger), new (just created), review (probably a match, not sure enough to link), conflict (the identifiers point at two different IDs; nothing was merged) or unresolvable (not enough to go on; free). 1 credit per ID returned, 0 for one your workspace already holds. Use the ID with enrich, facts and ledger.',
     inputSchema: {
       type: 'object',
-      properties: { identifiers, kind: { type: 'string', enum: ['person', 'company'], description: 'Inferred when omitted: a person if any person field is given.' }, spend: { type: 'boolean', description: 'Ask paid sources when the ledger cannot resolve it. Default false.' }, purpose, max_credits: maxCredits },
-      required: ['identifiers'],
+      properties: {
+        identifiers,
+        // The same fields are accepted at the top level, since callers often send them flat.
+        email: str('Work email (same as identifiers.email).'),
+        linkedin_url: str('LinkedIn profile URL (same as identifiers.linkedin_url).'),
+        name: str('Full name (same as identifiers.name).'),
+        company_name: str('Company name (same as identifiers.company_name).'),
+        company_domain: str('Company domain (same as identifiers.company_domain).'),
+        domain: str('Company domain (same as identifiers.company_domain).'),
+        kind: { type: 'string', enum: ['person', 'company'], description: 'Inferred when omitted: a person if any person field is given.' }, spend: { type: 'boolean', description: 'Ask paid sources when the ledger cannot resolve it. Default false.' }, purpose, max_credits: maxCredits },
       additionalProperties: false,
     },
     annotations: paid,

@@ -107,7 +107,8 @@ export function buildRecord(payload, now = new Date()) {
   const cost = structured && typeof structured.cost === 'object' ? structured.cost : null;
   const charged = num(cost?.charged_credits) ?? num(structured?.credits_charged);
   const quoted = num(cost?.quoted_credits);
-  const errorCode = isError && typeof structured?.error === 'string' ? structured.error.slice(0, 64) : null;
+  // A code such as credits.insufficient; never a sentence, which could carry an input value.
+  const errorCode = isError && typeof structured?.error === 'string' ? (/^[a-z0-9_.]{1,64}$/i.test(structured.error) ? structured.error : 'error') : null;
   const requestId = findKey(structured, REQUEST_ID_KEYS) ?? null;
   const safeId = requestId && /^[A-Za-z0-9._:-]+$/.test(requestId) ? requestId : null;
 

@@ -106,21 +106,33 @@ export async function resolveMany(client, args = {}, { concurrency = 4 } = {}) {
   const byKey = new Map();
   for (const r of rows) {
     r.key = r.empty ? undefined : identityKey(r.identifiers);
+    // What is left cannot identify anyone (a name with no company, say): never sent.
+    if (!r.empty && !r.key) r.unusable = true;
     if (r.key && !byKey.has(r.key)) byKey.set(r.key, r);
   }
   const unique = [...byKey.values()];
   const cap = capFor('resolve_many', { records: unique, max_credits: args.max_credits });
   let cost = { quoted_credits: 0, charged_credits: 0 };
   let halted;
+  // Each lookup can cost 1 credit. One is set aside before it is sent and given back when it
+  // answers, so lookups running side by side can never take the run past its cap.
+  let inFlight = 0;
   const answers = new Map();
   const queue = [...unique];
   const worker = async () => {
     for (let r = queue.shift(); r; r = queue.shift()) {
       if (halted) return;
-      if (cap - cost.charged_credits < 1) {
-        halted = { error: 'cap_reached', message: `stopped: the ${cap}-credit cap was reached` };
-        return;
+      if (cap - cost.charged_credits - inFlight < 1) {
+        if (cap - cost.charged_credits < 1) {
+          halted = { error: 'cap_reached', message: `stopped: the ${cap}-credit cap was reached` };
+          return;
+        }
+        // The rest of the cap is spoken for by lookups still running: put this one back and wait.
+        queue.unshift(r);
+        await new Promise((res) => setTimeout(res, 25));
+        continue;
       }
+      inFlight += 1;
       try {
         const a = await client.resolve(compact({ identifiers: r.identifiers, kind: args.kind, spend: args.spend === true ? true : undefined, purpose: args.purpose, max_credits: 1 }));
         cost = sumCost(cost, a.cost);
@@ -130,6 +142,8 @@ export async function resolveMany(client, args = {}, { concurrency = 4 } = {}) {
         // Money, auth and outage errors end the whole run; a bad row only fails that row.
         if ([401, 402, 0].includes(e.status) || e.status >= 500) halted = e.toJSON();
         else answers.set(r.key, { outcome: 'error', error: e.code ?? `http_${e.status}`, reason: e.detail });
+      } finally {
+        inFlight -= 1;
       }
     }
   };
@@ -137,6 +151,7 @@ export async function resolveMany(client, args = {}, { concurrency = 4 } = {}) {
 
   const out = rows.map((r) => {
     if (r.empty) return { row: r.row, outcome: 'skipped', reason: r.dropped.map((d) => `${d.field}: ${d.reason}`).join('; ') || 'no identifier' };
+    if (r.unusable) return { row: r.row, outcome: 'skipped', reason: `not enough to identify: ${Object.keys(r.identifiers).join(' and ')} alone${r.dropped.length ? ` (held back: ${r.dropped.map((d) => d.field).join(', ')})` : ''}. A name needs a company or a work email.` };
     const first = byKey.get(r.key);
     const a = answers.get(r.key) ?? { outcome: 'not_run', reason: halted?.message ?? 'stopped before this row' };
     return compact({ row: r.row, ...a, repeat_of_row: first.row !== r.row ? first.row : undefined });
@@ -146,6 +161,8 @@ export async function resolveMany(client, args = {}, { concurrency = 4 } = {}) {
   const byId = new Map();
   for (const r of out) if (r.id) byId.set(r.id, [...(byId.get(r.id) ?? []), r.row]);
   const sameId = [...byId.entries()].filter(([, v]) => v.length > 1).map(([id, v]) => ({ id, rows: v }));
+  // What the run could have cost: one credit per distinct lookup, never more than its cap.
+  cost = { quoted_credits: Math.max(Math.min(unique.length, cap), cost.charged_credits), charged_credits: cost.charged_credits };
   return compact({
     summary: `${plural(rows.length, 'row')}: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', ')}. ${sameId.length ? `${plural(sameId.length, 'ID')} shared by more than one row. ` : ''}${plural(cost.charged_credits, 'credit')} charged.`,
     cost,
@@ -310,7 +327,7 @@ export async function status(client) {
       workspace_id: me.workspace_id,
       key_prefix: me.key_prefix,
       scopes: me.scopes,
-      contact_values: me.scopes?.includes('pii:read') ? 'readable' : 'masked (this caller has no pii:read scope)',
+      contact_values: me.scopes?.includes('pii:read') ? 'readable' : 'masked (emails and phones are shown partly hidden)',
       ...(credits ? { credits_available: credits.available, credits_held: credits.held } : {}),
       more: 'agentic_id_workspace shows spend by tool and recent charges.',
     };
@@ -365,7 +382,7 @@ export async function signIn(client, args = {}) {
     signed_in: false,
     status: 'waiting_for_browser',
     link: pendingLogin.link,
-    summary: 'The sign-in page should have opened in the browser. If it did not, open the link. When the page says you are signed in, call agentic_id_login again (or agentic_id_status) to confirm.',
+    summary: `${env.AGENTIC_ID_NO_BROWSER ? 'Open the link in a browser on this machine' : 'The sign-in page should have opened in the browser; if it did not, open the link'}. Keep this conversation open while signing in (the link works for 5 minutes and only while Claude Code is running). When the page says you are signed in, call agentic_id_login again to confirm. On a machine with no browser, use an API key instead.`,
     ...(client.apiKey ? { note: 'An API key is configured and takes precedence over a sign-in until it is removed from the plugin options.' } : {}),
   };
 }
@@ -461,5 +478,7 @@ export function estimateCall(_client, args = {}) {
   const tool = String(args.tool ?? '').replace(/^agentic_id_/, '');
   const est = estimate(tool, args.arguments ?? {});
   if (!est) throw new LocalRefusal('request.invalid', `Unknown tool "${args.tool}".`, 'Use one of: validate, resolve, resolve_many, enrich, find, discover, lookalike.');
+  const asked = Number((args.arguments ?? {}).max_accounts);
+  if ((tool === 'discover' || tool === 'lookalike') && asked > 500) throw new LocalRefusal('request.invalid', `${asked} accounts in one call; the limit is 500.`, `Plan ${Math.ceil(asked / 500)} calls of up to 500 accounts each (${asked} credits in all for accounts). Companies already delivered are skipped, so each call returns new ones.`);
   return { tool, ...est, summary: est.free ? `Free: ${est.arithmetic}.` : `At most ${est.max_credits} credits: ${est.arithmetic}. Only results are charged; misses are free.`, auto_capped: !est.free && est.max_credits <= AUTO_CAP };
 }
