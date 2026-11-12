@@ -9,6 +9,9 @@
 #   AGENTIC_ID_API_KEY_FILE   a file holding an API key; leave unset to use a stored sign-in
 #   AGENTIC_ID_CONFIG_DIR     where the sign-in session and the usage log live (default: <out-dir>/config)
 #   SESSION_BUDGET            the plugin's "session credit budget" option (optional)
+#   CONFIRM_ABOVE             the plugin's "ask before spending more than" option. A headless session
+#                             cannot show the approval prompt, so a call above it is refused; set it
+#                             higher to stand in for the user clicking Approve (default: the plugin's 10)
 #   USER_SESSION_CWD          folder the session runs in (default: <out-dir>/work), e.g. one holding a CSV
 #   USER_SESSION_MAX_USD      model spend cap for the session (default 1)
 #   USER_SESSION_MODEL        the model the session uses (default sonnet)
@@ -29,10 +32,10 @@ umask 077
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 CFG="${AGENTIC_ID_CONFIG_DIR:-$OUT/config}"; WORK="${USER_SESSION_CWD:-$OUT/work}"; mkdir -p "$CFG" "$WORK"
 SETTINGS="$(mktemp)"; trap 'rm -f "$SETTINGS"' EXIT
-SESSION_BUDGET="${SESSION_BUDGET:-}" node --input-type=module -e '
+SESSION_BUDGET="${SESSION_BUDGET:-}" CONFIRM_ABOVE="${CONFIRM_ABOVE:-}" node --input-type=module -e '
   import { writeFileSync } from "node:fs";
   import { keyFromEnv } from "'"$PLUGIN"'/server/lib/client.mjs";
-  const options = { api_url: process.env.AGENTIC_ID_URL, ...(keyFromEnv() ? { api_key: keyFromEnv() } : {}), ...(process.env.SESSION_BUDGET ? { session_budget: process.env.SESSION_BUDGET } : {}) };
+  const options = { api_url: process.env.AGENTIC_ID_URL, ...(keyFromEnv() ? { api_key: keyFromEnv() } : {}), ...(process.env.SESSION_BUDGET ? { session_budget: process.env.SESSION_BUDGET } : {}), ...(process.env.CONFIRM_ABOVE ? { confirm_above: process.env.CONFIRM_ABOVE } : {}) };
   writeFileSync(process.argv[1], JSON.stringify({ pluginConfigs: { "agentic-id@inline": { options } } }), { mode: 0o600 });
 ' "$SETTINGS"
 PREFIX="mcp__plugin_agentic-id_agentic-id__agentic_id_"; allowed="Read,Glob,Grep,Skill,Task,Write,Bash(agentic-id:*)${USER_SESSION_ALLOW:+,$USER_SESSION_ALLOW}"
