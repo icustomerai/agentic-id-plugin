@@ -499,6 +499,10 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
     io.out(f.json ? JSON.stringify(reply, null, 2) : render(cmd, reply));
     return 0;
   } catch (e) {
+    // A caller running this in-process (the list tool) gets the error itself, not only the exit
+    // code: the code alone cannot tell "out of credits" from "no cap given", or a refused key
+    // from a server that did not answer.
+    io.failed?.(e);
     if (e instanceof AgenticIdError) {
       const body = e.toJSON();
       if (f.json) io.err(JSON.stringify(body, null, 2));

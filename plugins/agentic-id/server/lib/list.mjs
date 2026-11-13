@@ -43,12 +43,17 @@ export async function list(client, args = {}) {
   const lines = [];
   let done;
   const say = (s) => void lines.push(String(s));
-  const io = { out: say, err: say, done: (d) => void (done = d) };
+  let failure;
+  const io = { out: say, err: say, done: (d) => void (done = d), failed: (e) => void (failure = e) };
   // The CLI returns its exit code; a dry run returns nothing, which is a success.
   const code = (await main(argv, io, client)) ?? 0;
   const text = lines.join('\n').trim();
   if (args.dry_run && code === 0) return { dry_run: true, summary: text, cost: { quoted_credits: 0, charged_credits: 0 }, file };
   if (code !== 0 && !done) {
+    // What the server said is passed on as it is: its status, code, available credits, request ID
+    // and the advice that goes with them (out of credits: stop; refused key: fix the key). The
+    // exit-code mapping below is only for refusals made on this machine and for anything else.
+    if (failure instanceof AgenticIdError && !failure.local && failure.status > 0) throw failure;
     const needsCap = /needs --max-credits/.test(text);
     const refusal = needsCap ? 'cap_required' : ({ 1: 'request.invalid', 2: 'auth.invalid_key', 3: 'cap_required', 4: 'list_failed', 5: 'unreachable' }[code] ?? 'list_failed');
     // Say it in the tool's own words, not the command's flags.

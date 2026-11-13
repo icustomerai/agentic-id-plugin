@@ -849,3 +849,29 @@ test('enrich: field names are checked and old names are mapped', async () => {
   await ops.enrich(c, { company: { domain: 'acme.io' }, fields: ['employee_size', 'industry'] });
   assert.deepEqual(c.calls.at(-1).body.fields, ['employees', 'industry']);
 });
+
+test('review: a server error in a file run reaches the tool as the server sent it, not rebuilt from the exit code', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
+  const { AgenticIdError } = await import('../plugins/agentic-id/server/lib/client.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'aid-list-err-'));
+  const file = join(dir, 'leads.csv');
+  writeFileSync(file, 'email,company\njane@acme.io,Acme\njoe@acme.io,Acme\n');
+  // Out of credits part way: before, this came back as cap_required, "Not sent", "call again with max_credits".
+  const broke = fake({ validate: () => { throw new AgenticIdError(402, 'credits.insufficient', 'Not enough credits.', { available: 0, request_id: 'req_42' }); } });
+  await assert.rejects(() => list(broke, { action: 'validate', file, max_credits: 5 }), (e) => {
+    assert.equal(e.status, 402);
+    assert.equal(e.code, 'credits.insufficient');
+    assert.notEqual(e.local, true, 'it was sent: earlier batches may have been charged');
+    assert.equal(e.toJSON().available_credits, 0);
+    assert.doesNotMatch(e.fix ?? '', /max_credits/, 'the advice is not "call again with a cap"');
+    return true;
+  });
+  // A refused key: before, status 0, read as "Agentic ID did not answer".
+  const refused = fake({ validate: () => { throw new AgenticIdError(401, 'auth.invalid_key', 'The key was refused.'); } });
+  await assert.rejects(() => list(refused, { action: 'validate', file, max_credits: 5 }), (e) => e.status === 401 && e.code === 'auth.invalid_key');
+  // A refusal made on this machine keeps its tool-worded message.
+  await assert.rejects(() => list(fake({}), { action: 'validate', file }), (e) => e.code === 'cap_required' && e.local === true && /dry_run/.test(e.fix));
+});
