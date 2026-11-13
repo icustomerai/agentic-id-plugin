@@ -2,19 +2,32 @@
 type: fixed
 ---
 {
-  "id": null,
-  "email": null,
-  "domain": null,
-  "email_validation": null,
-  "results": [
-    { "email": "jordan.lee@acme-analytics-synthetic.com", "status": "valid", "credits_charged": 1 },
-    { "email": "priya.shah@globex-synthetic.com", "status": "catch-all", "credits_charged": 1 },
-    { "email": "no.one@initech-synthetic.com", "status": "invalid", "credits_charged": 0 }
-  ],
-  "total": 3,
-  "rejected": 0,
-  "cost": { "quoted_credits": 3, "charged_credits": 2 },
-  "ledger": { "held": 3, "charged": 2, "available_after": 48 },
   "request_id": "req_eval_validate_01",
-  "summary": "3 checked: 1 valid, 1 catch-all, 1 invalid. Charged 2 credits."
+  "summary": "3 emails checked: 1 valid, 1 catch-all, 1 invalid. 3 credits charged.",
+  "cost": {
+    "quoted_credits": 3,
+    "charged_credits": 3
+  },
+  "results": [
+    {
+      "email": "jordan.lee@acme-analytics-synthetic.com",
+      "verdict": "valid",
+      "role": false,
+      "checked_at": "2026-11-11T00:00:00Z"
+    },
+    {
+      "email": "priya.shah@globex-synthetic.com",
+      "verdict": "catch-all",
+      "reason": "domain_accepts_all",
+      "role": false,
+      "checked_at": "2026-11-11T00:00:00Z"
+    },
+    {
+      "email": "no.one@initech-synthetic.com",
+      "verdict": "invalid",
+      "reason": "mailbox_rejects",
+      "role": false,
+      "checked_at": "2026-11-11T00:00:00Z"
+    }
+  ]
 }

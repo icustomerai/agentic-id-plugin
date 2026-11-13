@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const EVALS = process.argv[2] ?? join(ROOT, 'plugins/agentic-id/evals');
-const TOOLS = ['agentic_id_validate', 'agentic_id_resolve', 'agentic_id_enrich', 'agentic_id_find', 'agentic_id_discover'];
+const TOOLS = ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'workspace', 'report', 'list', 'login', 'estimate', 'status'].map((v) => `agentic_id_${v}`);
 const GRADERS = {
   tool_used: ['tool'],
   tool_order: ['before', 'after'],
@@ -75,8 +75,10 @@ for (const d of mockDirs) {
   for (const f of readdirSync(d).filter((n) => n.endsWith('.md'))) {
     const file = join(d, f);
     if (!TOOLS.includes(f.replace(/\.md$/, ''))) fail(file, 'mock for a tool the server does not expose');
-    const { body } = frontmatter(file);
-    try { JSON.parse(body); } catch (e) { fail(file, `mock body is not JSON: ${e.message}`); }
+    const { fields, body } = frontmatter(file);
+    // type: agent mocks hold instructions for the judge model that plays the server, not a JSON answer.
+    if (fields.type === 'agent') { if (body.length < 40) fail(file, 'agent mock needs instructions'); }
+    else try { JSON.parse(body); } catch (e) { fail(file, `mock body is not JSON: ${e.message}`); }
     for (const [, domain] of body.matchAll(/[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/g)) {
       if (!domain.endsWith('-synthetic.com')) fail(file, `mock email on a real-looking domain (${domain}); use a -synthetic.com domain`);
     }

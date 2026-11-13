@@ -1,24 +1,51 @@
 {
   "name": "agentic-id",
   "displayName": "Agentic ID",
-  "version": "0.4.0",
-  "description": "One open ID for every person, company and agent. Resolve any person or company to one stable ID, with the evidence behind the match, then enrich, find, discover and validate with the five Agentic ID tools. Credit-aware skills, a lead-qualification agent and a local, PII-free usage log.",
+  "version": "0.5.0",
+  "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then validate, enrich, find, discover and find look-alikes, with every value marked verified, corroborated or claimed. Credit-aware skills, a lead-qualification agent, a CLI for CSV lists and a local, PII-free usage log.",
   "author": {
     "name": "iCustomer",
     "url": "https://icustomer.ai"
   },
   "homepage": "https://icustomer.ai",
   "privacyPolicyUrl": "https://icustomer.ai/privacy-policy",
-  "repository": "https://github.com/icustomerai/onesource-plugin",
+  "repository": "https://github.com/icustomerai/agentic-id-plugin",
   "license": "MIT",
-  "keywords": ["agentic-id", "identity", "identity-resolution", "open-ledger", "enrichment", "email-validation", "prospecting", "gtm", "mcp"],
+  "keywords": [
+    "agentic-id",
+    "b2b",
+    "enrichment",
+    "identity",
+    "email-validation",
+    "prospecting",
+    "gtm",
+    "mcp"
+  ],
   "userConfig": {
     "api_key": {
       "type": "string",
       "title": "Agentic ID API key (optional)",
-      "description": "Leave empty to sign in with your iCustomer account (run /mcp, pick agentic-id, choose Authenticate). For CI and headless runs, paste an ic-live- key: Claude Code keeps it in your system keychain and sends it only to the Agentic ID server, as the x-api-key header.",
+      "description": "Leave empty to sign in with your iCustomer account (type /agentic-id-login). For CI and headless runs, paste an Agentic ID API key: Claude Code keeps it in your system keychain and passes it only to the plugin's own local server process, which sends it to the Agentic ID API as a Bearer token. Never paste a key into a chat.",
       "sensitive": true,
       "default": ""
+    },
+    "api_url": {
+      "type": "string",
+      "title": "Agentic ID API URL",
+      "description": "Where the Agentic ID V3 API runs. Leave the default for a local V3 stack; set your hosted URL (https) otherwise.",
+      "default": "http://127.0.0.1:3100"
+    },
+    "session_budget": {
+      "type": "string",
+      "title": "Session credit budget (optional)",
+      "description": "The most credits one Claude Code session may spend through this plugin, e.g. 100. Once the session's logged calls reach it, further paid calls are blocked until you raise it. Leave empty for no session budget; each call is still capped by its own max_credits.",
+      "default": ""
+    },
+    "confirm_above": {
+      "type": "string",
+      "title": "Ask before spending more than (credits)",
+      "description": "Claude Code asks you to approve any single Agentic ID call that could spend more than this many credits, and again each time a session's total spend passes another multiple of it, showing the amount. Default 10. Raise it for unattended runs; 0 asks before every paid call.",
+      "default": "10"
     }
   }
 }

@@ -1,5 +1,10 @@
 # Agentic ID
 
+> **Branch `v3/plugin-on-v3`.** On this branch the plugin runs on the Agentic ID V3 API through
+> its own bundled server. Start with [docs/v3.md](docs/v3.md) and
+> [plugins/agentic-id/README.md](plugins/agentic-id/README.md). The rest of this page still
+> describes the hosted v2 endpoint (five tools, OAuth sign-in) and is rewritten before release.
+
 **One open ID for every person, company and agent.**
 
 Agentic ID is an open identity protocol and a shared ledger. Resolve any person or company to one stable ID, with the evidence behind the match. Anyone can look up an ID, and anyone can add verified links back.

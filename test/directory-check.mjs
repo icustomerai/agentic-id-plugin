@@ -47,7 +47,7 @@ const HOOK_EVENTS = new Set([
   'ConfigChange', 'WorktreeCreate', 'WorktreeRemove', 'InstructionsLoaded', 'CwdChanged', 'FileChanged',
 ]);
 const SECRET_PATTERNS = [
-  /ic-(live|test)-[A-Za-z0-9_-]{12,}/, // Agentic ID API keys
+  /ic-(live|test|dev)-[A-Za-z0-9_-]{12,}/, // Agentic ID API keys
   /os_(live|test)_[A-Za-z0-9]{12,}/, // onesource-api (v2) keys
   /sk-(ant-)?[A-Za-z0-9_-]{24,}/, // Anthropic / OpenAI style keys
   /gh[pousr]_[A-Za-z0-9]{30,}/, // GitHub tokens

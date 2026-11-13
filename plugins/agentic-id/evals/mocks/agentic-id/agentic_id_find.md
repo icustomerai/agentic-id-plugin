@@ -2,14 +2,34 @@
 type: fixed
 ---
 {
-  "account": { "domain": "acme-analytics-synthetic.com", "name": "Acme Analytics" },
-  "people": [
-    { "id": "did:icustomer:global:person:1b2c3d", "name": "Morgan Reyes", "title": "VP Marketing", "seniority": "VP", "company": "Acme Analytics", "company_domain": "acme-analytics-synthetic.com", "work_email": "morgan.reyes@acme-analytics-synthetic.com", "source": "agentic-id" },
-    { "id": "did:icustomer:global:person:4e5f6a", "name": "Sam Okafor", "title": "Head of Demand Generation", "seniority": "VP", "company": "Acme Analytics", "company_domain": "acme-analytics-synthetic.com", "work_email": "sam.okafor@acme-analytics-synthetic.com", "source": "agentic-id" }
-  ],
-  "total_found": 7,
-  "cost": { "quoted_credits": 2, "charged_credits": 2 },
-  "ledger": { "held": 2, "charged": 2, "available_after": 44 },
   "request_id": "req_eval_find_01",
-  "summary": "2 people at Acme Analytics (7 match in total). Charged 2 credits."
+  "summary": "2 people found at acme-analytics-synthetic.com. 4 credits charged.",
+  "cost": {
+    "quoted_credits": 4,
+    "charged_credits": 4
+  },
+  "account_id": "ic-evalCompany000000001",
+  "people": [
+    {
+      "id": "ic-evalPerson0000000011",
+      "account_id": "ic-evalCompany000000001",
+      "name": "Morgan Reyes",
+      "title": "VP Marketing",
+      "email": "m***@acme-analytics-synthetic.com",
+      "level": "claimed"
+    },
+    {
+      "id": "ic-evalPerson0000000012",
+      "account_id": "ic-evalCompany000000001",
+      "name": "Sam Okafor",
+      "title": "Head of Demand Generation",
+      "email": "s***@acme-analytics-synthetic.com",
+      "level": "claimed"
+    }
+  ],
+  "excluded": {
+    "former_role": 3,
+    "already_delivered": 0
+  },
+  "rejected": []
 }

@@ -1,5 +1,10 @@
 # Connect Agentic ID to your agent
 
+> **Branch `v3/plugin-on-v3`.** This page still describes the hosted v2 endpoint. On V3 the tools
+> come from the plugin's own stdio server. Any MCP client can start it:
+> `{ "command": "node", "args": ["<repo>/plugins/agentic-id/server/mcp.mjs"], "env": { "AGENTIC_ID_API_KEY_FILE": "<file that holds the key>", "AGENTIC_ID_URL": "<V3 API URL>" } }`.
+> Agents without MCP can use `plugins/agentic-id/bin/agentic-id`. See [v3.md](v3.md).
+
 Agentic ID has two parts that work in any agent:
 - **the MCP server** (the five tools)
 - **the Agent Skills** (they teach the agent when to use each tool and how credits work)
@@ -35,12 +40,12 @@ Every agent except Claude Code loads skills from a folder. Clone this repo once 
 skill folders into the folder your agent reads:
 
 ```bash
-git clone https://github.com/<github-org>/onesource-plugin ~/onesource-plugin
+git clone https://github.com/<github-org>/agentic-id-plugin ~/agentic-id-plugin
 
 SKILLS_DIR=~/.agents/skills   # Codex, Muse Code. Hermes: ~/.hermes/skills. Pi: ~/.pi/agent/skills
 mkdir -p "$SKILLS_DIR"
 for s in agentic-id who-matters agentic-id-credits; do
-  ln -s ~/onesource-plugin/plugins/agentic-id/skills/$s "$SKILLS_DIR/$s"
+  ln -s ~/agentic-id-plugin/plugins/agentic-id/skills/$s "$SKILLS_DIR/$s"
 done
 ```
 
@@ -50,7 +55,7 @@ one project only, link them into that project's `.agents/skills/` instead.
 ## Claude Code
 
 ```bash
-claude plugin marketplace add <github-org>/onesource-plugin
+claude plugin marketplace add <github-org>/agentic-id-plugin
 claude plugin install agentic-id@icustomer
 ```
 
@@ -58,7 +63,7 @@ Restart Claude Code, run `/mcp`, pick `plugin:agentic-id:agentic-id` and choose 
 Claude Code stores the tokens, not the plugin. The usage hook and `/agentic-id-usage` need `node` 18
 or later.
 
-Try it without installing: `claude --plugin-dir /path/to/onesource-plugin/plugins/agentic-id`.
+Try it without installing: `claude --plugin-dir /path/to/agentic-id-plugin/plugins/agentic-id`.
 
 **Plugin options.** The plugin declares two `userConfig` options. Claude Code asks for them when you
 enable the plugin; change them later with `/plugin configure agentic-id@icustomer`, or in

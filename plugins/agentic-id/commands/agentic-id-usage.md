@@ -1,22 +1,20 @@
 ---
-description: Summarise local Agentic ID usage - credits per tool and the last 20 calls - from ~/.agentic-id/usage.jsonl
-argument-hint: "[number of recent calls, default 20]"
+description: What this workspace spent - credits available, spend by tool, recent charges and which IDs they were for (the server's record), plus this machine's own call log
+argument-hint: "[number of recent items, default 20]"
 allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/usage-summary.mjs *)
 ---
 
-Here is the local Agentic ID usage log, as summarised by the plugin's script:
+First call the `agentic_id_workspace` tool with `recent` set to $ARGUMENTS (20 if empty). That is
+the billing record: credits available and held, what was spent today (the UTC day) and in the last
+30 days by tool, the latest charges, and the IDs delivered with what each cost (companies carry
+their name or domain; people are shown by ID only).
+
+Present that first. It is the answer to "what did I spend" and "what was that charge for".
+
+Then, only as a footnote, this machine's own log of calls made through the plugin (it may be
+empty or old, and it never holds inputs):
 
 !`node ${CLAUDE_PLUGIN_ROOT}/scripts/usage-summary.mjs $ARGUMENTS`
 
-Present this to the user as-is: the per-tool credit table first, then the recent calls. Then add
-at most three short observations, for example which tool spent the most credits, any errors and
-their codes (`insufficient_credits`, `credit_cap_reached`, `provider_unavailable`, ...), and calls
-with no credits recorded.
-
-Notes for your answer:
-- The log is written on this machine by the plugin's PostToolUse hook. It only covers calls made
-  from Claude Code with this plugin enabled; it is not the Agentic ID ledger, which stays the
-  source of truth for billing.
-- The log holds no inputs or results (no emails, names or domains), only tool, outcome, request
-  id and credits. Do not try to reconstruct who was looked up.
-- If the log does not exist yet, say so and suggest running an Agentic ID tool first.
+If the two disagree, the workspace answer is right: say so. Never conclude "nothing was spent"
+from the local log.

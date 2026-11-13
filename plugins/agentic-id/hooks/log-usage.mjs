@@ -11,7 +11,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const VERBS = new Set(['validate', 'resolve', 'enrich', 'find', 'discover']);
+const VERBS = new Set(['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'estimate', 'status', 'workspace', 'report', 'list', 'login']);
 const REQUEST_ID_KEYS = ['request_id', 'requestId', 'x-request-id', 'x_request_id'];
 
 // Reads one named variable only; the environment object is never passed around or enumerated.
@@ -107,7 +107,8 @@ export function buildRecord(payload, now = new Date()) {
   const cost = structured && typeof structured.cost === 'object' ? structured.cost : null;
   const charged = num(cost?.charged_credits) ?? num(structured?.credits_charged);
   const quoted = num(cost?.quoted_credits);
-  const errorCode = isError && typeof structured?.error === 'string' ? structured.error.slice(0, 64) : null;
+  // A code such as credits.insufficient; never a sentence, which could carry an input value.
+  const errorCode = isError && typeof structured?.error === 'string' ? (/^[a-z0-9_.]{1,64}$/i.test(structured.error) ? structured.error : 'error') : null;
   const requestId = findKey(structured, REQUEST_ID_KEYS) ?? null;
   const safeId = requestId && /^[A-Za-z0-9._:-]+$/.test(requestId) ? requestId : null;
 

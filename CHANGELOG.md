@@ -3,6 +3,64 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.0 - unreleased (branch `v3/plugin-on-v3`)
+
+The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint is no longer used.
+
+### Added
+- **Sign in with an iCustomer account**, no API key needed: `/agentic-id-login` or `agentic-id login`
+  (OAuth 2.1 with PKCE against the API; the session is kept in `~/.agentic-id/session.json` and
+  renews itself for 30 days). `agentic-id logout` ends it. The API key option is now optional.
+- `agentic_id_workspace` / `agentic-id workspace`: credits available and held, spend by tool, the
+  latest grants and charges, IDs held, contributing or private.
+- `agentic_id_report` / `agentic-id report`: bounced, replied, wrong person or confirmed for an ID
+  the workspace holds; one, a list, or a CSV.
+- Every paid call carries an idempotency key, so a dropped connection or a timeout inside the API
+  is asked again without paying twice. Errors carry a `request_id`.
+
+- `agentic_id_list`: a whole CSV in one tool call, run inside the plugin's own server (a key set in
+  the plugin options never reaches shell commands). `agentic_id_login`: sign in or out from a tool
+  call. `agentic_id_status` shows the credits available.
+- **Approval before larger spends:** Claude Code asks the user to approve any call that could
+  spend more than 10 credits (option "Ask before spending more than"). The session budget now
+  prices calls that carry no cap.
+- Fixes from system testing: a list resolve could exceed its cap and could crash after charging;
+  the CSV writer dropped blank rows, repeated column names, extra cells, the BOM and CRLF, and
+  turned phone numbers into text; the command could overwrite its input; an unrecognised email
+  column was ignored silently; free-mail addresses on country domains (yahoo.de, hotmail.fr) were
+  not held back; simultaneous commands could sign the user out while renewing; failed calls were
+  missing from the usage log.
+
+### Changed
+- `.mcp.json` starts a bundled, dependency-free stdio MCP server (`server/mcp.mjs`) that calls the
+  V3 public API (`/v1/*`) with an API key. OAuth sign-in through `/mcp` is gone until V3 offers it.
+- Plugin options: `api_key` is now required; new `api_url` (default `http://127.0.0.1:3100`) and
+  optional `session_budget`.
+- IDs are `ic-...` and keys `ic-dev-...` / `ic-live-...`, as V3 issues them since its rename; `os_` IDs are
+  refused locally. The CSV columns the CLI adds for enriched fields are `aid_<field>` and
+  `aid_<field>_level`.
+- Tool arguments and answers follow the V3 contract: `id` is an `ic-...` ID; resolve returns
+  `outcome` (known, new, review, conflict, unresolvable); enrich returns `results[].fields[]` with a
+  `level` per value; find and discover return `excluded` and `rejected`; discover takes
+  `employees_min` / `employees_max` and `count_only`.
+- Prices: find is 2 credits per person, an `invalid` validate answer is charged, resolve is 1 per
+  ID (0 for an ID the workspace holds).
+- Error codes are V3's (`auth.invalid_key`, `credits.insufficient`, `request.invalid`, ...).
+
+### Added
+- Tools: `agentic_id_resolve_many`, `agentic_id_lookalike`, `agentic_id_facts`, `agentic_id_ledger`,
+  `agentic_id_estimate`, `agentic_id_status`.
+- Local guards: personal emails and phone numbers never leave the machine; input is cleaned;
+  repeats are paid once; calls over 10 credits need `max_credits`.
+- CLI `agentic-id` in the plugin's `bin/`: every tool, CSV in and out for validate, resolve and
+  enrich, `--dry-run`, `estimate`, `doctor`, exit codes.
+- Skills `clean-a-list`, `lookalike-prospecting`, `trust-check`.
+- Hook: optional per-session credit budget. Commands `/agentic-id-status`, `/agentic-id-clean-list`.
+- Tests: unit tests for the bundled layer, a stdio protocol test, 8 new eval cases.
+
+### Not yet updated
+- The repository README and `docs/agents.md` still describe the v2 endpoint. See `docs/v3.md`.
+
 ## 0.4.0 - 2026-11-12
 
 OneSource is now **Agentic ID**. Breaking: every name changed at once, with no aliases.

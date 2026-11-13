@@ -1,25 +1,27 @@
 #!/usr/bin/env node
 // Protocol test: does what Claude Code does with this plugin, without a model in the loop.
-//   1. reads plugins/agentic-id/.mcp.json and fills its ${user_config.*} references the way Claude
-//      Code does: api_key from AGENTIC_ID_API_KEY. The URL is the one fixed in .mcp.json, unless
-//      AGENTIC_ID_MCP_URL points the test at another server;
-//   2. speaks MCP over Streamable HTTP: initialize, tools/list, then calls the tools;
+//   1. reads plugins/agentic-id/.mcp.json and fills its ${user_config.*} and ${CLAUDE_PLUGIN_ROOT}
+//      references the way Claude Code does;
+//   2. starts the server it names and speaks MCP over stdio: initialize, tools/list, tool calls;
 //   3. feeds each real tool answer to the plugin's PostToolUse hook and checks the usage line.
 //
-// Needs a running Agentic ID server. Usage:
-//   AGENTIC_ID_MCP_URL=http://127.0.0.1:3000/mcp AGENTIC_ID_API_KEY=<key> node test/protocol.test.mjs
-// Spends at most 1 credit on the target server (validate; resolve is free). Set PROTOCOL_PAID=0 to
-// skip the paid call. E2E_EMAIL picks the work address to look up; the default is fictional.
-import { spawnSync } from 'node:child_process';
+// Needs a running Agentic ID V3 API. Usage:
+//   AGENTIC_ID_URL=http://127.0.0.1:3100 AGENTIC_ID_API_KEY_FILE=<file with the key> node test/protocol.test.mjs
+//
+// Free calls only by default (status, estimate, discover count, facts, ledger, local refusals).
+// PROTOCOL_PAID=1 adds one resolve of a company domain (1 credit at most, no provider is asked).
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { keyFromEnv } from '../plugins/agentic-id/server/lib/client.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PLUGIN = join(ROOT, 'plugins/agentic-id');
-const EMAIL = process.env.E2E_EMAIL ?? 'maya.chen@tallpinesoftware.com';
-const PAID = process.env.PROTOCOL_PAID !== '0';
+const PAID = process.env.PROTOCOL_PAID === '1';
+const DOMAIN = process.env.E2E_DOMAIN ?? 'stripe.com';
 
 let failures = 0;
 const check = (ok, label, detail = '') => {
@@ -27,102 +29,129 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures += 1;
 };
 
-if (!process.env.AGENTIC_ID_API_KEY) {
-  console.error('Set AGENTIC_ID_API_KEY (and AGENTIC_ID_MCP_URL) to run the protocol test.');
+const apiKey = keyFromEnv();
+if (!apiKey) {
+  console.error('Set AGENTIC_ID_API_KEY or AGENTIC_ID_API_KEY_FILE (and AGENTIC_ID_URL) to run the protocol test.');
   process.exit(2);
 }
 
 // 1. The server entry from the plugin's own .mcp.json, with the user's options filled in.
 const manifest = JSON.parse(readFileSync(join(PLUGIN, '.claude-plugin/plugin.json'), 'utf8'));
-const server = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers['agentic-id'];
-const options = {
-  api_key: process.env.AGENTIC_ID_API_KEY,
-};
+const entry = JSON.parse(readFileSync(join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers['agentic-id'];
+const options = { api_key: apiKey, api_url: process.env.AGENTIC_ID_URL };
 const fill = (value) =>
-  value.replace(/\$\{user_config\.(\w+)\}/g, (_m, key) => {
+  value.replaceAll('${CLAUDE_PLUGIN_ROOT}', PLUGIN).replace(/\$\{user_config\.(\w+)\}/g, (_m, key) => {
     if (!(key in manifest.userConfig)) throw new Error(`.mcp.json references undeclared option ${key}`);
     return options[key] ?? manifest.userConfig[key].default ?? '';
   });
 
-check(server.type === 'http' && /^https:\/\/[a-z0-9.-]+\/mcp$/.test(server.url) && !server.headersHelper, '.mcp.json: http server, fixed https URL, no headersHelper');
-check(server.headers?.['x-api-key'] === '${user_config.api_key}' && manifest.userConfig.api_key.sensitive === true, 'the API key comes only from a sensitive userConfig option');
+check(entry.command === 'node' && entry.args.length === 1 && entry.args[0] === '${CLAUDE_PLUGIN_ROOT}/server/mcp.mjs', '.mcp.json starts the bundled server with node, nothing downloaded');
+check(entry.env.AGENTIC_ID_API_KEY === '${user_config.api_key}' && manifest.userConfig.api_key.sensitive === true, 'the API key comes only from a sensitive userConfig option');
+check(!JSON.stringify(entry).includes(apiKey), 'no key is written in .mcp.json');
 
-const url = process.env.AGENTIC_ID_MCP_URL || server.url;
-const headers = Object.fromEntries(Object.entries(server.headers ?? {}).map(([k, v]) => [k, fill(v)]));
 const cfg = mkdtempSync(join(tmpdir(), 'agentic-id-protocol-'));
 const hookEnv = { PATH: process.env.PATH, HOME: process.env.HOME, CLAUDE_PLUGIN_ROOT: PLUGIN, AGENTIC_ID_CONFIG_DIR: cfg };
 
-// 2. MCP over Streamable HTTP.
+// 2. MCP over stdio.
+const child = spawn(entry.command, entry.args.map(fill), { env: { PATH: process.env.PATH, HOME: process.env.HOME, AGENTIC_ID_CONFIG_DIR: cfg, ...Object.fromEntries(Object.entries(entry.env).map(([k, v]) => [k, fill(v)])) }, stdio: ['pipe', 'pipe', 'pipe'] });
+let stderr = '';
+child.stderr.on('data', (d) => (stderr += d));
+const waiting = new Map();
+const stray = [];
+createInterface({ input: child.stdout }).on('line', (line) => {
+  try {
+    const msg = JSON.parse(line);
+    waiting.get(msg.id)?.(msg);
+    waiting.delete(msg.id);
+  } catch {
+    stray.push(line);
+  }
+});
 let nextId = 1;
-
-async function rpc(method, params) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...headers },
-    body: JSON.stringify({ jsonrpc: '2.0', id: nextId++, method, params }),
+const rpc = (method, params) =>
+  new Promise((resolve, reject) => {
+    const id = nextId++;
+    const timer = setTimeout(() => reject(new Error(`${method} timed out`)), 120_000);
+    waiting.set(id, (m) => (clearTimeout(timer), resolve(m)));
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
   });
-  const text = await res.text();
-  // A Streamable HTTP server may answer as JSON or as one SSE event.
-  const json = text.trim().startsWith('{') ? text : text.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5)).join('');
+const call = async (name, args) => (await rpc('tools/call', { name, arguments: args })).result;
 
-  return { status: res.status, body: json ? JSON.parse(json) : null };
+function runHook(toolName, toolResponse) {
+  const payload = { session_id: 'protocol-test', hook_event_name: 'PostToolUse', tool_name: toolName, tool_input: { redacted: true }, tool_response: toolResponse };
+  return spawnSync('node', [join(PLUGIN, 'hooks/log-usage.mjs')], { input: JSON.stringify(payload), env: hookEnv, encoding: 'utf8' });
 }
-
-const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'agentic-id-protocol-test', version: '0.1.0' } });
-check(init.status === 200 && init.body?.result?.serverInfo, 'initialize', `${init.status} ${init.body?.result?.serverInfo?.name ?? JSON.stringify(init.body?.error ?? '')}`);
-
-const list = await rpc('tools/list', {});
-const names = (list.body?.result?.tools ?? []).map((t) => t.name).sort();
-check(['validate', 'resolve', 'enrich', 'find', 'discover'].every((v) => names.some((n) => n.endsWith(v))), 'tools/list has the five verbs', names.join(', '));
-
-const toolName = (verb) => names.find((n) => n.endsWith(verb));
-const hook = join(PLUGIN, 'hooks/log-usage.mjs');
-
-async function callAndLog(verb, args) {
-  const res = await rpc('tools/call', { name: toolName(verb), arguments: args });
-  const result = res.body?.result;
-  const structured = result?.structuredContent ?? null;
-
-  // 3. The PostToolUse hook, with the payload Claude Code would send for this plugin tool.
-  const payload = {
-    session_id: 'protocol-test',
-    hook_event_name: 'PostToolUse',
-    tool_name: `mcp__plugin_agentic-id_agentic-id__${toolName(verb)}`,
-    tool_input: args,
-    tool_response: result,
-  };
-  const ran = spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), env: { ...hookEnv }, encoding: 'utf8' });
-
-  return { res, result, structured, hookStatus: ran.status };
-}
-
-const free = await callAndLog('resolve', { identifiers: { email: EMAIL }, max_credits: 1 });
-const freeText = free.result?.content?.[0]?.text ?? JSON.stringify(free.res.body?.error ?? '');
-// A fictional address resolves to no_match, which is still a well-formed, free answer.
-check(Boolean(free.structured) || /no_match|not_found/.test(freeText), 'resolve answers', free.structured?.summary ?? freeText.slice(0, 160));
-if (free.structured) check(typeof free.structured.request_id === 'string', 'answers carry a request_id for the trace');
-
-const rejected = await callAndLog('validate', { identifiers: { email: 'test@example.com' }, max_credits: 1 });
-check(rejected.result?.isError === true && /invalid_input/.test(rejected.result?.content?.[0]?.text ?? ''), 'a placeholder email is refused before any lookup');
-
-if (PAID) {
-  const paid = await callAndLog('validate', { identifiers: { email: EMAIL }, max_credits: 1 });
-  check(!paid.result?.isError && /valid|invalid|catch-all|unknown|risky/.test(paid.structured?.summary ?? ''), 'validate answers with a status', paid.structured?.summary ?? '');
-  check(paid.structured?.cost?.charged_credits <= 1, 'validate stays within max_credits', JSON.stringify(paid.structured?.cost));
-}
-
-// The usage log: one line per call, nothing from the inputs.
-let lines = [];
+const lastLog = () => JSON.parse(readFileSync(join(cfg, 'usage.jsonl'), 'utf8').trim().split('\n').at(-1));
+const prefixed = (tool) => `mcp__plugin_agentic-id_agentic-id__${tool}`;
 
 try {
-  lines = readFileSync(join(cfg, 'usage.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-} catch {
-  /* checked below */
-}
-check(lines.length === (PAID ? 3 : 2), 'the usage hook wrote one line per call', `${lines.length} line(s)`);
-check(!readFileSync(join(cfg, 'usage.jsonl'), 'utf8').includes(EMAIL), 'the usage log holds no email');
-check(lines.some((l) => l.request_id), 'usage lines carry the request_id', lines.map((l) => `${l.tool}:${l.credits_charged ?? '-'}`).join(' '));
+  const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'protocol-test', version: '1' } });
+  check(init.result?.serverInfo?.name === 'agentic-id' && init.result.protocolVersion === '2025-06-18', 'initialize', `${init.result?.serverInfo?.name} ${init.result?.serverInfo?.version}`);
+  child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
 
-rmSync(cfg, { recursive: true, force: true });
-console.log(failures ? `protocol test: ${failures} check(s) failed` : 'protocol test: all checks passed');
+  const tools = (await rpc('tools/list')).result.tools.map((t) => t.name);
+  const expected = ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'workspace', 'report', 'list', 'login', 'estimate', 'status'].map((v) => `agentic_id_${v}`);
+  check(expected.every((t) => tools.includes(t)) && tools.length === expected.length, `tools/list returns the ${expected.length} tools`, tools.join(', '));
+
+  const status = await call('agentic_id_status', {});
+  check(status.structuredContent?.ok === true, 'status: connected with the configured key', status.structuredContent?.summary);
+  check(!JSON.stringify(status).includes(apiKey), 'status never echoes the key');
+
+  const count = await call('agentic_id_discover', { account_filters: { country: ['UK'], industry: ['software'], employees_min: 100, employees_max: 2000 }, count_only: true });
+  const c = count.structuredContent;
+  check(!count.isError && c?.cost?.charged_credits === 0 && typeof c.request_id === 'string', 'discover count_only: free, with a request id', c?.summary);
+  let hook = runHook(prefixed('agentic_id_discover'), count);
+  let rec = lastLog();
+  check(hook.status === 0 && rec.tool === 'discover' && rec.ok === true && rec.credits_charged === 0 && rec.request_id === c.request_id, 'hook logs the discover count', JSON.stringify(rec));
+
+  const held = await call('agentic_id_validate', { emails: ['someone@gmail.com', 'not-an-email'] });
+  check(!held.isError && held.structuredContent.request_id === null && held.structuredContent.results.every((r) => r.verdict === 'rejected'), 'validate: personal and malformed addresses are answered locally, nothing sent');
+
+  const refused = await call('agentic_id_discover', { account_filters: { country: ['GB'] } });
+  check(refused.isError === true && refused.structuredContent.error === 'cap_required' && refused.structuredContent.sent === false, 'discover without a cap is refused before it is sent');
+  hook = runHook(prefixed('agentic_id_discover'), refused);
+  rec = lastLog();
+  check(rec.ok === false && rec.error === 'cap_required' && rec.credits_charged === 0, 'hook logs the refusal with its code and 0 credits', JSON.stringify(rec));
+
+  const bad = await call('agentic_id_find', { account: { domain: DOMAIN }, roles: ['CTO'], limit: 1, max_credits: 0 });
+  check((bad.structuredContent?.cost?.charged_credits ?? 0) === 0, 'find with max_credits 0 charges nothing', bad.structuredContent?.summary ?? bad.structuredContent?.message);
+
+  const facts = await call('agentic_id_facts', { id: 'ic-doesNotExist000000000' });
+  check(facts.isError === true && facts.structuredContent.error === 'id.not_held' && /holds/.test(facts.structuredContent.fix ?? ''), 'facts for an ID this workspace does not hold: refused, with what to do');
+  const ledger = await call('agentic_id_ledger', { id: 'ic-doesNotExist000000000' });
+  check(ledger.isError === true && ledger.structuredContent.error === 'id.not_held', 'ledger for an ID this workspace does not hold: refused');
+  const ws = await call('agentic_id_workspace', {});
+  check(!ws.isError && typeof ws.structuredContent.credits?.available === 'number' && /credits? available/.test(ws.structuredContent.summary), 'workspace: credits and spend', ws.structuredContent.summary);
+
+  if (PAID) {
+    const r = await call('agentic_id_resolve', { identifiers: { company_domain: `https://www.${DOMAIN}/` } });
+    const s = r.structuredContent;
+    check(!r.isError && ['known', 'new'].includes(s.outcome) && /^ic-/.test(s.id) && s.cost.charged_credits <= 1, `resolve ${DOMAIN}`, s.summary);
+    runHook(prefixed('agentic_id_resolve'), r);
+    rec = lastLog();
+    check(rec.tool === 'resolve' && rec.credits_charged === s.cost.charged_credits && rec.request_id === s.request_id, 'hook logs the resolve with its credits', JSON.stringify(rec));
+    const again = await call('agentic_id_resolve', { identifiers: { company_domain: DOMAIN.toUpperCase() } });
+    check(again.structuredContent.id === s.id, 'the same company in another spelling gets the same ID');
+    const history = await call('agentic_id_ledger', { id: s.id });
+    check(history.structuredContent.verified === true && history.structuredContent.entries.length >= 1, 'its ledger chain verifies', history.structuredContent.summary);
+    const heldFacts = await call('agentic_id_facts', { id: s.id });
+    check(!heldFacts.isError && Array.isArray(heldFacts.structuredContent.facts), 'facts open for an ID the workspace holds');
+    const rep = await call('agentic_id_report', { id: s.id, field: 'company_domain', outcome: 'confirmed' });
+    check(!rep.isError && rep.structuredContent.recorded === 1 && rep.structuredContent.cost.charged_credits === 0, 'report: an outcome for a held ID is recorded, free', rep.structuredContent.summary);
+    const many = await call('agentic_id_resolve_many', { records: [{ company_domain: DOMAIN }, { company_domain: `www.${DOMAIN}` }, { email: 'x@gmail.com' }], max_credits: 2 });
+    const m = many.structuredContent;
+    check(m.rows[1].repeat_of_row === 1 && m.rows[2].outcome === 'skipped' && m.cost.charged_credits <= 1, 'resolve_many: a repeat is paid once, a personal row is skipped', m.summary);
+  } else console.log('SKIP  paid calls (set PROTOCOL_PAID=1 for a few resolves of one company, 3 credits at most)');
+
+  const log = readFileSync(join(cfg, 'usage.jsonl'), 'utf8');
+  check(!/gmail|stripe|@/.test(log), 'the usage log holds no input values');
+  check(stray.length === 0, 'stdout carried protocol messages only', stray[0]);
+} catch (e) {
+  check(false, 'protocol run', `${e.message}${stderr ? ` | stderr: ${stderr.slice(0, 300)}` : ''}`);
+} finally {
+  child.stdin.end();
+  rmSync(cfg, { recursive: true, force: true });
+}
+
+console.log(failures ? `\n${failures} check(s) failed` : '\nprotocol test: all checks passed');
 process.exit(failures ? 1 : 0);

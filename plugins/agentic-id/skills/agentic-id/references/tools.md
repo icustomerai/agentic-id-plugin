@@ -1,179 +1,235 @@
-# Agentic ID tools: exact calls
+# Agentic ID tools: exact arguments
 
-Each verb below shows the MCP arguments, the same call through the CLI, and the fields to read
-back. Every answer also carries `cost` (`quoted_credits`, `charged_credits`), a one-line
-`summary`, and a `request_id` to quote when something looks wrong.
+Every paid tool takes `max_credits` (whole number) and an optional `purpose`
+(`b2b_outbound` by default; `ad_audience`, `own_customer_enrichment`, `fraud_check`).
+Every answer carries `summary`, `cost: { quoted_credits, charged_credits }` and `request_id`.
+Unknown arguments are refused before anything is sent.
 
-## validate
-
-Is a work email deliverable? Or is a company domain real?
-
-Three input shapes. Use exactly one.
+`identifiers` is the same object everywhere:
 
 ```json
-{ "identifiers": { "email": "jane@acme.com" }, "max_credits": 1 }
-```
-```json
-{ "emails": ["jane@acme.com", "raj@globex.com"], "max_credits": 2 }
-```
-```json
-{ "domain": "acme.com", "max_credits": 1 }
+{ "email": "jane.doe@acme.io", "linkedin_url": "https://www.linkedin.com/in/jane-doe", "name": "Jane Doe", "company_name": "Acme", "company_domain": "acme.io" }
 ```
 
-- One address: `identifiers.email`. Not `email` at the top level.
-- Two or more: `emails` (up to 1000). One call, one quote.
-- Domain only: free, no email check, no identity created.
-- An existing identity: `{ "identifiers": { "id": "ic-..." }, "max_credits": 1 }`.
+Any one strong identifier is enough. A name needs a company with it. Full URLs, `Name <email>`
+and tracking parameters are cleaned for you.
 
-CLI: `agentic-id validate --email jane@acme.com --max-credits 1 --json`. Batch:
-`echo '{"emails":[...],"max_credits":2}' | agentic-id validate --input - --json`.
-Domain: `agentic-id validate --domain acme.com --max-credits 1 --json`.
-
-Read back:
-- `email_validation.status`: `valid`, `invalid`, `catch-all`, `risky` or `unknown`.
-  - `catch-all`: the domain accepts everything, so the mailbox itself is unconfirmed.
-  - `unknown`: the verifier could not decide. It is free, and it does not mean the address is bad.
-- Batch: `results[]` (one per address), `total`, `rejected`.
-- `domain_verification` for the domain check.
-
-## resolve
-
-Who is this? Returns a stable Agentic ID identity.
+## agentic_id_validate
 
 ```json
-{ "identifiers": { "email": "jane@acme.com" }, "max_credits": 1 }
-```
-```json
-{ "identifiers": { "linkedin_url": "https://www.linkedin.com/in/jane-doe" }, "max_credits": 1 }
-```
-```json
-{ "identifiers": { "name": "Jane Doe", "company_domain": "acme.com" }, "max_credits": 1 }
+{ "emails": ["jane.doe@acme.io", "bob@acme.io"], "max_credits": 2 }
 ```
 
-- Put identifiers inside `identifiers`.
-- A name alone is not enough. Add a company domain, company name, email or LinkedIn URL.
+- `email` (one), `emails` (many; lists over 1,000 go in batches inside `max_credits`), `domain`
+  (is the company domain live; free).
+- Read back `results[]`: `email`, `verdict`, `reason`, `role` (true for shared mailboxes such as
+  sales@).
 
-CLI: `agentic-id resolve --email jane@acme.com --max-credits 1 --json` (also `--linkedin-url`,
-`--name`, `--company-domain`, `--company-name`).
+| Verdict | Means | Charged |
+| --- | --- | --- |
+| `valid` | The mailbox exists | 1 |
+| `invalid` | It does not | 1 |
+| `catch-all` | The server accepts everything, so this address is not proven | 1 |
+| `unknown` | No answer this time; not a verdict against the address | 0 |
+| `rejected` | Malformed, disposable or personal; never checked | 0 |
 
-Read back:
-- `universal_did`: the identity to carry into enrich.
-- `golden_record_did`: your workspace's record of the same person.
-- `found`: `true` means Agentic ID already holds an enriched record, so enrich may be unnecessary.
-- `identity_state`:
-  - `needs_evidence`: ask the user for one of the `required_evidence` items. Do not guess.
-  - `conflict`: the identifiers point at two records. Report both `conflict_ids` and pick neither.
+Rows with `"checked": "locally"` were held back on this machine and never sent.
 
-## enrich
-
-Fill missing fields on a person or a company.
-
-By contact, without resolving first (add `job_title` when the list has one; it is used to check
-the match):
-```json
-{ "contact": { "name": "Jane Doe", "company_domain": "acme.com", "job_title": "VP Marketing" }, "required_fields": ["email", "job_title", "linkedin"], "max_credits": 5 }
-```
-
-Many contacts (up to 100):
-```json
-{ "contacts": [ { "email": "jane@acme.com" }, { "name": "Raj Patel", "company_domain": "globex.com" } ], "required_fields": ["job_title"], "max_credits": 20 }
-```
-
-Companies (up to 100), by domain or name:
-```json
-{ "accounts": [ { "domain": "acme.com" }, { "name": "Globex" } ], "required_fields": ["industry", "employee_size", "location"], "max_credits": 10 }
-```
-
-By identity (from resolve; a company DID goes to company enrichment):
-```json
-{ "id": "did:icustomer:global:person:4f1c...", "fields": ["title", "company"], "max_credits": 2 }
-```
-
-- Use exactly one of `id`, `contact`/`contacts` or `account`/`accounts`.
-- `required_fields` returns only those fields and is cheaper. Contact names: `email`,
-  `job_title`, `linkedin`, `location`, `phone`. Company names: `industry`, `employee_size`,
-  `location`, `revenue`, `country`, `description`, `linkedin`, `phone`. An unknown name is
-  refused for free, with the allowed list in the message: pick from that list, do not guess
-  (`work_email` is not a name; use `email`).
-- Contacts only: `trust_mode: "enforce"` drops contradicted fields and holds back unverified
-  email/LinkedIn; `list_context` ("VP Marketing at B2B SaaS") helps judge fit.
-- No other top-level keys are accepted. Identity values go inside `contact` / `account`.
-
-CLI: `agentic-id enrich --name "Jane Doe" --company-domain acme.com --job-title "VP Marketing" --max-credits 5 --json`,
-`agentic-id enrich --account acme.com,globex.com --required-fields industry,employee_size --max-credits 10`.
-
-Read back, contacts:
-- `trust.status` per person: **Enriched with email** (outreach-ready: the email is verified and
-  belongs to this person), **Enriched** (trustworthy data, but no email safe to send to), or
-  **Not Enriched** (no match, or the match was rejected). `trust.verdict`, `trust.confidence`
-  and `trust.reason` explain it. Batch: each `results[]` row has `status`, `confidence` and
-  `reason`, and `outreach_ready` counts the rows safe to email.
-- Only outreach-ready rows belong in an email campaign. For an Enriched row, say the email is not
-  confirmed; do not present it as safe.
-
-Read back, all:
-- `enriched`: field → value.
-- `coverage_pct` (a fraction: 1 = every requested field).
-- `missing_fields`: report these as missing. Never fill them in yourself.
-- `provenance`: where each field came from.
-- Batch: `results[]`.
-
-## find
-
-The decision makers at a known company.
+## agentic_id_resolve
 
 ```json
-{ "account": { "domain": "acme.com" }, "roles": ["VP Marketing"], "seniority": ["VP"], "limit": 5, "max_credits": 5 }
+{ "identifiers": { "email": "jane.doe@acme.io" } }
 ```
 
-- Identify the company by `account.domain` (required; add `account.id` / `account.name` if
-  known). Without a domain, `roles` search across companies.
-- `roles` are job titles; `job_function` (e.g. "Marketing") and `seniority` (VP, Director,
-  C-Level, Head) narrow further. With none of them, decision makers (C-level, VP, head, director)
-  are searched, and the summary says so.
-- Always pass `limit`: default 20, max 100. 1 credit per person returned.
+- `kind`: `person` or `company`; inferred when omitted (a company when only a domain or company
+  name is given).
+- `spend: true` asks paid sources when the ledger alone cannot resolve it. Default false.
+- Read back `id`, `outcome`, `matched_on`, `confidence`, `reason`, `related[]`.
 
-CLI: `agentic-id find --domain acme.com --roles "VP Marketing" --seniority VP --limit 5 --max-credits 5 --json`
+| Outcome | Means | What to do |
+| --- | --- | --- |
+| `known` | Already in the ledger | Use the `id` |
+| `new` | Just created | Use the `id` |
+| `review` | Probably an existing ID, not sure enough to link | Show the user `reason`; add another identifier and resolve again |
+| `conflict` | The identifiers point at two different IDs | Nothing was merged. Report both; do not pick one |
+| `unresolvable` | Not enough to go on (free) | Say why (`reason`), ask for a stronger identifier |
 
-Read back:
-- `people[]`, each with `name`, `title`, `seniority`, `company`, `company_domain`,
-  `linkedin_url`, `work_email` and `source`.
-- `total_found` and `warnings` (why fewer came back).
+`related[]` lists companies that may belong with this one (a regional site, a brand). They are
+linked for review, never merged.
 
-`work_email` from find is an unverified claim. Validate it before anyone sends to it. If the
-people returned do not match the roles you asked for, say so. Do not present them as matches.
-
-## discover
-
-Net-new companies, and the decision makers in them, that match an ICP. Every account returned
-meets every account filter.
+## agentic_id_resolve_many
 
 ```json
-{
-  "account_filters": { "industry": ["Software Development"], "country": ["US"], "employee": ["1001-5000"] },
-  "contact_filters": { "job_title": ["VP Marketing"], "job_level": ["VP", "Head"] },
-  "limit": 10,
-  "max_credits": 15
-}
+{ "records": [{ "email": "jane.doe@acme.io" }, { "linkedin_url": "linkedin.com/in/jane-doe" }, { "company_domain": "acme.io" }], "max_credits": 3 }
 ```
 
-- At least one filter is required.
-- Account filters: `industry`, `country`, `employee` (size bands: `51-200`, `201-500`,
-  `1001-5000`, `10001+`), `revenue` (`10M-50M`, `1B+`, `<5M`), `keywords` (in the company
-  description), `tech_stack`.
-- Contact filters: `job_title`, `job_function`, `job_level` (seniority), `exclude_titles`.
-- Account filters alone return accounts only (`mode: accounts_only`). Contact filters alone (a
-  country may be added) search people across companies (`mode: persona`).
-- Price: 1 credit per account plus 1 per contact. `max_credits` is split across both before
-  anything runs, so the call can never cost more; `contacts_per_account` (default 2) and `limit`
-  size it.
-- `group_by_account` (default `true`) nests contacts under their accounts.
+- Up to 500 rows per call. Rows that are the same lookup are paid once.
+- Read back `rows[]` (one per input row, in order: `row`, `id`, `outcome`, `repeat_of_row`),
+  `counts`, and `same_id[]`: each `{ id, rows }` lists the input rows that are the same person or
+  company. That is the duplicate report.
+- `outcome: "skipped"` rows had only personal data and were not sent. `not_run` rows were not
+  reached before the cap; `stopped` says why.
 
-CLI: `agentic-id discover --industry "Software Development" --country US --employee 1001-5000 --job-title "VP Marketing" --limit 10 --max-credits 15 --json`
+## agentic_id_enrich
 
-Read back:
-- `accounts[]` (each with its contacts) or `contacts[]`
-- `returned_count`, `account_count`, `credits_charged`
-- `dropped`: how many candidate accounts each filter left out, largest first. On a short result,
-  tell the user which filter to widen.
-- `warnings`, and `partial: true` if the contact step failed after the accounts were charged.
+```json
+{ "contact": { "email": "jane.doe@acme.io" }, "fields": ["title", "company_domain"], "max_credits": 2 }
+```
+
+- `contact` (one), `contacts` (many; over 100 go in batches), or `company: { "domain": "acme.io" }`.
+- `fields`: only these; leave it out for everything. People: `work_email`, `linkedin_url`,
+  `title`, `seniority`, `company_name`, `company_domain`, `location`, `city`, `country`.
+  Companies: `name`, `domain`, `linkedin_url`, `industry`, `employees`, `revenue_usd`, `country`,
+  `city`, `founded`, `description`. Other names are refused with the allowed list; phone fields
+  are always refused.
+- `status` per result: `outreach_ready` (the work email is verified and belongs to this person),
+  `enriched` (trustworthy data, no email safe to send to), or a not-enriched status with the
+  `reason`.
+- Read back `results[]`: `id`, `status`, `reason`, and `fields[]` with `field`, `value`, `level`,
+  `source`, `observed_at`. Report each value with its level.
+- A result with no `fields` found nothing and was not charged.
+
+## agentic_id_find
+
+```json
+{ "account": { "domain": "acme.io" }, "roles": ["VP Marketing", "Head of Growth"], "limit": 5, "max_credits": 10 }
+```
+
+- `account.domain` or `account.id` is required. To search people across companies use discover.
+- `roles` (job titles) or `seniority` (`"director+"`, `"vp"`, `["vp", "c_suite"]`): at least one.
+- `countries`: where the person is, as ISO codes. `limit`: default 5, max 25.
+- `exclude_seen` (default true) skips people already delivered to this workspace, so the same call
+  again returns the next people.
+- Read back `people[]` (`id`, `name`, `title`, `email`, `level`), `excluded` (why candidates were
+  left out, with counts) and `rejected` (filter values that could not be read).
+- Former roles, advisors and board seats never count as holding the role.
+
+## agentic_id_discover
+
+```json
+{ "account_filters": { "industry": ["software"], "country": ["GB"], "employees_min": 100, "employees_max": 2000 }, "count_only": true }
+```
+
+- `account_filters`: `industry`, `country` (ISO codes), `employees_min`, `employees_max`,
+  `technologies`, `keywords` (rank only, unless `keywords_required: true`).
+- `contact_filters` (optional): `job_title`, `job_level`, `countries`, `per_account` (default 1),
+  `min_company_size`. Needs a title or a level.
+- `max_accounts`: default 25, max 500. `exclude_seen`: default true.
+- **Always run with `count_only: true` first.** It is free and returns `total_at_provider` and
+  `plan` (which source would be asked and what it can filter itself).
+- Read back `accounts[]` (`id`, `domain`, `name`, `country`, `employees`, `size_check`,
+  `charged`), `contacts[]`, `excluded`, `rejected`, `plan`.
+- `size_check: "single"` means only one source confirmed the size; that account is delivered but
+  not charged. Say so if size matters to the user.
+
+## agentic_id_lookalike
+
+```json
+{ "seeds": ["acme.io", "globex.com", "initech.com"], "max_accounts": 10, "max_credits": 10 }
+```
+
+- `seeds`: 1 to 50 company domains. Three or more of a similar kind give a usable profile.
+- Read back `profile` (what the seeds share: the search that was run), `seeds_rejected`,
+  `accounts[]` with `similarity` and `why`, and `bigger_than_seeds` (share of results larger than
+  the largest seed).
+- Show the user `profile` before the list. If `bigger_than_seeds` is above 0.5, say the list leans
+  to larger, well-known companies.
+
+## agentic_id_facts
+
+Only for an ID this workspace holds (one it resolved, enriched, found or discovered). Any other ID answers `id.not_held`; the same goes for `agentic_id_ledger`.
+
+```json
+{ "id": "ic-1VcQFNN5zwWguwAUaHEBNk" }
+```
+
+Read back `verified_id` (true or false), `missing[]` (what stops it being a Verified ID) and
+`facts[]`: `fact`, `level`, `reason`, `independent_sources`, `recheck_at`, `evidence[]`. Free.
+
+## agentic_id_ledger
+
+```json
+{ "id": "ic-1VcQFNN5zwWguwAUaHEBNk" }
+```
+
+Read back `entries[]` (`seq`, `kind`, `at`, `hash`, `prev_hash`, `detail`) and `verified` (the
+whole hash chain re-checked). Free.
+
+## agentic_id_workspace
+
+Free. The workspace this caller acts as, in one answer.
+
+```json
+{ "recent": 10 }
+```
+
+- `recent` (0 to 200, default 10): how many of the latest grants and charges to list.
+- Answer: `credits` (`balance`, `held`, `available`), `spent` (`today`, `last_30_days`, `by_tool`),
+  `recent` (each with `at`, `kind` grant or charge, `credits`, `tool`), `ids_held`, `contributes`,
+  `allowed_purposes`, `signed_in_as` (`account` or `api_key`), `contact_values`.
+- `available` is what a new call can spend. `held` is reserved by calls still running.
+- `contributes: true`: identifiers this workspace sends help every workspace resolve the same
+  entity, and resolving an ID it already holds is free. `false`: they stay private to it.
+
+## agentic_id_report
+
+Free. What happened after a value was used.
+
+```json
+{ "id": "ic-1VcQFNN5zwWguwAUaHEBNk", "field": "work_email", "outcome": "bounced" }
+```
+
+```json
+{ "reports": [ { "id": "ic-...", "outcome": "replied" }, { "id": "ic-...", "field": "title", "outcome": "wrong_person" } ] }
+```
+
+- `outcome`: `bounced`, `replied`, `wrong_person`, `confirmed`. Nothing else.
+- `field`: `work_email` (default), `title`, `company_domain`. Phones and personal emails are
+  refused on this machine.
+- `id` must be an Agentic ID the workspace holds; otherwise that row comes back
+  `feedback.not_held` and the rest still go.
+- Up to 200 in `reports`. The same ID and field twice is sent once (the last one).
+- Answer: `recorded` (count), `results` (one per report, with `recorded` and a `note`), `summary`.
+
+## agentic_id_list
+
+One action over a whole CSV file. Paid as the action; `dry_run` is free.
+
+```json
+{ "action": "resolve", "file": "/full/path/leads.csv", "dry_run": true }
+```
+
+```json
+{ "action": "validate", "file": "/full/path/leads.csv", "max_credits": 200, "out": "/full/path/leads.checked.csv" }
+```
+
+- `action`: `validate`, `resolve`, `enrich`, `report`.
+- Always `dry_run: true` first, then the real call with `max_credits`. Without `max_credits` a
+  paid run is refused with the estimate.
+- `out` defaults to `<name>.agentic-id.csv` next to the input. The input is never overwritten.
+- `fields` (enrich), `column` / `columns` (when headers are unusual), `limit_rows` (a sample),
+  `field` (report: what every outcome is about).
+- Answer: `summary`, `cost`, `rows`, `out_file`, `added_columns`. Rows are not returned: read the
+  result file's first lines if the user wants a look.
+
+## agentic_id_login
+
+Free. `{}` to sign in, `{ "action": "logout" }` to sign out.
+
+- The first call opens the browser and answers `status: "waiting_for_browser"` with a `link`.
+  Show the link. After the user says they signed in, call again: it answers `signed_in: true`
+  with the workspace.
+- An API key in the plugin options takes precedence over a sign-in.
+
+## agentic_id_estimate
+
+```json
+{ "tool": "discover", "arguments": { "max_accounts": 50, "contact_filters": { "job_title": ["CTO"], "per_account": 2 } } }
+```
+
+Returns `max_credits` and `arithmetic` without contacting Agentic ID. Free.
+
+## agentic_id_status
+
+No arguments. Returns `ok`, `server_url`, `workspace_id`, `scopes` and whether contact values are
+readable or masked. Never returns the key. Free.
