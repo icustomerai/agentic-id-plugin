@@ -144,7 +144,7 @@ export async function login({ baseUrl, env = process.env, fetchImpl = fetch, io 
     const code = url.searchParams.get('code');
     if (error || !code) {
       res.writeHead(400).end(PAGE('Sign-in was not completed', 'Go back to your terminal for details.'));
-      finish.reject(new AuthError(error === 'access_denied' ? 'access_denied' : 'signin_failed', error === 'access_denied' ? 'This account may not use Agentic ID, or its email is not verified.' : `Sign-in failed (${error ?? 'no code'}).`, 'Check the account, then run "agentic-id login" again.'));
+      finish.reject(new AuthError(error === 'access_denied' ? 'access_denied' : 'signin_failed', error === 'access_denied' ? 'This account may not use Agentic ID, or its email is not verified.' : `Sign-in failed (${error ?? 'no code'}).`, error === 'server_error' || error === 'temporarily_unavailable' ? 'The Agentic ID server could not finish the sign-in. This is on the server, not your account: try "agentic-id login" again shortly, or tell whoever runs the server.' : 'Check the account, then run "agentic-id login" again.'));
       return;
     }
     res.writeHead(200).end(PAGE('You are signed in', 'You can close this tab and go back to your terminal.'));
