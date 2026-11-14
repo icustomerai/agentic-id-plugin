@@ -3,7 +3,17 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## 0.5.0 - unreleased (branch `v3/plugin-on-v3`)
+## 0.5.1 - 2026-11-14
+
+### Changed
+- **The default server is the hosted Agentic ID service** (`https://onesource-v3.icustomer.ai`), in the plugin
+  option `api_url` and in the CLI when `AGENTIC_ID_URL` is not set. A new install now works after
+  sign-in with nothing to configure. Before, the default was a local V3 stack
+  (`http://127.0.0.1:3100`), so every new user had to type the address first.
+- Developers on a local stack: set `api_url` in the plugin options, or `AGENTIC_ID_URL`, to
+  `http://127.0.0.1:3100`. If you relied on the old default, set it now.
+
+## 0.5.0 - 2026-11-13
 
 The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint is no longer used.
 

@@ -645,7 +645,8 @@ test('client: an unset plugin option is not mistaken for a key or a URL', () => 
   assert.equal(keyFromEnv({ AGENTIC_ID_API_KEY: '${user_config.api_key}' }), undefined);
   assert.equal(keyFromEnv({ AGENTIC_ID_API_KEY: '  ' }), undefined);
   const empty = mkdtempSync(join(tmpdir(), 'aid-nourl-'));
-  assert.equal(urlFromEnv({ AGENTIC_ID_URL: '${user_config.api_url}', AGENTIC_ID_CONFIG_DIR: empty }), 'http://127.0.0.1:3100');
+  assert.equal(urlFromEnv({ AGENTIC_ID_URL: '${user_config.api_url}', AGENTIC_ID_CONFIG_DIR: empty }), 'https://onesource-v3.icustomer.ai', 'with nothing set, the hosted service');
+  assert.equal(urlFromEnv({ AGENTIC_ID_URL: 'http://127.0.0.1:3100' }), 'http://127.0.0.1:3100', 'a local stack is still one setting away');
   assert.equal(urlFromEnv({ AGENTIC_ID_URL: 'https://api.example.test/' }), 'https://api.example.test');
   const dir = mkdtempSync(join(tmpdir(), 'aid-key-'));
   writeFileSync(join(dir, 'key'), 'Agentic ID key: from-a-file\n');
