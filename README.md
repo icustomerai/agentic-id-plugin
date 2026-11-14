@@ -1,10 +1,5 @@
 # Agentic ID
 
-> **Branch `v3/plugin-on-v3`.** On this branch the plugin runs on the Agentic ID V3 API through
-> its own bundled server. Start with [docs/v3.md](docs/v3.md) and
-> [plugins/agentic-id/README.md](plugins/agentic-id/README.md). The rest of this page still
-> describes the hosted v2 endpoint (five tools, OAuth sign-in) and is rewritten before release.
-
 **One open ID for every person, company and agent.**
 
 Agentic ID is an open identity protocol and a shared ledger. Resolve any person or company to one stable ID, with the evidence behind the match. Anyone can look up an ID, and anyone can add verified links back.
@@ -15,15 +10,15 @@ Open spec, open code, community ledger. Started at [iCustomer](https://icustomer
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-orange) ![MCP](https://img.shields.io/badge/MCP-server-green)
 
-**[Get free credits](<SIGNUP_URL>)** · [Quickstart](#quickstart) · [Why Agentic ID](#why-agentic-id) · [The spec](#the-spec) · [Integrations](#choose-your-integration) · [The five tools](#the-five-tools) · [Credits](#credits-and-guardrails) · [Other agents](docs/agents.md)
+[Quickstart](#quickstart) · [Why Agentic ID](#why-agentic-id) · [The ID](#the-id) · [Integrations](#choose-your-integration) · [The tools](#the-tools) · [Credits](#credits-and-guardrails) · [Other agents](docs/agents.md)
 
 ---
 
 <p align="center">
-  <img src="docs/assets/resolve.svg" width="820" alt="An agent asks who maya.chen@tallpinesoftware.com is. Agentic ID matches the hashed work email against the ledger and returns Maya Chen, VP Marketing at Tallpine Software, with a stable ID, confidence 0.97, no conflict, 0 credits. The issued ID is recorded in the ledger.">
+  <img src="docs/assets/resolve.svg" width="820" alt="An agent asks who maya.chen@tallpinesoftware.com is. Agentic ID matches the hashed work email against the ledger and returns one stable ID, ic-7Qm2xN4vD6hWt0rK9bFc3Z, with the outcome known, confidence 0.97, no conflict, for 1 credit. The ID is recorded in the ledger.">
 </p>
 
-An agent asks who `maya.chen@tallpinesoftware.com` is. Agentic ID matches the hashed work email against the ledger and returns Maya Chen, VP Marketing at Tallpine Software, with a stable ID, confidence 0.97, no conflict, 0 credits. The issued ID is recorded in the ledger.
+An agent asks who `maya.chen@tallpinesoftware.com` is. Agentic ID matches the hashed work email against the ledger and returns one stable ID (`ic-7Qm2xN4vD6hWt0rK9bFc3Z`), with what it matched on, how confident it is, and what it cost. Resolve returns the ID, not the person's details: `enrich` fills in the title and company. The example address and ID are made up.
 
 ## How this started
 
@@ -37,7 +32,7 @@ Agentic ID is an open ledger protocol. iCustomer runs the first node. The refere
 
 | You can | How | Cost |
 |---|---|---|
-| **Look up** | Resolve any identifier against the shared ledger | Free for contributing workspaces |
+| **Look up** | Resolve any identifier against the shared ledger | 1 credit for an ID new to your workspace; free for one it already holds |
 | **Contribute** | Add hashed keys and the evidence behind a link. Links enter the ledger only with evidence. Every contributor has a reputation score. | Free, and it makes resolution better for everyone |
 | **Own** | Your records stay yours. The ledger stores hashed links, never raw data. | Free |
 
@@ -51,7 +46,7 @@ Most data tools look things up. An email goes in and a guess comes out. Agentic 
 
 **Evidence, not guesses.**
 - Every match says what it matched on and how confident it is.
-- Weak input comes back as `needs_evidence`, with what to add.
+- Weak input comes back as `review` or `unresolvable`, with the reason and what to add.
 - Identifiers that point at two records come back as a conflict. They're flagged, never merged.
 - Every issued ID is recorded: which ID went to which workspace, for which request.
 
@@ -67,43 +62,44 @@ Most data tools look things up. An email goes in and a guess comes out. Agentic 
   <img src="docs/assets/how-it-works.svg" width="820" alt="Workspaces in the data co-operative send hashed identity keys into the shared ledger; one workspace keeps its keys private. Your agent calls resolve and gets back a stable ID with evidence, confidence and cost.">
 </p>
 
-## The spec
+## The ID
 
-`spec/` defines the Agentic ID: the identity schema, the match-key format, the DID method (`did:agenticid:`) and the ledger protocol. It's licensed CC BY 4.0. Anyone can implement it, and issues and PRs on the spec are welcome.
+An Agentic ID is `ic-` followed by 22 letters and digits, for example `ic-7Qm2xN4vD6hWt0rK9bFc3Z`. It is the same ID in every workspace, and it stays the same whichever identifier you start from.
 
-Entity types: `person` and `company` today, with `household` and `agent` reserved. Identifier classes: work identifiers today (work email, LinkedIn URL, company domain), consumer identifiers next (personal email, phone, device), consent-gated.
+- **Entity types:** `person` and `company` today.
+- **Identifiers accepted:** work email, LinkedIn URL, a name with a company, a company domain. Personal emails and phone numbers are held back before any call is made.
+- **Every value has a level:** `verified` (proved by a direct check or something the person did), `corroborated` (independent sources agree), `claimed` (one source said so) or `contradicted` (newer evidence disagrees).
+- **Every ID has a history:** `agentic_id_ledger` replays it with the hash chain re-checked; `agentic_id_facts` shows the evidence behind each value.
 
-| Part | Path | License |
-|---|---|---|
-| Spec | `spec/` | CC BY 4.0 |
-| Claude Code plugin, skills, evals | `plugin/` | MIT |
-| CLI | `cli/` | MIT |
-| TypeScript SDK | `sdk/` | MIT |
-| Reference ledger node | `node/` (coming) | AGPL-3.0 |
+This repository holds the Claude Code plugin, its skills, evals and CLI (MIT). The written spec and the reference ledger node are not in this repository yet.
 
 ## Quickstart
 
-In Claude Code:
+In a terminal:
 
 ```bash
-claude plugin marketplace add icustomerai/agentic-id
+claude plugin marketplace add icustomerai/icustomer-marketplace
 claude plugin install agentic-id@icustomer
 ```
 
-Restart Claude Code, run `/mcp`, choose `plugin:agentic-id:agentic-id` → **Authenticate**, and sign in with your iCustomer account. New accounts get free credits. Then ask:
+Restart Claude Code, then ask:
 
-> Who is maya.chen@tallpinesoftware.com? Then find two more marketing leaders at her company. 6 credits max.
+> How many Agentic ID credits do I have?
+
+Claude opens the iCustomer sign-in page in your browser (or type `/agentic-id-login`). Sign in, go back to Claude Code, and it answers with your workspace's balance. There is nothing to configure: the plugin talks to the hosted service at `https://onesource-v3.icustomer.ai`.
+
+Then try:
+
+> Resolve tallpinesoftware.com with Agentic ID, then tell me what I have spent.
 
 ```
-✓ Maya Chen · VP Marketing · Tallpine Software
-  id did:agenticid:person:7a1e0c9f3bqk2m8xn4vd6hwt0r · matched on work_email · confidence 0.97 · free
-
-Marketing leaders at tallpinesoftware.com (2 of 7 found):
-  Daniel Okoro   Head of Demand Generation     email unverified
-  Sofia Marin    Director, Product Marketing   email unverified
-
-Charged 4 credits (cap 6). 46 credits left.
+tallpinesoftware.com   ic-7Qm2xN4vD6hWt0rK9bFc3Z   outcome: new   1 credit charged
+Workspace: 99 credits available. Spent 1 today (resolve 1).
 ```
+
+The domain, ID and numbers above are an illustration. Every real answer carries its own `cost` block.
+
+The plugin needs Node.js 18 or later and installs no packages. The marketplace and plugin repositories are internal to the iCustomer GitHub organisation for now, so installing needs git access to them (`gh auth login`, then `gh auth setup-git`).
 
 Using Codex, Cursor, Hermes, Pi or another agent? See [docs/agents.md](docs/agents.md).
 
@@ -111,226 +107,212 @@ Using Codex, Cursor, Hermes, Pi or another agent? See [docs/agents.md](docs/agen
 
 Every surface calls the same API, with the same inputs, outputs, error codes and credits.
 
-| Surface | Use it when | Get it | Status |
-|---|---|---|---|
-| Claude Code plugin | You work in Claude Code | `claude plugin install agentic-id@icustomer` | ✅ Stable |
-| MCP server | Your agent speaks MCP | `<PROD_MCP_URL>` | ✅ Live |
-| Agent Skills | Your agent reads SKILL.md | Link `plugin/skills/*` ([how](docs/agents.md)) | ✅ Stable |
-| CLI | CSV files, scripts, CI, agents without MCP | `npm i -g @agentic-id/cli` | 🧪 Preview |
-| TypeScript SDK | You're building an app or service | `npm i @agentic-id/sdk` | 🧪 Preview |
-| REST API | Any other language | `POST /v1/entities/<verb>` | ✅ Live |
+| Surface | Use it when | Get it |
+|---|---|---|
+| Claude Code plugin | You work in Claude Code | `claude plugin install agentic-id@icustomer` |
+| Hosted MCP server | Your agent speaks MCP over HTTP | `https://onesource-v3.icustomer.ai/mcp` |
+| Agent Skills | Your agent reads SKILL.md | Link `plugins/agentic-id/skills/*` ([how](docs/agents.md)) |
+| CLI | CSV files, scripts, CI, agents without MCP | `agentic-id`, shipped inside the plugin |
+| REST API | Any other language | `POST https://onesource-v3.icustomer.ai/v1/<verb>` |
 
-Use the MCP server where your agent supports it (it handles sign-in) and the CLI where it doesn't. The skills cover both.
+## The tools
 
-## The five tools
+Resolve is the core. Enrich, find, discover and lookalike build on resolved identities. Validate checks a mailbox before you send.
 
-Resolve is the core. Enrich, find and discover build on resolved identities. Validate checks deliverability before you send.
+| Tool | What it answers | Credits |
+|---|---|---|
+| `agentic_id_validate` | Is this work mailbox real? | 1 per `valid`, `invalid` or `catch-all` answer; `unknown` and `rejected` are free |
+| `agentic_id_resolve` | Who is this? A work email, LinkedIn URL, name with a company, or a domain, resolved to one stable ID | 1 per ID; 0 for one your workspace already holds |
+| `agentic_id_resolve_many` | Which rows in this list are the same person or company? Up to 500 rows | 1 per distinct ID |
+| `agentic_id_enrich` | Title, company and work email for a person; industry, size and country for a company | 2 per person, 1 per company; nothing found, nothing charged |
+| `agentic_id_find` | Who holds a role at a known company | 2 per person |
+| `agentic_id_discover` | Which companies and people match your ideal customer profile | 1 per company plus 2 per person; a count is free |
+| `agentic_id_lookalike` | Which companies look like these seed companies | 1 per company |
+| `agentic_id_facts` | How sure is Agentic ID about each value of this ID, and why | Free |
+| `agentic_id_ledger` | What happened to this ID, with its hash chain re-checked | Free |
+| `agentic_id_workspace` | Credits left, what was spent and on what | Free |
+| `agentic_id_report` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, confirmed | Free |
+| `agentic_id_list` | Work a whole CSV file: check emails, find duplicates, fill fields, report outcomes | As the action; a dry run is free |
+| `agentic_id_estimate` | What would this call cost at most | Free |
+| `agentic_id_login`, `agentic_id_status` | Sign in or out; check the connection | Free |
 
-| Verb | Ask it | MCP tool | CLI | Credits* |
-|---|---|---|---|---|
-| **resolve** | Who is this? Email, LinkedIn URL, or name plus company to one stable ID, with what it matched on and how confident it is. | `agentic_id_resolve` | `agentic-id resolve` | Free |
-| **enrich** | Title, work email, LinkedIn. Or a company's industry, size and HQ. Up to 100 per call. Each person comes back as *Enriched with email* (safe to send), *Enriched*, or *Not Enriched*. | `agentic_id_enrich` | `agentic-id enrich` | 1 per source that contributed: about 2 per person, 1 to 3 per company |
-| **find** | Who holds role X at company Y? Decision makers by default. | `agentic_id_find` | `agentic-id find` | 1 per person returned |
-| **discover** | Which companies and people match my ICP? Industry, country, size, revenue, keywords and tech stack are hard filters. | `agentic_id_discover` | `agentic-id discover` | 1 per account plus 1 per contact |
-| **validate** | Is this mailbox deliverable? Up to 1,000 per call. | `agentic_id_validate` | `agentic-id validate` | 1 per valid, catch-all or risky. Invalid, unknown and domain-only checks are free |
-
-\* Measured on the production service on <DATE>. The `cost` block in every answer is authoritative.
-
-Exact arguments for every tool: [plugin/skills/agentic-id/references/tools.md](plugin/skills/agentic-id/references/tools.md).
+The `cost` block in every answer is authoritative. Exact arguments for every tool: [references/tools.md](plugins/agentic-id/skills/agentic-id/references/tools.md).
 
 ## Claude Code plugin
 
-`plugin/` bundles the MCP server entry, the skills and a few Claude Code extras.
+`plugins/agentic-id/` bundles the MCP server, the skills, the CLI and a few Claude Code extras. Its own page, [plugins/agentic-id/README.md](plugins/agentic-id/README.md), says exactly what it sends, runs and stores.
 
 | Component | What it does |
 |---|---|
-| Skill `agentic-id` | Picks the right verb, shows exact arguments, applies the credit and B2B-only rules. Falls back to the CLI when the MCP tools are missing. |
-| Skill `who-matters` | Playbook: validate, resolve, enrich, find and discover inside a budget agreed up front. |
-| Skill `agentic-id-credits` | Prices, estimating and capping spend, quoted vs charged credits. |
-| Agent `lead-qualification` | Works a lead list end to end inside a credit budget and returns a clean list grouped by account. |
-| Hook (PostToolUse) | Writes one line per call to `~/.agentic-id/usage.jsonl`: tool, outcome, request id, credits. Never inputs or results. |
-| Command `/agentic-id-usage` | Credits per tool and the last 20 calls from that log. |
+| Skill `agentic-id` | Picks the right tool, gives Claude the exact arguments, and applies the credit, level and B2B-only rules |
+| Skill `agentic-id-credits` | Prices, free estimates and counts, caps, and how to read what was charged |
+| Skill `who-matters` | A playbook: check, resolve, enrich, find and discover inside a budget agreed with you first |
+| Skill `clean-a-list` | De-duplicate a lead or CRM file and check its emails, written back as extra columns |
+| Skill `lookalike-prospecting` | From your best customers to a shared profile to a list of similar companies |
+| Skill `trust-check` | Whether a record is safe to act on, and why two records are the same ID |
+| Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a list grouped by account |
+| Commands | `/agentic-id-login`, `/agentic-id-status`, `/agentic-id-clean-list <csv>`, `/agentic-id-usage` |
+| Hooks | A spend guard before each paid call, and a usage log after each call that never holds inputs or results |
 
-For CI and headless runs the plugin can send an API key instead of using OAuth. See [API-key mode](docs/agents.md#api-key-mode). `agentic-id login --with-api-key` writes the same key file, so one step sets up both.
+To change an option later, run `/plugin configure agentic-id@icustomer`. Updates are keyed on the version in `plugin.json`; every release bumps it. Get one with `claude plugin marketplace update icustomer`.
 
-**Troubleshooting**
-- *Shows "Needs authentication" after you added an API key.* Claude Code remembers that a server needed sign-in and skips it for a while. Run `/mcp`, pick `agentic-id`, choose **Reconnect**. Headless runs (`claude -p`) can't do this, so start the first run in a trusted folder with the key already in `~/.agentic-id/api-key`.
-- *Skill changes don't show up after `claude plugin update`.* Updates are keyed on the version in `plugin.json`. Every release bumps it.
-
-## MCP server
+## Hosted MCP server
 
 | Setting | Value |
 |---|---|
 | Transport | Streamable HTTP |
-| URL | `<PROD_MCP_URL>` |
-| Auth | OAuth 2.1 with PKCE (your agent opens a browser), or `x-api-key` |
-| Tools | `agentic_id_validate`, `agentic_id_resolve`, `agentic_id_enrich`, `agentic_id_find`, `agentic_id_discover` |
+| URL | `https://onesource-v3.icustomer.ai/mcp` |
+| Auth | Sign-in with your iCustomer account (OAuth 2.1 with PKCE; your agent opens a browser) |
 
 ```json
-{ "mcpServers": { "agentic-id": { "type": "http", "url": "<PROD_MCP_URL>" } } }
+{ "mcpServers": { "agentic-id": { "type": "http", "url": "https://onesource-v3.icustomer.ai/mcp" } } }
 ```
 
-## CLI (preview)
+## CLI
+
+`agentic-id` ships inside the plugin; Claude Code puts it on the PATH. From a checkout, run `plugins/agentic-id/bin/agentic-id`.
 
 ```bash
-npm i -g @agentic-id/cli
 agentic-id login      # browser sign-in with your iCustomer account
-agentic-id doctor     # checks server, sign-in, credits and file permissions
+agentic-id doctor     # checks Node, the sign-in or key, the server and what the caller can read
+agentic-id workspace  # credits available, what was spent, the last charges (free)
 ```
 
-Point it at a CSV, give it a budget, get rows back:
+Single lookups:
 
 ```bash
-agentic-id resolve  --email maya.chen@tallpinesoftware.com --max-credits 1
-agentic-id validate --file leads.csv --max-credits 500 -o csv > verdicts.csv
-agentic-id enrich   --file leads.csv --required-fields email,job_title --max-credits 300 -o csv > enriched.csv
-agentic-id find     --domain tallpinesoftware.com --roles "VP Marketing" --limit 5 --max-credits 10 -o jsonl
-agentic-id credits  # balance, holds, recent movements (free)
+agentic-id resolve --domain tallpinesoftware.com
+agentic-id find tallpinesoftware.com --role "VP Marketing" --limit 2 --max-credits 4
+agentic-id discover --country DE --industry software --min 100 --max 2000 --count    # a count is free
+agentic-id estimate find tallpinesoftware.com --role "VP Marketing" --limit 5        # the most it could cost
 ```
 
-- **Budgets hold for the whole file.** With `--file`, `--max-credits` caps the entire run. Rows not sent come back as `skipped`.
-- **Dirty rows don't stop a run.** A refused row (personal email, placeholder name) comes back `rejected` at no cost. If the service fails part-way, everything already paid for is printed, the rest is marked `not_sent`, and the exit code is 1.
-- **Machine output.** `-o csv`, `-o jsonl` or `--json`. CSV cells that would run as spreadsheet formulas are neutralised.
-- **Safe retries.** `--idempotency-key` returns the first answer instead of charging again.
-- **Exit codes.** 0 ok, 1 API error, 2 bad input (nothing sent), 3 config, sign-in or connection problem.
+Lists (CSV in, CSV out):
 
-## TypeScript SDK (preview)
-
-No dependencies, uses global `fetch`. Runs on Node 18+, Deno, Bun and in browsers.
-
-```ts
-import { AgenticId, AgenticIdError } from '@agentic-id/sdk';
-
-const aid = new AgenticId({ apiKey: process.env.AGENTIC_ID_API_KEY! });
-
-const check = await aid.validate({ identifiers: { email: 'maya.chen@tallpinesoftware.com' }, max_credits: 1 });
-console.log(check.email_validation?.status, check.cost); // "valid" { quoted_credits: 1, charged_credits: 1 }
-
-try {
-  await aid.enrich({ contact: { email: 'maya.chen@tallpinesoftware.com' }, required_fields: ['job_title'], max_credits: 2 });
-} catch (e) {
-  if (e instanceof AgenticIdError) console.error(e.code, e.fix); // e.g. insufficient_credits
-}
+```bash
+agentic-id validate --file leads.csv --dry-run                  # what it would cost; sends nothing
+agentic-id validate --file leads.csv --max-credits 200 --out leads.checked.csv
+agentic-id resolve  --file leads.checked.csv --max-credits 500 --out leads.clean.csv
 ```
 
-Methods: `validate`, `resolve`, `enrich`, `find`, `discover`, `credits`.
+- **Budgets hold for the whole file.** With `--file`, `--max-credits` caps the entire run; rows not reached are marked and nothing more is charged.
+- **Your file is kept.** The result is a new file with every original column and row, plus verdict, ID and duplicate columns. Repeated rows are paid once. Cells that would run as spreadsheet formulas are neutralised.
+- **Personal emails never leave your machine.** They are held back and counted in the answer.
+- **Machine output.** `--json` prints the full answer.
+- **Exit codes.** 0 ok, 1 bad input (nothing sent), 2 key or sign-in problem, 3 credits or cap, 4 refused by the API, 5 unreachable.
+
+`agentic-id --help` lists everything. More: [references/cli.md](plugins/agentic-id/skills/agentic-id/references/cli.md).
 
 ## REST API
 
 ```bash
-curl -s <PROD_API_URL>/v1/entities/validate \
-  -H "x-api-key: $AGENTIC_ID_API_KEY" -H "content-type: application/json" \
+curl -s https://onesource-v3.icustomer.ai/v1/resolve \
+  -H "Authorization: Bearer $AGENTIC_ID_API_KEY" -H "content-type: application/json" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"identifiers":{"email":"maya.chen@tallpinesoftware.com"},"max_credits":1}'
+  -d '{"identifiers":{"company_domain":"tallpinesoftware.com"},"max_credits":1}'
 ```
 
 | Verb | Route |
 |---|---|
-| validate | `POST /v1/entities/validate` |
-| resolve | `POST /v1/entities/resolve` |
-| enrich | `POST /v1/entities/enrich` |
-| find | `POST /v1/entities/find` |
-| discover | `POST /v1/entities/discover` |
-| credit balance | `GET /v1/credits` |
+| validate | `POST /v1/validate` |
+| resolve | `POST /v1/resolve` |
+| enrich | `POST /v1/enrich` |
+| find | `POST /v1/find` |
+| discover | `POST /v1/discover` |
+| lookalike | `POST /v1/lookalike` |
+| report an outcome | `POST /v1/feedback` |
+| facts, history | `GET /v1/facts/{id}`, `GET /v1/ledger/{id}` |
+| workspace, credits | `GET /v1/workspace`, `GET /v1/credits` |
 
-Reusing an `Idempotency-Key` with a different body returns `409 idempotency_key_reused`.
+The full description is served at `https://onesource-v3.icustomer.ai/v1/openapi.json`. Reusing an `Idempotency-Key` with a different body is refused (`idempotency.key_reused`); reusing it with the same body returns the first answer and charges once.
 
 ## Authentication
 
-Every surface accepts a signed-in iCustomer account or an API key. Both act as the same workspace.
+Every surface accepts a signed-in iCustomer account or an API key. Each signed-in account has a workspace and a credit wallet of its own; an API key belongs to one workspace and draws on that workspace's wallet.
 
 | You are | Use | How |
 |---|---|---|
-| A person in Claude Code or another agent | OAuth | `/mcp` → `agentic-id` → Authenticate |
-| A person at a terminal | OAuth | `agentic-id login`. Renews itself for 30 days of use. |
-| A script, CI job or headless agent | API key | `AGENTIC_ID_API_KEY`, or `agentic-id login --with-api-key < key.txt` (saves to `~/.agentic-id/api-key`, mode 0600) |
+| A person in Claude Code | Sign-in | Ask Claude to sign you in, or type `/agentic-id-login` |
+| A person at a terminal | Sign-in | `agentic-id login`. Kept in `~/.agentic-id/session.json`, readable by you only; renews itself for 30 days |
+| A script, CI job or headless agent | API key (`ic-live-...`) | `AGENTIC_ID_API_KEY`, or the file named in `AGENTIC_ID_API_KEY_FILE`. A key, when set, is used instead of a sign-in |
 
-`agentic-id whoami` shows which credential is in use and never prints it. Never put an API key in a URL, prompt, chat message or committed file. The skills tell agents never to ask for one in chat.
+Never put an API key in a URL, prompt, chat message or committed file. The skills tell agents never to ask for one in chat.
 
 ## Credits and guardrails
 
 You pay only for results delivered. Rejected input, misses and errors on our side are free.
 
-- `max_credits` is a hard budget. Required on validate, resolve, enrich and find. It also caps rows on discover. A call that can't fit returns `credit_cap_reached` and spends nothing.
-- `limit` caps rows on find (default 20, max 100) and discover (default 100). The skills always set it.
-- Every answer shows `cost.quoted_credits` (the most it could cost), `cost.charged_credits` (what it did cost) and `ledger.available_after`.
+- `max_credits` is a hard budget a call never exceeds. A call that could cost more than 10 credits is not sent without one (`cap_required`).
+- Claude Code asks you to approve any single call that could spend more than 10 credits, and again each time a session's total passes another multiple of that. Change the threshold in the plugin options.
+- An optional session budget blocks further paid calls once a session has spent it.
+- Every answer shows `cost.quoted_credits` (the most it could cost) and `cost.charged_credits` (what it did cost). `agentic_id_estimate` and a `discover` count are free.
 - The skills make the agent report credits after each call, total them for multi-step work, and ask before raising a budget.
 
 ## Errors
 
-JSON with a machine-readable `code` and a `fix` the agent can act on:
-
-```json
-{ "error": "credit_cap_reached", "message": "max_credits 1 cannot pay for any contact...", "fix": "Raise max_credits or request fewer rows or fields." }
-```
+JSON with a machine-readable code and a `fix` the agent can act on.
 
 | Code | HTTP | Meaning |
 |---|---|---|
-| `invalid_input` | 400 | Missing or malformed field, or test data such as `test@` or `example.com` |
-| `identifier_class_not_enabled` | 422 | A consumer identifier (personal email, phone, device ID). Work identifiers only for now. |
-| `region_not_enabled` | 422 | A person outside the US. Company lookups still work. |
-| `credit_cap_reached` | 402 | `max_credits` can't cover the cheapest paid step |
-| `insufficient_credits` | 402 | Workspace balance can't cover the call |
-| `no_match` / `not_found` | 404 | Nothing found, nothing charged |
-| `rate_limited` | 429 | Retry after `Retry-After` |
-| `provider_unavailable` | 503 | An upstream source failed, nothing charged |
+| `request.invalid` | 400 | A missing, unknown or contradictory argument; `issues` names each one |
+| `auth.missing_key`, `auth.invalid_key`, `auth.token_expired` | 401 | Not signed in, a wrong or revoked key, or a sign-in that ran out |
+| `cap_required` | (not sent) | The call could cost more than 10 credits and has no `max_credits` |
+| `credits.insufficient` | 402 | The wallet cannot cover the call; `available_credits` says what is left. Stop, do not retry |
+| `purpose.not_allowed`, `pii.scope_required` | 403 | The data may not be used for this purpose, or the key cannot read contact values |
+| `identity.merge_blocked` | 409 | Two records disagree on a strong identifier. Nothing is merged |
+| `idempotency.key_reused` | 422 | The key was already used with a different request |
+| `rate_limited` | 429 | Retry after `retry_after_seconds` |
+| `service.unavailable` | 503 | Nothing was charged. Try once more later |
 
-Full list: [references/errors.md](plugin/skills/agentic-id/references/errors.md).
+Full list: [references/errors.md](plugins/agentic-id/skills/agentic-id/references/errors.md).
 
 ## Where your data goes
 
-- **Work identifiers only for now.** Work emails, LinkedIn profile URLs, names with a company, company domains. Personal emails, phone numbers and device IDs are refused until consumer identity ships with consent controls.
-- **People in the US, companies everywhere.** Person lookups outside the US return `region_not_enabled`. Company lookups work in every region. See [spec/contributions.md](spec/contributions.md#jurisdiction).
-- **Bad input stops before it costs anything.** Test addresses, placeholder names and disposable domains are refused before any lookup.
-- **Requests go only to the server you configured.** Results come back into your agent's conversation. Handle them under your organisation's data policy.
-- **The local usage log holds no personal data.** Timestamp, session, tool, outcome, error code, request id and credits. Mode 0600, delete it any time.
+- **Work identifiers only.** Work emails, LinkedIn profile URLs, names with a company, company domains. Personal email addresses, phone numbers and malformed input are held back on your machine before any call is made, and the answer says how many were held back.
+- **Requests go only to the server you configured.** Results come back into your agent's conversation. Handle them under your organisation's data policy. Contact values come back masked unless your key is allowed to read them.
+- **The local usage log holds no personal data.** Time, session, tool, outcome, error code, request ID and credits. Mode 0600, delete it any time.
 
 ## Skills and evals
 
-The skills are plain Agent Skills and work in any agent that reads SKILL.md. Every skill change is tested with `claude plugin eval` against synthetic mocks (`plugin/evals/mocks/`), so evals need no API key, no credits and no real data.
-
-| Group | Checks |
-|---|---|
-| `triggering/` | The right skill loads for natural requests, and none loads for unrelated work |
-| `behaviour/` | Batches emails into one validate call, always passes `limit` and `max_credits`, reports cost and unverified emails, flags results that don't match the roles asked for, never sends personal data, stops on `insufficient_credits` without retrying, validates before enriching, shrinks a plan to fit the budget, hands lead lists to the `lead-qualification` agent |
+The skills are plain Agent Skills and work in any agent that reads SKILL.md. Skill changes are tested with `claude plugin eval` against synthetic mocks (`plugins/agentic-id/evals/`), so evals need no API key, no credits and no real data.
 
 ```bash
-./test/evals.sh                    # full suite: 3 runs per case, with and without the plugin
+./test/evals.sh                    # full suite
 EVAL_QUICK=1 ./test/evals.sh       # 1 run per case, no baseline
 ./test/evals.sh --tag triggering   # one group
 ```
 
-`test/evals.sh` always passes `--no-publish` and a cost ceiling (`EVAL_MAX_COST_USD`, default $10).
-
 ## Development
 
 ```bash
-./test/validate.sh   # manifests, JSON, frontmatter, eval structure, secrets scan, unit tests (no network)
-./test/evals.sh      # skill evals against mocks (model cost only)
+node --test test/v3-unit.test.mjs test/log-usage.test.mjs test/signin.test.mjs   # unit tests, no network
+node test/directory-check.mjs                                                    # plugin directory checks
+./test/evals.sh                                                                  # skill evals against mocks (model cost only)
 
-# Against a live server (spends about 1 to 3 credits):
-AGENTIC_ID_MCP_URL=<url> AGENTIC_ID_API_KEY=... node test/protocol.test.mjs
-AGENTIC_ID_MCP_URL=<url> AGENTIC_ID_API_KEY=... E2E_MODE=helper ./test/e2e.sh
+# Against a live server (free calls only by default):
+AGENTIC_ID_URL=<url> AGENTIC_ID_API_KEY_FILE=<file with the key> node test/protocol.test.mjs
+# A real sign-in, with you at the browser:
+AGENTIC_ID_URL=<url> test/real-signin.sh
 ```
 
 ```
-.claude-plugin/marketplace.json     Claude Code marketplace "icustomer"
-spec/                               Agentic ID spec (CC BY 4.0)
-plugin/
-  .claude-plugin/plugin.json        plugin manifest
-  .mcp.json                         MCP server entry: OAuth, optional API-key headersHelper
+plugins/agentic-id/
+  .claude-plugin/plugin.json        plugin manifest and options
+  .mcp.json                         starts the bundled MCP server
+  server/                           MCP server, CLI and API client (plain Node.js, no packages)
+  bin/agentic-id                    the CLI
   skills/                           portable Agent Skills
   agents/lead-qualification.md      subagent
-  commands/agentic-id-usage.md      slash command
-  hooks/                            PII-free usage log
-  scripts/                          headersHelper, usage summary
+  commands/                         slash commands
+  hooks/                            spend guard and PII-free usage log
   evals/                            skill evals and tool mocks
-cli/                                CLI (MIT)
-sdk/                                TypeScript SDK (MIT)
 docs/agents.md                      setup for Codex, Hermes, Pi and other agents
-docs/release-notes/
-test/                               validate.sh, evals.sh, e2e.sh, protocol test, fixtures
+docs/v3.md                          running against a local V3 stack
+docs/assets/                        README graphics and their generator
+test/                               unit tests, protocol test, evals, sign-in checks
 ```
+
+The marketplace that lists this plugin is [icustomerai/icustomer-marketplace](https://github.com/icustomerai/icustomer-marketplace).
 
 ## Editions
 
@@ -340,10 +322,8 @@ test/                               validate.sh, evals.sh, e2e.sh, protocol test
 | **Agentic ID Cloud** (hosted by iCustomer) | The shared ledger, resolution across 100+ independent sources, credits | Pay per use. Free credits to start. |
 | **iCustomer Enterprise** | Agentic ID inside your own warehouse, ongoing monitoring, SLA and DPA, plus Growth Brain | Annual packs. [Talk to us](https://icustomer.ai). |
 
-## Contributing, security, license
+## Security, changes, license
 
-- Contributions: [CONTRIBUTING.md](CONTRIBUTING.md). We use the DCO (`git commit -s`).
-- Security issues: [SECURITY.md](SECURITY.md). Please don't open a public issue.
-- Questions: open an issue, or reach Abhi Yadav at [<EMAIL>].
+- Security issues: please don't open a public issue; contact the iCustomer team through [icustomer.ai](https://icustomer.ai).
 - Changes: [CHANGELOG.md](CHANGELOG.md).
-- Licenses: MIT for `plugin/`, `cli/` and `sdk/` (copyright iCustomer), CC BY 4.0 for `spec/`, AGPL-3.0 for `node/`. Need a different license for the node? Talk to us. See [LICENSE](LICENSE).
+- License: MIT, copyright iCustomer. See [LICENSE](LICENSE).
