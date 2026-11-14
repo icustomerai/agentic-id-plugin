@@ -47,7 +47,7 @@ function hero() {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${FONT}" font-size="14" role="img" aria-labelledby="t d" xml:space="preserve">
   <title id="t">An agent resolves a work email to an Agentic ID identity</title>
-  <desc id="d">The agent calls agentic_id_resolve. Agentic ID normalises the email, turns it into a hashed match key, searches its verified ledger of more than 75 million companies and people, finds a known match on the work email with confidence 0.97 and no conflict, and returns a stable identity for Maya Chen, VP Marketing at Tallpine Software. The lookup is free and the issued ID is recorded in the ledger.</desc>
+  <desc id="d">The agent calls agentic_id_resolve. Agentic ID normalises the email, turns it into a hashed match key, searches its verified ledger of more than 75 million companies and people, and finds a known match on the work email with confidence 0.97 and no conflict. It returns one stable ID, ic-7Qm2xN4vD6hWt0rK9bFc3Z, with the outcome known, at a cost of 1 credit, and records it in the ledger. The lookup is free when the workspace already holds the ID. Weak evidence comes back as review, never as a guess.</desc>
   <defs>
     <clipPath id="typing"><rect x="${x0 + 18}" y="52" height="24" width="0">
       <animate attributeName="width" dur="${T}s" repeatCount="indefinite" values="0;0;${promptW};${promptW}" keyTimes="0;${k(0.3)};${k(1.9)};1" calcMode="linear"/>
@@ -75,10 +75,10 @@ function hero() {
 
   <g opacity="0">
     <rect x="${x0}" y="${resultY - 20}" width="${W - 2 * x0}" height="108" rx="8" fill="${C.panel}" stroke="${C.green}" stroke-opacity="0.6"/>
-    <text x="${x0 + 16}" y="${resultY + 6}"><tspan fill="${C.green}" font-weight="600">✓ Maya Chen</tspan><tspan fill="${C.text}"> · VP Marketing · Tallpine Software</tspan></text>
-    <text x="${x0 + 16}" y="${resultY + 30}"><tspan fill="${C.dim}">${esc('id     ')}</tspan><tspan fill="${C.text}">did:agenticid:person:7a1e0c9f3bqk2m8xn4vd6hwt0r</tspan><tspan fill="${C.dim}">${esc('  (stable)')}</tspan></text>
-    <text x="${x0 + 16}" y="${resultY + 52}"><tspan fill="${C.dim}">${esc('found  ')}</tspan><tspan fill="${C.text}">true</tspan><tspan fill="${C.dim}">${esc('   ·   cost ')}</tspan><tspan fill="${C.text}">0 credits</tspan><tspan fill="${C.dim}">${esc('   ·   ledger ')}</tspan><tspan fill="${C.amber}">issued ✓</tspan></text>
-    <text x="${x0 + 16}" y="${resultY + 76}" fill="${C.dim}" font-size="12">Weak evidence comes back as needs_evidence. Nothing is guessed.</text>
+    <text x="${x0 + 16}" y="${resultY + 6}"><tspan fill="${C.green}" font-weight="600">✓ Resolved</tspan><tspan fill="${C.text}"> · one stable ID for this person</tspan></text>
+    <text x="${x0 + 16}" y="${resultY + 30}"><tspan fill="${C.dim}">${esc('id       ')}</tspan><tspan fill="${C.text}">ic-7Qm2xN4vD6hWt0rK9bFc3Z</tspan><tspan fill="${C.dim}">${esc('  (stable)')}</tspan></text>
+    <text x="${x0 + 16}" y="${resultY + 52}"><tspan fill="${C.dim}">${esc('outcome  ')}</tspan><tspan fill="${C.text}">known</tspan><tspan fill="${C.dim}">${esc('   ·   cost ')}</tspan><tspan fill="${C.text}">1 credit</tspan><tspan fill="${C.dim}">${esc('   ·   ledger ')}</tspan><tspan fill="${C.amber}">recorded ✓</tspan></text>
+    <text x="${x0 + 16}" y="${resultY + 76}" fill="${C.dim}" font-size="12">Free when your workspace already holds the ID. Weak evidence comes back as review, never a guess.</text>
     ${appear(8.0, T, FADE)}
   </g>
 </svg>

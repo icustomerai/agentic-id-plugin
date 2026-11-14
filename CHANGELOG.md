@@ -12,6 +12,13 @@ All notable changes to this marketplace and the `agentic-id` plugin (named `ones
   (`http://127.0.0.1:3100`), so every new user had to type the address first.
 - Developers on a local stack: set `api_url` in the plugin options, or `AGENTIC_ID_URL`, to
   `http://127.0.0.1:3100`. If you relied on the old default, set it now.
+- **README rewritten for V3.** It described the hosted v2 endpoint: `did:agenticid:` IDs, five
+  tools, `/mcp` sign-in, npm packages and an install command naming a repository that does not
+  exist. It now shows `ic-` IDs, the real tools and prices, sign-in by asking Claude, the
+  `icustomer` marketplace, the production address and the real error codes.
+- **The README's terminal graphic** showed a `did:agenticid:` ID, a name and title coming back
+  from resolve, and a cost of 0. It now shows what resolve returns: an `ic-` ID, the outcome, and
+  1 credit (free when the workspace already holds the ID).
 
 ## 0.5.0 - 2026-11-13
 

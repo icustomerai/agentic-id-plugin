@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="820" height="420" viewBox="0 0 820 420" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="14" role="img" aria-labelledby="t d" xml:space="preserve">
   <title id="t">An agent resolves a work email to an Agentic ID identity</title>
-  <desc id="d">The agent calls agentic_id_resolve. Agentic ID normalises the email, turns it into a hashed match key, searches its verified ledger of more than 75 million companies and people, finds a known match on the work email with confidence 0.97 and no conflict, and returns a stable identity for Maya Chen, VP Marketing at Tallpine Software. The lookup is free and the issued ID is recorded in the ledger.</desc>
+  <desc id="d">The agent calls agentic_id_resolve. Agentic ID normalises the email, turns it into a hashed match key, searches its verified ledger of more than 75 million companies and people, and finds a known match on the work email with confidence 0.97 and no conflict. It returns one stable ID, ic-7Qm2xN4vD6hWt0rK9bFc3Z, with the outcome known, at a cost of 1 credit, and records it in the ledger. The lookup is free when the workspace already holds the ID. Weak evidence comes back as review, never as a guess.</desc>
   <defs>
     <clipPath id="typing"><rect x="54" y="52" height="24" width="0">
       <animate attributeName="width" dur="15s" repeatCount="indefinite" values="0;0;330.59999999999997;330.59999999999997" keyTimes="0;0.0200;0.1267;1" calcMode="linear"/>
@@ -40,10 +40,10 @@
 
   <g opacity="0">
     <rect x="36" y="268" width="748" height="108" rx="8" fill="#161b22" stroke="#3fb950" stroke-opacity="0.6"/>
-    <text x="52" y="294"><tspan fill="#3fb950" font-weight="600">✓ Maya Chen</tspan><tspan fill="#e6edf3"> · VP Marketing · Tallpine Software</tspan></text>
-    <text x="52" y="318"><tspan fill="#8b949e">id     </tspan><tspan fill="#e6edf3">did:agenticid:person:7a1e0c9f3bqk2m8xn4vd6hwt0r</tspan><tspan fill="#8b949e">  (stable)</tspan></text>
-    <text x="52" y="340"><tspan fill="#8b949e">found  </tspan><tspan fill="#e6edf3">true</tspan><tspan fill="#8b949e">   ·   cost </tspan><tspan fill="#e6edf3">0 credits</tspan><tspan fill="#8b949e">   ·   ledger </tspan><tspan fill="#d29922">issued ✓</tspan></text>
-    <text x="52" y="364" fill="#8b949e" font-size="12">Weak evidence comes back as needs_evidence. Nothing is guessed.</text>
+    <text x="52" y="294"><tspan fill="#3fb950" font-weight="600">✓ Resolved</tspan><tspan fill="#e6edf3"> · one stable ID for this person</tspan></text>
+    <text x="52" y="318"><tspan fill="#8b949e">id       </tspan><tspan fill="#e6edf3">ic-7Qm2xN4vD6hWt0rK9bFc3Z</tspan><tspan fill="#8b949e">  (stable)</tspan></text>
+    <text x="52" y="340"><tspan fill="#8b949e">outcome  </tspan><tspan fill="#e6edf3">known</tspan><tspan fill="#8b949e">   ·   cost </tspan><tspan fill="#e6edf3">1 credit</tspan><tspan fill="#8b949e">   ·   ledger </tspan><tspan fill="#d29922">recorded ✓</tspan></text>
+    <text x="52" y="364" fill="#8b949e" font-size="12">Free when your workspace already holds the ID. Weak evidence comes back as review, never a guess.</text>
     <animate attributeName="opacity" dur="15s" repeatCount="indefinite" calcMode="linear"
     values="0;0;1;1;0;0" keyTimes="0;0.5333;0.5500;0.9067;0.9400;1"/>
   </g>
