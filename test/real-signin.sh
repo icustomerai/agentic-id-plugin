@@ -8,7 +8,7 @@
 # It uses its own folder for the sign-in, so your normal one is untouched; it signs out at the end.
 set -uo pipefail
 : "${AGENTIC_ID_URL:?set AGENTIC_ID_URL, e.g. http://localhost:3000 or your deployed address}"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; A="$ROOT/plugins/agentic-id/bin/agentic-id"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; A="$ROOT/plugins/agentic-id/scripts/agentic-id"
 export AGENTIC_ID_CONFIG_DIR="$(mktemp -d)"; unset AGENTIC_ID_API_KEY AGENTIC_ID_API_KEY_FILE
 trap '"$A" logout >/dev/null 2>&1; rm -rf "$AGENTIC_ID_CONFIG_DIR"' EXIT
 pass=0; fail=0

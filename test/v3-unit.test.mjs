@@ -876,3 +876,26 @@ test('review: a server error in a file run reaches the tool as the server sent i
   // A refusal made on this machine keeps its tool-worded message.
   await assert.rejects(() => list(fake({}), { action: 'validate', file }), (e) => e.code === 'cap_required' && e.local === true && /dry_run/.test(e.fix));
 });
+
+test('the CLI is put on PATH by a session-start hook, since claude.ai-hosted plugins may not ship bin/', async () => {
+  const { existsSync, mkdtempSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { execFileSync } = await import('node:child_process');
+  const { addToPath, pathLine } = await import('../plugins/agentic-id/hooks/add-to-path.mjs');
+  const plugin = join(dirname(fileURLToPath(import.meta.url)), '../plugins/agentic-id');
+  assert.equal(existsSync(join(plugin, 'bin')), false, 'no top-level bin/ folder');
+  assert.ok(existsSync(join(plugin, 'scripts/agentic-id')));
+  const hooks = JSON.parse(readFileSync(join(plugin, 'hooks/hooks.json'), 'utf8')).hooks;
+  assert.match(JSON.stringify(hooks.SessionStart), /add-to-path\.mjs/);
+  const envFile = join(mkdtempSync(join(tmpdir(), 'aid-env-')), 'env.sh');
+  assert.equal(addToPath(undefined, join(plugin, 'scripts')), false, 'no env file offered: nothing written');
+  assert.equal(addToPath(envFile, join(plugin, 'scripts')), true);
+  assert.equal(addToPath(envFile, join(plugin, 'scripts')), false, 'a resumed session does not add it twice');
+  assert.equal(readFileSync(envFile, 'utf8'), pathLine(join(plugin, 'scripts')) + '\n');
+  // A shell that sources that file finds the command by name.
+  const out = execFileSync('bash', ['-c', `source "${envFile}" && agentic-id --help`], { encoding: 'utf8' });
+  assert.match(out, /agentic-id <command>/);
+  assert.match(pathLine("/a b/it's"), /^export PATH='\/a b\/it'\\''s':"\$PATH"$/, 'a folder with spaces or a quote stays one word');
+});

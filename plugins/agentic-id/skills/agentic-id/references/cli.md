@@ -1,7 +1,9 @@
 # Using Agentic ID through the CLI
 
-`agentic-id` ships with the plugin (Claude Code puts the plugin's `bin/` folder on PATH). It
-calls the same API as the MCP tools, with the same cleaning, caps and answers.
+`agentic-id` ships with the plugin, in its `scripts/` folder. In Claude Code a session-start hook
+puts that folder on PATH, so the plain name works. If the shell says `command not found`, run it
+by its full path instead: the `agentic-id` skill gives it under "MCP or CLI". It calls the same
+API as the MCP tools, with the same cleaning, caps and answers.
 
 Use it when:
 - the user has a **CSV file**, or more than about 50 rows;

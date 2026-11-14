@@ -170,7 +170,7 @@ To change an option later, run `/plugin configure agentic-id@icustomer`. Updates
 
 ## CLI
 
-`agentic-id` ships inside the plugin; Claude Code puts it on the PATH. From a checkout, run `plugins/agentic-id/bin/agentic-id`.
+`agentic-id` ships inside the plugin, in `scripts/agentic-id`. In Claude Code a session-start hook puts it on the PATH. From a checkout, run `plugins/agentic-id/scripts/agentic-id`.
 
 ```bash
 agentic-id login      # browser sign-in with your iCustomer account
@@ -300,11 +300,11 @@ plugins/agentic-id/
   .claude-plugin/plugin.json        plugin manifest and options
   .mcp.json                         starts the bundled MCP server
   server/                           MCP server, CLI and API client (plain Node.js, no packages)
-  bin/agentic-id                    the CLI
   skills/                           portable Agent Skills
   agents/lead-qualification.md      subagent
   commands/                         slash commands
-  hooks/                            spend guard and PII-free usage log
+  hooks/                            spend guard, PII-free usage log, PATH for the CLI
+  scripts/agentic-id                the CLI
   evals/                            skill evals and tool mocks
 docs/agents.md                      setup for Codex, Hermes, Pi and other agents
 docs/v3.md                          running against a local V3 stack

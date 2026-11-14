@@ -43,6 +43,8 @@ arguments. Unknown arguments are refused, not ignored.
   row per input, so the rows never pass through the conversation. Always `dry_run: true` first.
   Do not run the `agentic-id` command from a shell inside Claude Code for this: shell commands do
   not get the plugin's key. In their own terminal the user can; see [references/cli.md](references/cli.md).
+- The command itself is `${CLAUDE_PLUGIN_ROOT}/scripts/agentic-id`. Wherever these skills write
+  `agentic-id ...`, that is the same command; use the full path if the plain name is not found.
 - If neither is available, tell the user how to connect Agentic ID. Never answer from memory.
 
 ## Levels: how far to trust a value

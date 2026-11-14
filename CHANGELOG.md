@@ -3,6 +3,19 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.2 - 2026-11-14
+
+### Fixed
+- **The plugin can be saved to claude.ai.** Saving it failed with "Plugin contains a top-level
+  bin/ directory": plugins hosted on claude.ai may not ship one. The `agentic-id` command moved
+  from `bin/agentic-id` to `scripts/agentic-id`.
+
+### Changed
+- The command is put on PATH by a session-start hook (`hooks/add-to-path.mjs`) instead of by the
+  `bin/` folder, so `agentic-id ...` still works by name in Claude Code. Where a host does not
+  offer that, the skills give the full path.
+- From a checkout the command is now `plugins/agentic-id/scripts/agentic-id`.
+
 ## 0.5.1 - 2026-11-14
 
 ### Changed
