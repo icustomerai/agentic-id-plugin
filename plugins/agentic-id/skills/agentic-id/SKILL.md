@@ -66,8 +66,9 @@ Always show the level next to a value you report. Never upgrade a level in your 
    covers it. Calls that could cost more than 10 credits are refused without it (`cap_required`,
    with the estimate in the answer). Never raise a cap, or retry with a higher one, without the
    user's yes.
-2. **Count before you buy.** Run `agentic_id_discover` with `count_only: true` first. It is free
-   and says how many match.
+2. **Count before you buy.** Run `agentic_id_discover` with `count_only: true` first, every time,
+   even when the user already gave a budget and said "go ahead". It is free and says how many
+   match. Then run the paid call within the budget.
 3. **Report the cost.** After each call say `cost.charged_credits`, and `cost.quoted_credits` when
    it differs. For multi-step work, end with credits per step and the total.
 4. **Batch.** Many emails go in one validate call (`emails`), many people in one enrich call
@@ -110,5 +111,10 @@ means the plugin refused it locally and nothing was charged. The full table is i
 - `auth.missing_key` / `auth.invalid_key` / `signed_out`: call `agentic_id_status`, then tell the user to
   sign in: call `agentic_id_login` (it opens the browser), or they set an API key in the plugin
   options. Never ask for a key, a password or a code in the chat.
-- `unreachable`: the API URL is wrong or the server is down. Call `agentic_id_status`.
+- `unreachable`, `not_agentic_id`, `bad_url`: the server address is wrong (or the server is down).
+  This is not a sign-in problem: do not start sign-in; tell the user to check the server URL.
+- `source.unavailable` or `source_unavailable: true`: a data source behind Agentic ID was down.
+  Say so in one line and what was charged. Never name the data source, and do not loop.
+- `partial: true`: the run stopped before the end (cap or error). Report what was done and what was
+  not; it is not finished.
 - `request.invalid`: fix the fields in `issues`.

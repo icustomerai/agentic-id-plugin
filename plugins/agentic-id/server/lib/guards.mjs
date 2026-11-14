@@ -27,6 +27,8 @@ const EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0
 const DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$/;
 
 const text = (v) => (typeof v === 'string' ? v.normalize('NFKC').replace(/[​-‍﻿]/g, '').trim() : '');
+// A name or company typed with quotes around it in a spreadsheet: "Hooli, Inc." -> Hooli, Inc.
+const unquote = (v) => v.replace(/^(["'“”„‚‘’])(.*)(["'“”‘’])$/s, (m, a, inner) => inner.trim());
 
 /** "Jane Doe <Jane.Doe@Acme.io>", "mailto:jane@acme.io?subject=x", " JANE@ACME.IO; " -> jane.doe@acme.io */
 export function cleanEmail(raw) {
@@ -94,6 +96,20 @@ export function cleanList(raw, map = (x) => x) {
   return items.filter((x) => (seen.has(String(x).toLowerCase()) ? false : seen.add(String(x).toLowerCase())));
 }
 
+/** Why a "company name" is not one (and must not be sent), or undefined when it reads as a name. */
+export function companyNameProblem(raw) {
+  const s = text(raw);
+  if (!s) return undefined;
+  if (s.includes('@')) return cleanEmail(s).reason === 'personal_email' ? 'personal_email_in_company_field' : 'email_in_company_field';
+  if (looksLikePhone(s) || /(?:\d[\s().-]*){7,}/.test(s)) return 'phone_numbers_are_not_sent';
+  const asDomain = cleanDomain(s);
+  if (asDomain && isPersonal(asDomain)) return 'personal_mail_provider_is_not_a_company';
+  if (isPersonal(s.toLowerCase().replace(/\s+/g, ''))) return 'personal_mail_provider_is_not_a_company';
+  // The provider's own name typed as the company ("Gmail", "Yahoo Mail"): a mailbox, not an employer.
+  if (/^(?:gmail|googlemail|google mail|yahoo|yahoo mail|ymail|hotmail|outlook\.?com|icloud|aol|protonmail|proton mail|gmx|web\.de|yandex|t-online)$/i.test(s)) return 'personal_mail_provider_is_not_a_company';
+  return undefined;
+}
+
 /**
  * One person-or-company identifier set, cleaned. Returns what to send and what was dropped and why.
  * Accepts the public field names plus the aliases people use in spreadsheets.
@@ -125,10 +141,16 @@ export function cleanIdentifiers(raw = {}) {
   const name = pick('name', 'full_name') ?? ([first, last].filter(Boolean).join(' ') || undefined);
   if (name) {
     if (looksLikePhone(name) || name.includes('@')) dropped.push({ field: 'name', reason: 'not_a_name' });
-    else out.name = text(name).replace(/\s+/g, ' ').slice(0, 200);
+    else out.name = unquote(text(name)).replace(/\s+/g, ' ').slice(0, 200);
   }
   const company = pick('company_name', 'company', 'organization', 'account_name');
-  if (company) out.company_name = text(company).replace(/\s+/g, ' ').slice(0, 200);
+  if (company) {
+    // A company column often holds whatever was typed into a form: an email, a phone number, a
+    // mail provider. None of that is a company, and personal data must not leave this machine.
+    const why = companyNameProblem(company);
+    if (why) dropped.push({ field: 'company_name', reason: why });
+    else out.company_name = unquote(text(company)).replace(/\s+/g, ' ').slice(0, 200);
+  }
   const domain = pick('company_domain', 'domain', 'website', 'company_website');
   if (domain) {
     const d = cleanDomain(domain);

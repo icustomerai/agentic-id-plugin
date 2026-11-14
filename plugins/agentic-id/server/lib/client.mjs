@@ -10,11 +10,12 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { accessToken, AuthError, hasSession } from './auth.mjs';
+import { isSourceFailure, shieldProblem, shieldReply, SOURCE_DOWN, SOURCE_FIX } from './shield.mjs';
 
 // The hosted Agentic ID service. A local V3 stack is http://127.0.0.1:3100: set it in the plugin
 // options or as AGENTIC_ID_URL.
 export const DEFAULT_URL = 'https://onesource-v3.icustomer.ai';
-export const CLIENT = 'agentic-id-plugin/0.5.1';
+export const CLIENT = 'agentic-id-plugin/0.5.2';
 
 const FIXES = {
   'auth.invalid_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set a valid API key in the plugin options. Never ask for a key in the chat.',
@@ -28,7 +29,7 @@ const FIXES = {
   'feedback.not_held': 'Outcomes can only be reported for IDs this workspace holds. Resolve or enrich the person first, then report.',
   'request.invalid': 'Fix the fields listed in "issues" and call again. Nothing was charged.',
   'find.persona_unreadable': 'Give at least one job title in roles, or a seniority (e.g. "director+").',
-  'lookalike.no_profile': 'The seeds share nothing we could read. Use company domains that resolve, ideally 3 or more of a similar kind.',
+  'lookalike.no_profile': 'No shared profile could be built from these seeds. Check each seed is a company domain that resolves (try agentic_id_resolve on one); use 3 or more of a similar kind. If well-known companies fail this way, the data behind them is unavailable right now: try again later rather than changing the seeds.',
   'purpose.not_allowed': 'This purpose is not allowed for this data. Use b2b_outbound for outbound work, ad_audience for match.',
   'purpose.mismatch': 'The data was collected for a different purpose and cannot be reused for this one.',
   'pii.scope_required': 'This key cannot read contact values; they come back masked. Ask the workspace owner for a key with pii:read.',
@@ -38,7 +39,10 @@ const FIXES = {
   'service.error': 'Agentic ID hit a fault. Try once more; if it repeats, report the request_id.',
   'idempotency.in_progress': 'The same request is still running. Wait, then ask again; it is not charged twice.',
   'idempotency.key_reused': 'Internal: a retry key was reused for a different request. Send the call again.',
-  unreachable: 'The Agentic ID API did not answer. Check the server URL in the plugin options and run `agentic-id doctor`.',
+  unreachable: 'Nothing answered at this server address, so this is not a sign-in problem. Check the server URL in the plugin options (api_url) or AGENTIC_ID_URL for a typo, or clear it to use the hosted service; then run `agentic-id doctor`.',
+  not_agentic_id: 'Something answered at this address, but it is not an Agentic ID server. Check the server URL in the plugin options (api_url) or AGENTIC_ID_URL, or clear it to use the hosted service.',
+  bad_url: 'The server address must be a full web address such as https://onesource-v3.icustomer.ai. Fix it in the plugin options (api_url) or AGENTIC_ID_URL, or clear it to use the hosted service.',
+  'source.unavailable': SOURCE_FIX,
   timeout: 'The call took too long. Discover and lookalike can take minutes: narrow the filters or lower max_accounts, then retry once.',
 };
 
@@ -124,6 +128,14 @@ export function rememberUrl(env = process.env) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Why a connection failed, in a word: ENOTFOUND (no such host), ECONNREFUSED, a bad URL ... */
+const netReason = (e) => {
+  const code = e?.cause?.code ?? e?.cause?.errors?.[0]?.code ?? e?.code;
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'no such host: check the address for a typo';
+  if (code === 'ECONNREFUSED') return 'connection refused: nothing is listening there';
+  if (code === 'ERR_INVALID_URL' || /Invalid URL|Failed to parse URL/i.test(e?.message ?? '')) return 'not a valid web address';
+  return code ?? e?.message ?? 'network error';
+};
 
 export class AgenticId {
   constructor(opts = {}) {
@@ -154,7 +166,12 @@ export class AgenticId {
 
   async call(method, path, body) {
     let bearer = await this.credential();
-    if (!bearer) throw new AgenticIdError(401, 'auth.missing_key', 'Not signed in and no Agentic ID API key is configured.');
+    if (!bearer) {
+      // A mistyped server address would otherwise read as "not signed in", and signing in cannot fix it.
+      const p = await this.probe();
+      if (!p.ok) throw new AgenticIdError(0, p.code, p.detail);
+      throw new AgenticIdError(401, 'auth.missing_key', 'Not signed in and no Agentic ID API key is configured.');
+    }
     let renewed = false;
     // One key for this call and every retry of it: the API runs a keyed request at most once and
     // answers a repeat from the first result, so a timeout or a dropped connection can be retried
@@ -185,10 +202,10 @@ export class AgenticId {
           await sleep(300);
           continue;
         }
-        throw new AgenticIdError(0, timedOut ? 'timeout' : 'unreachable', timedOut ? `No answer from ${this.baseUrl} within ${Math.round(this.timeoutMs / 1000)}s.` : `Could not reach ${this.baseUrl} (${e?.cause?.code ?? e?.cause?.errors?.[0]?.code ?? e?.message ?? 'network error'}).`);
+        throw new AgenticIdError(0, timedOut ? 'timeout' : 'unreachable', timedOut ? `No answer from ${this.baseUrl} within ${Math.round(this.timeoutMs / 1000)}s.` : `Cannot reach the Agentic ID server at ${this.baseUrl} (${netReason(e)}).`);
       }
       const json = await res.json().catch(() => ({}));
-      if (res.ok) return json;
+      if (res.ok) return shieldReply(json);
       // A 401 is refused before any work, so renewing the sign-in and sending once more is safe.
       if (res.status === 401 && !this.apiKey && !renewed) {
         renewed = true;
@@ -207,11 +224,32 @@ export class AgenticId {
         await sleep(Math.max(wait, 0.2) * 1000);
         continue;
       }
-      const err = new AgenticIdError(res.status, json.code, String(json.detail ?? res.statusText ?? 'Request failed.'), json);
+      // A data source's failure or bill is not the user's problem to read: one plain error instead.
+      if (isSourceFailure(json.code, json.detail, res.status)) throw new AgenticIdError(503, 'source.unavailable', SOURCE_DOWN, typeof json.request_id === 'string' ? { request_id: json.request_id } : {});
+      const problem = shieldProblem({ ...json, detail: String(json.detail ?? res.statusText ?? 'Request failed.') }, { ownWallet: json.code === 'credits.insufficient' });
+      const err = new AgenticIdError(res.status, json.code, problem.detail, problem);
       // A refused key blocks a stored sign-in: signing in again cannot help until the key is fixed or removed.
       if (res.status === 401 && this.apiKey) err.fix = `The configured API key was refused. Replace it or remove it in the plugin options (or AGENTIC_ID_API_KEY)${hasSession(this.baseUrl, this.env) ? '; a sign-in is stored and will be used once the key is removed' : ', or remove it and sign in'}. Never paste a key into the chat.`;
       throw err;
     }
+  }
+
+  /**
+   * Is there an Agentic ID server at baseUrl? Free and unauthenticated: one GET that any Agentic ID
+   * server answers with JSON (401 without a credential). Never sends a credential.
+   */
+  async probe() {
+    if (!/^https?:\/\/[^\s/?#]+/i.test(this.baseUrl)) return { ok: false, code: 'bad_url', detail: `"${String(this.baseUrl).slice(0, 80)}" is not a server address: it must start with https://.` };
+    let res;
+    try {
+      res = await this.fetch(`${this.baseUrl}/v1/me`, { method: 'GET', headers: { accept: 'application/json', 'user-agent': this.client }, signal: AbortSignal.timeout(Math.min(this.timeoutMs, 15_000)) });
+    } catch (e) {
+      const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+      return { ok: false, code: timedOut ? 'timeout' : 'unreachable', detail: timedOut ? `No answer from ${this.baseUrl} within 15s.` : `Cannot reach the Agentic ID server at ${this.baseUrl} (${netReason(e)}).` };
+    }
+    const type = res.headers?.get?.('content-type') ?? '';
+    if (res.status === 401 || res.status === 403 || /json/i.test(type)) return { ok: true, status: res.status };
+    return { ok: false, code: 'not_agentic_id', detail: `${this.baseUrl} answered (HTTP ${res.status}), but not as an Agentic ID server.` };
   }
 
   /** Is this mailbox real? 1 credit per valid, invalid or catch-all answer; unknown and rejected are free. */

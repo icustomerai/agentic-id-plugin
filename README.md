@@ -78,8 +78,8 @@ This repository holds the Claude Code plugin, its skills, evals and CLI (MIT). T
 In a terminal:
 
 ```bash
-claude plugin marketplace add icustomerai/icustomer-marketplace
-claude plugin install agentic-id@icustomer
+claude plugin marketplace add icustomerai/agentic-id-plugin
+claude plugin install agentic-id@agentic-id
 ```
 
 Restart Claude Code, then ask:
@@ -99,7 +99,7 @@ Workspace: 99 credits available. Spent 1 today (resolve 1).
 
 The domain, ID and numbers above are an illustration. Every real answer carries its own `cost` block.
 
-The plugin needs Node.js 18 or later and installs no packages. The marketplace and plugin repositories are internal to the iCustomer GitHub organisation for now, so installing needs git access to them (`gh auth login`, then `gh auth setup-git`).
+The plugin needs Node.js 18 or later and installs no packages. Until this repository is public, installing needs git access to the iCustomer GitHub organisation (`gh auth login`, then `gh auth setup-git`); without it, `marketplace add` fails with a git error. The marketplace is named `agentic-id`, so it never clashes with another iCustomer marketplace such as Growth Brain's.
 
 Using Codex, Cursor, Hermes, Pi or another agent? See [docs/agents.md](docs/agents.md).
 
@@ -109,7 +109,7 @@ Every surface calls the same API, with the same inputs, outputs, error codes and
 
 | Surface | Use it when | Get it |
 |---|---|---|
-| Claude Code plugin | You work in Claude Code | `claude plugin install agentic-id@icustomer` |
+| Claude Code plugin | You work in Claude Code | `claude plugin install agentic-id@agentic-id` |
 | Hosted MCP server | Your agent speaks MCP over HTTP | `https://onesource-v3.icustomer.ai/mcp` |
 | Agent Skills | Your agent reads SKILL.md | Link `plugins/agentic-id/skills/*` ([how](docs/agents.md)) |
 | CLI | CSV files, scripts, CI, agents without MCP | `agentic-id`, shipped inside the plugin |
@@ -154,7 +154,7 @@ The `cost` block in every answer is authoritative. Exact arguments for every too
 | Commands | `/agentic-id-login`, `/agentic-id-status`, `/agentic-id-clean-list <csv>`, `/agentic-id-usage` |
 | Hooks | A spend guard before each paid call, and a usage log after each call that never holds inputs or results |
 
-To change an option later, run `/plugin configure agentic-id@icustomer`. Updates are keyed on the version in `plugin.json`; every release bumps it. Get one with `claude plugin marketplace update icustomer`.
+To change an option later, run `/plugin configure agentic-id@agentic-id`. Updates are keyed on the version in `plugin.json`; every release bumps it. Get one with `claude plugin marketplace update agentic-id`.
 
 ## Hosted MCP server
 
@@ -312,7 +312,7 @@ docs/assets/                        README graphics and their generator
 test/                               unit tests, protocol test, evals, sign-in checks
 ```
 
-The marketplace that lists this plugin is [icustomerai/icustomer-marketplace](https://github.com/icustomerai/icustomer-marketplace).
+This repository is its own marketplace, named `agentic-id` (`.claude-plugin/marketplace.json`).
 
 ## Editions
 

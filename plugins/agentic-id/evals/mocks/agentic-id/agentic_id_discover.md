@@ -8,7 +8,7 @@ type: fixed
     "quoted_credits": 10,
     "charged_credits": 2
   },
-  "total_at_provider": 1637,
+  "total_matching": 1637,
   "accounts": [
     {
       "id": "ic-evalCompany000000002",
@@ -43,7 +43,6 @@ type: fixed
   "rejected": [],
   "plan": [
     {
-      "provider": "provider-a",
       "why": "applies countries, industries; we check size"
     }
   ]

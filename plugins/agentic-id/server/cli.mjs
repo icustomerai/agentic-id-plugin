@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { AuthError, login, logout } from './lib/auth.mjs';
 import { AgenticId, AgenticIdError, CLIENT, keyFromEnv, urlFromEnv } from './lib/client.mjs';
-import { cellFor, columnName, mapColumns, parseCsv, rowIdentifiers, toCsv, unmappedEmailColumns } from './lib/csv.mjs';
+import { cellFor, columnName, decodeText, mapColumns, parseCsv, rowIdentifiers, toCsv, unmappedEmailColumns } from './lib/csv.mjs';
 import { estimate } from './lib/estimate.mjs';
 import { cleanEmail, cleanIdentifiers, identityKey } from './lib/guards.mjs';
 import * as ops from './lib/operations.mjs';
@@ -68,6 +68,7 @@ const num = (v, flag) => {
 };
 const many = (v) => (v === undefined ? undefined : (Array.isArray(v) ? v : [v]).flatMap((x) => String(x).split(',')).map((x) => x.trim()).filter(Boolean));
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ''));
 
 /** Flags to the arguments an operation takes. Kept apart from I/O so it can be tested. */
 export function toArgs(cmd, args, f) {
@@ -129,8 +130,8 @@ export function render(cmd, r) {
     lines.push(`  id: ${r.id ?? '-'}  outcome: ${r.outcome}${r.matched_on ? `  matched on: ${r.matched_on}` : ''}${r.confidence !== undefined ? `  confidence: ${r.confidence}` : ''}`);
     for (const x of rows('related')) lines.push(`  related: ${x.id} (${x.reason})`);
   }
-  if (cmd === 'enrich') for (const x of rows('results')) {
-    lines.push(`  ${x.id ?? '-'}  ${x.status}: ${x.reason}`);
+  if (cmd === 'enrich') for (const x of [...rows('results'), ...rows('company_results')]) {
+    lines.push(`  ${x.id ?? x.domain ?? x.name ?? '-'}  ${x.status}${x.reason ? `: ${x.reason}` : ''}`);
     for (const fld of x.fields ?? []) lines.push(`    ${pad(fld.field, 16)} ${pad(typeof fld.value === 'object' ? JSON.stringify(fld.value) : fld.value, 36)} ${pad(fld.level, 13)} ${fld.source}`);
   }
   if (cmd === 'find' || cmd === 'discover') for (const p of rows(cmd === 'find' ? 'people' : 'contacts')) lines.push(`  ${pad(p.name, 24)} ${pad(p.title, 32)} ${pad(p.email, 28)} ${p.level ?? ''}  ${p.id}`);
@@ -138,7 +139,7 @@ export function render(cmd, r) {
     if (r.profile) lines.push(`  profile: ${[...(r.profile.industries ?? []), ...(r.profile.countries ?? [])].join(', ')}${r.profile.employees ? `, ${r.profile.employees.min}+ employees` : ''} (from ${r.profile.seeds_used} seeds)`);
     for (const a of rows('accounts')) lines.push(`  ${a.similarity !== undefined ? pad(a.similarity, 5) : ''}${pad(a.domain, 28)} ${pad(a.country, 3)} ${pad(a.employees ? `${a.employees.min}${a.employees.max ? `-${a.employees.max}` : '+'}` : '', 12)}${a.why ? a.why.join(', ') : ''}${a.charged === false ? '  (not charged)' : ''}`);
     for (const x of rows('seeds_rejected')) lines.push(`  seed ignored: ${x.domain} (${x.reason})`);
-    if (rows('plan')[0]) lines.push(`  source: ${rows('plan')[0].why}`);
+    if (rows('plan')[0]?.why) lines.push(`  search: ${rows('plan')[0].why}`);
     if (typeof r.bigger_than_seeds === 'number' && r.bigger_than_seeds > 0.5) lines.push(`  note: ${Math.round(r.bigger_than_seeds * 100)}% of results are bigger than your largest seed`);
   }
   for (const [k, v] of Object.entries(r.excluded ?? {})) lines.push(`  left out: ${v} ${k}`);
@@ -172,7 +173,7 @@ export function sameFile(a, b) {
 const OVERWRITE = '--out must not be the input file (or a link to it): the original is never overwritten. Give another name.';
 
 function readList(f) {
-  const sheet = parseCsv(readFileSync(f.file, 'utf8'));
+  const sheet = parseCsv(decodeText(readFileSync(f.file)).text);
   const { header, rows, delimiter } = sheet;
   if (!header.length) throw new Usage(`${f.file} is empty.`);
   const limit = num(f['limit-rows'], 'limit-rows');
@@ -186,7 +187,7 @@ function readList(f) {
   } catch (e) {
     throw new Usage(e.message);
   }
-  return { header, rows: limit ? rows.slice(0, limit) : rows, delimiter, map, like: { bom: sheet.bom, eol: sheet.eol } };
+  return { header, rows: limit ? rows.slice(0, limit) : rows, delimiter, map, like: { bom: sheet.bom, eol: sheet.eol, sep: sheet.sep } };
 }
 
 /** "email from E-Mail Address, company from Firma": so the user sees what will be read before anything is sent. */
@@ -234,8 +235,11 @@ async function runFile(cmd, client, f, io) {
     if (max_credits === undefined) throw needCap(est);
     reply = await ops.validate(client, { emails, purpose: f.purpose, max_credits });
     const heldBack = emails.map((e) => cleanEmail(e)).filter((e) => !e.ok);
-    if (heldBack.length) reply = { ...reply, summary: `${reply.summary} ${heldBack.length} address${heldBack.length === 1 ? ' was' : 'es were'} not sent (${heldBack.filter((e) => /personal/.test(e.reason)).length} personal, ${heldBack.filter((e) => !/personal/.test(e.reason)).length} malformed or disposable): marked rejected.` };
+    if (heldBack.length) reply = { ...reply, summary: `${String(reply.summary ?? '').replace(/ Plus \d+ rejected on this machine without being sent\./, '')} ${heldBack.length} address${heldBack.length === 1 ? ' was' : 'es were'} not sent (${heldBack.filter((e) => /personal/.test(e.reason)).length} personal, ${heldBack.filter((e) => !/personal/.test(e.reason)).length} malformed or disposable): marked rejected.` };
     const by = new Map(reply.results.map((x) => [x.email, x]));
+    // A run the cap or an error cut short still writes every row: the ones not reached say not_checked.
+    if (reply.stopped?.error === 'cap_reached') capReached = true;
+    else if (reply.stopped) stoppedBy = reply.stopped;
     added = ['email_verdict', 'email_reason'];
     for (const r of rows) {
       const raw = cellFor(r, map, 'email');
@@ -312,32 +316,44 @@ async function runFile(cmd, client, f, io) {
     reply = { summary: `${rows.length} rows: ${firstRowOf.size} distinct IDs, ${dupes} duplicate rows, ${rows.filter((r) => !r.agentic_id).length} without an ID (${rows.filter((r) => r.resolve_outcome === 'skipped').length} skipped: personal data only, a name alone, or empty; see resolve_note). ${pairs.length ? `Duplicates (data row = the earlier data row it repeats): ${pairs.slice(0, 25).join(', ')}${pairs.length > 25 ? `, and ${pairs.length - 25} more in the file` : ''}. ` : ''}${noId.length ? `Without an ID: data row${noId.length === 1 ? '' : 's'} ${noId.slice(0, 25).join(', ')}${noId.length > 25 ? `, and ${noId.length - 25} more (see resolve_note)` : ''}. ` : ''}Data rows are counted from 1 under the header. ${cost.charged_credits} credits charged.${capReached ? ` Stopped at the ${max_credits}-credit cap: ${notRun} rows not run.` : ''}${stoppedBy ? ` Stopped early: ${stoppedBy.message ?? stoppedBy.error}.` : ''}`, cost };
   } else if (cmd === 'enrich') {
     const fields = many(f.fields);
-    const unique = [];
+    // Each row is a person (a work email, a LinkedIn URL or a name with a company) or, when it has
+    // only a company, a company: enriched and priced as one (1 credit, company fields).
+    const people = [];
+    const companies = [];
     const keyOf = new Map();
     const rowKey = rows.map((r) => {
       const c = cleanIdentifiers(rowIdentifiers(r, map));
       if (c.empty) return undefined;
-      const key = identityKey(c.identifiers) ?? JSON.stringify(c.identifiers);
+      const i = c.identifiers;
+      const person = Boolean(i.email || i.linkedin_url || i.name);
+      const key = person ? `p:${identityKey(i) ?? JSON.stringify(i)}` : `c:${i.company_domain ?? `n:${String(i.company_name).toLowerCase()}`}`;
       if (!keyOf.has(key)) {
-        keyOf.set(key, unique.length);
-        unique.push(c.identifiers);
+        keyOf.set(key, person ? people.length : companies.length);
+        if (person) people.push(i);
+        else companies.push(compact({ domain: i.company_domain, name: i.company_name }));
       }
       return key;
     });
-    const est = estimate('enrich', { contacts: unique, fields });
-    if (dry) return dryOut(`Dry run: ${rows.length} rows, ${unique.length} distinct contacts to enrich. At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`, { rows: rows.length, to_send: unique.length, max_credits: est.max_credits });
+    const est = estimate('enrich', { contacts: people, companies, fields });
+    const what = [people.length ? `${people.length} distinct ${people.length === 1 ? 'person' : 'people'}` : '', companies.length ? `${companies.length} distinct ${companies.length === 1 ? 'company' : 'companies'}` : ''].filter(Boolean).join(' and ');
+    if (dry) return dryOut(`Dry run: ${rows.length} rows, ${what || 'nothing'} to enrich. At most ${est.max_credits} credits (${est.arithmetic}). Nothing sent. ${columns}`, { rows: rows.length, to_send: people.length + companies.length, people: people.length, companies: companies.length, max_credits: est.max_credits });
     if (max_credits === undefined) throw needCap(est);
-    if (!unique.length) throw new Usage('No row has a usable work identifier.');
-    reply = await ops.enrich(client, { contacts: unique, fields, purpose: f.purpose, max_credits });
-    const results = reply.results ?? [];
-    const names = [...new Set(results.flatMap((x) => (x.fields ?? []).map((y) => y.field)))];
+    if (!people.length && !companies.length) throw new Usage('No row has a usable work identifier or company.');
+    reply = await ops.enrich(client, { ...(people.length ? { contacts: people } : {}), ...(companies.length ? { companies } : {}), fields, purpose: f.purpose, max_credits });
+    if (reply.stopped?.error === 'cap_reached') capReached = true;
+    else if (reply.stopped) stoppedBy = reply.stopped;
+    const personResults = reply.results ?? [];
+    const companyResults = reply.company_results ?? (people.length ? [] : reply.results ?? []);
+    const resultFor = (k) => (k === undefined ? undefined : k.startsWith('p:') ? personResults[keyOf.get(k)] : companyResults[keyOf.get(k)]);
+    const names = [...new Set([...personResults, ...companyResults].flatMap((x) => (x?.fields ?? []).map((y) => y.field)))];
     added = ['agentic_id', 'enrich_status', ...names.flatMap((n) => [`aid_${n}`, `aid_${n}_level`])];
     rows.forEach((r, i) => {
-      const x = rowKey[i] === undefined ? undefined : results[keyOf.get(rowKey[i])];
+      const x = resultFor(rowKey[i]);
       r.agentic_id = x?.id ?? '';
       r.enrich_status = rowKey[i] === undefined ? 'skipped: no work identifier' : x?.status ?? 'not_run';
       for (const y of x?.fields ?? []) {
-        r[`aid_${y.field}`] = y.value;
+        // A range reads as "51-200" in a spreadsheet, not as JSON.
+        r[`aid_${y.field}`] = y.value && typeof y.value === 'object' && !Array.isArray(y.value) && ('min' in y.value || 'max' in y.value) ? `${y.value.min ?? ''}${y.value.max ? `-${y.value.max}` : '+'}` : Array.isArray(y.value) ? y.value.join('; ') : y.value;
         r[`aid_${y.field}_level`] = y.level;
       }
     });
@@ -351,10 +367,14 @@ async function runFile(cmd, client, f, io) {
   io.err(reply.summary);
   io.err(columns);
   for (const note of reply.input_notes ?? []) io.err(`note: ${note}`);
-  if (f.json) io.out(JSON.stringify({ summary: reply.summary, cost: reply.cost, rows: rows.length, out_file: f.out ?? null, added_columns: added, cap_reached: capReached }, null, 2));
-  io.done?.({ summary: reply.summary, cost: reply.cost, rows: rows.length, out_file: f.out, added_columns: added, cap_reached: capReached });
-  // 3 when the cap stopped the run before every row was done (the file holds what was done); 5 when an outage did.
-  return capReached ? 3 : stoppedBy ? 5 : 0;
+  const partial = capReached || Boolean(stoppedBy);
+  if (f.json) io.out(JSON.stringify({ summary: reply.summary, cost: reply.cost, rows: rows.length, out_file: f.out ?? null, added_columns: added, cap_reached: capReached, partial, ...(stoppedBy ? { stopped: stoppedBy.error } : {}) }, null, 2));
+  io.done?.({ summary: reply.summary, cost: reply.cost, rows: rows.length, out_file: f.out, added_columns: added, cap_reached: capReached, partial, ...(stoppedBy ? { stopped: stoppedBy.error } : {}) });
+  // A run that did not reach every row is never "done": the file holds what was done and the rest
+  // is marked. 3 when the cap or the wallet stopped it, 2 when the credential did, 5 when an outage did.
+  if (capReached) return 3;
+  if (stoppedBy) return stoppedBy.status === 402 || /^credits\./.test(stoppedBy.error ?? '') ? 3 : stoppedBy.status === 401 || stoppedBy.status === 403 ? 2 : 5;
+  return 0;
 }
 
 // ------------------------------------------------------------------ doctor
@@ -379,7 +399,7 @@ async function doctor(client, io) {
     writable = false;
   }
   ok(writable, `Usage log folder ${dir}`, 'Make the folder writable, or set AGENTIC_ID_CONFIG_DIR.');
-  return keyed && s.ok && major >= 18 ? 0 : s.status === 401 || !keyed ? 2 : 5;
+  return keyed && s.ok && major >= 18 ? 0 : s.reachable === false ? 5 : s.status === 401 || !keyed ? 2 : 5;
 }
 
 // ------------------------------------------------------------------ entry
@@ -441,7 +461,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
     if (cmd === 'status') {
       const s = await ops.status(real);
       io.out(f.json ? JSON.stringify(s, null, 2) : `${s.summary}${s.ok ? `\n  contact values: ${s.contact_values}` : `\n  fix: ${s.fix ?? 'run agentic-id doctor'}`}`);
-      return s.ok ? 0 : s.key_configured ? 5 : 2;
+      return s.ok ? 0 : s.reachable === false || s.key_configured ? 5 : 2;
     }
     if (cmd === 'credits') cmd = 'workspace';
     if (cmd === 'workspace') {
@@ -461,7 +481,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       let reports;
       let sheet;
       if (f.file) {
-        sheet = parseCsv(readFileSync(f.file, 'utf8'));
+        sheet = parseCsv(decodeText(readFileSync(f.file)).text);
         if (f.out && sameFile(f.out, f.file)) throw new Usage(OVERWRITE);
         const col = (names) => sheet.header.find((h) => names.includes(columnName(h).trim().toLowerCase().replace(/[\s-]+/g, '_')));
         const idCol = col(['agentic_id', 'id', 'ic_id']);
@@ -485,7 +505,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
           const hit = by.get(`${String(r.id).trim()}\n${(r.field ?? 'work_email').toLowerCase()}`) ?? results.find((x) => x.id === String(r.id).trim());
           r.row.report_status = hit ? (hit.recorded ? 'recorded' : hit.error ?? 'not_recorded') : 'not_sent';
         }
-        const csv = toCsv([...sheet.header.filter((h) => h !== 'report_status'), 'report_status'], sheet.rows, sheet.delimiter, { bom: sheet.bom, eol: sheet.eol });
+        const csv = toCsv([...sheet.header.filter((h) => h !== 'report_status'), 'report_status'], sheet.rows, sheet.delimiter, { bom: sheet.bom, eol: sheet.eol, sep: sheet.sep });
         if (f.out) writeFileSync(f.out, csv);
         else io.out(csv.trimEnd());
         io.err(`${recorded} of ${reports.length} outcome(s) recorded. Nothing charged.${f.out ? ` Wrote ${f.out}.` : ''}`);

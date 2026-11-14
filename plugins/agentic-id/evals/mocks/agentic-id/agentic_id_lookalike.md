@@ -66,7 +66,6 @@ type: fixed
   "excluded": {},
   "plan": [
     {
-      "provider": "provider-a",
       "why": "applies countries, industries; we check size"
     }
   ]

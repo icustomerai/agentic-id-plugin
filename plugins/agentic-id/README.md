@@ -76,7 +76,7 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
 Each signed-in account has a workspace and a credit wallet of its own. An API key belongs to one
 workspace and draws on that workspace's wallet.
 
-To change an option later, run `/plugin configure agentic-id@icustomer`, or open `/plugin`,
+To change an option later, run `/plugin configure agentic-id@agentic-id`, or open `/plugin`,
 select Agentic ID on the **Installed** tab, and choose **Configure options**.
 
 Never paste an API key into the chat. The skills tell Claude never to ask you for one.

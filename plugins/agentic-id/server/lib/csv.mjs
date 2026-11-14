@@ -4,10 +4,42 @@
 // The writer gives back what the reader took in: the same rows in the same order (blank ones
 // included, so row numbers hold), the same cell text, two columns of the same name both kept,
 // cells beyond the header kept, and the file's own BOM and line endings.
-export function sniffDelimiter(firstLine) {
-  const counts = [',', ';', '\t'].map((d) => [d, firstLine.split(d).length - 1]);
-  counts.sort((a, b) => b[1] - a[1]);
-  return counts[0][1] > 0 ? counts[0][0] : ',';
+/**
+ * The separator, from the header line. Separators inside quotes do not count ("Name, Full";Email is
+ * semicolon-separated), and on a tie the one the next lines agree with wins.
+ */
+export function sniffDelimiter(firstLine, nextLines = []) {
+  const outside = (line, d) => {
+    let n = 0;
+    let q = false;
+    for (const c of line) {
+      if (c === '"') q = !q;
+      else if (c === d && !q) n += 1;
+    }
+    return n;
+  };
+  const counts = [',', ';', '\t', '|'].map((d) => [d, outside(firstLine, d), nextLines.filter((l) => l.trim() && outside(l, d) === outside(firstLine, d)).length]);
+  counts.sort((a, b) => b[1] - a[1] || b[2] - a[2]);
+  if (counts[0][1] === 0) return ',';
+  // A pipe only when nothing else separates the header.
+  if (counts[0][0] === '|' && counts.some(([d, n]) => d !== '|' && n > 0)) return counts.find(([d, n]) => d !== '|' && n > 0)[0];
+  return counts[0][0];
+}
+
+/**
+ * A file's bytes as text: UTF-8 (with or without a BOM), UTF-16 from Excel's "Unicode text", or a
+ * Windows-1252 export (Excel on Windows, umlauts in German headers). A BOM is kept as \uFEFF so the
+ * written file gets one too, and Excel opens it with the right characters.
+ */
+export function decodeText(buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  if (b[0] === 0xff && b[1] === 0xfe) return { text: `\uFEFF${new TextDecoder('utf-16le').decode(b.subarray(2))}`, encoding: 'utf-16le' };
+  if (b[0] === 0xfe && b[1] === 0xff) return { text: `\uFEFF${new TextDecoder('utf-16be').decode(b.subarray(2))}`, encoding: 'utf-16be' };
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(b), encoding: 'utf-8' };
+  } catch {
+    return { text: new TextDecoder('windows-1252').decode(b), encoding: 'windows-1252' };
+  }
 }
 
 // Columns are keyed by a unique id so two columns called "email" do not overwrite each other.
@@ -17,9 +49,13 @@ export const columnName = (key) => String(key).split(SEP)[0];
 
 export function parseCsv(input, delimiter) {
   const bom = input.startsWith('﻿');
-  const text = bom ? input.slice(1) : input;
+  let text = bom ? input.slice(1) : input;
   const eol = /\r\n/.test(text) ? '\r\n' : '\n';
-  const d = delimiter ?? sniffDelimiter(text.split(/\r?\n/, 1)[0] ?? '');
+  // Excel's "sep=;" first line names the separator; it is kept and written back.
+  const sepLine = text.match(/^sep=(.)\r?\n/i);
+  if (sepLine) text = text.slice(sepLine[0].length);
+  const lines = text.split(/\r?\n/, 6);
+  const d = delimiter ?? (sepLine ? sepLine[1] : sniffDelimiter(lines[0] ?? '', lines.slice(1)));
   const raw = [];
   let row = [];
   let field = '';
@@ -51,8 +87,10 @@ export function parseCsv(input, delimiter) {
     row.push(field);
     raw.push(row);
   }
-  if (!sawAny || !raw.length || !raw[0].some((x) => x.trim() !== '')) return { header: [], rows: [], delimiter: d, bom, eol };
-  const names = raw[0].map((h) => h.trim());
+  const sep = sepLine ? sepLine[1] : undefined;
+  if (!sawAny || !raw.length || !raw[0].some((x) => x.trim() !== '')) return { header: [], rows: [], delimiter: d, bom, eol, sep };
+  // A header cell may be quoted, padded or carry a stray BOM from a joined file.
+  const names = raw[0].map((h) => h.replace(/^\uFEFF/, '').trim());
   const width = Math.max(names.length, ...raw.slice(1).map((r) => r.length));
   const seen = new Map();
   const header = [];
@@ -62,14 +100,16 @@ export function parseCsv(input, delimiter) {
     seen.set(name, n + 1);
     header.push(name !== '' && n === 0 ? name : `${name}${SEP}${i}`);
   }
-  return { header, rows: raw.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? '']))), delimiter: d, bom, eol };
+  return { header, rows: raw.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? '']))), delimiter: d, bom, eol, sep };
 }
 
-// A cell that starts with = + - @ is run as a formula by spreadsheets; a leading quote stops that.
-// A plain number or a phone number (+1 555 0100, -42.5) is left as it is.
+// A cell that starts with = + - @ (or a tab or carriage return) is run as a formula by
+// spreadsheets, also after leading spaces and in the full-width forms Excel accepts (＝ ＋ － ＠).
+// A leading quote stops that. A plain number or a phone number (+1 555 0100, -42.5) is left alone.
+export const FORMULA_START = /^[\s\u00a0\u3000]*[=+\-@\uff1d\uff0b\uff0d\uff20]|^[\t\r]/;
 const cell = (v, d) => {
   let s = v === undefined || v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
-  if (/^[=+\-@\t\r]/.test(s) && !/^[+-]?[\d\s().-]*\d[\d\s().-]*$/.test(s)) s = `'${s}`;
+  if (FORMULA_START.test(s) && !/^[+-]?[\d\s().-]*\d[\d\s().-]*$/.test(s)) s = `'${s}`;
   return s.includes('"') || s.includes(d) || /[\r\n]/.test(s) || /^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
@@ -77,19 +117,19 @@ const cell = (v, d) => {
 export function toCsv(header, rows, delimiter = ',', like = {}) {
   const eol = like.eol ?? '\n';
   const lines = [header.map(columnName), ...rows.map((r) => header.map((h) => r[h]))].map((r) => r.map((v) => cell(v, delimiter)).join(delimiter));
-  return `${like.bom ? '﻿' : ''}${lines.join(eol)}${eol}`;
+  return `${like.bom ? '﻿' : ''}${like.sep ? `sep=${like.sep}${eol}` : ''}${lines.join(eol)}${eol}`;
 }
 
 const ALIASES = {
-  email: ['email', 'work email', 'work_email', 'email address', 'email_address', 'e mail', 'e mail address', 'business email', 'mail', 'emailadresse', 'e mail adresse', 'correo', 'courriel'],
-  linkedin_url: ['linkedin', 'linkedin url', 'linkedin_url', 'linkedin profile', 'person linkedin url', 'profile url'],
-  name: ['name', 'full name', 'full_name', 'contact name', 'contact'],
-  first_name: ['first name', 'first_name', 'firstname', 'given name', 'vorname'],
-  last_name: ['last name', 'last_name', 'lastname', 'surname', 'family name', 'nachname'],
-  company_name: ['company', 'company name', 'company_name', 'account', 'account name', 'organization', 'organisation', 'employer', 'firma', 'unternehmen', 'empresa', 'societe', 'société'],
-  company_domain: ['domain', 'company domain', 'company_domain', 'website', 'company website', 'url', 'web', 'web site', 'webseite', 'homepage', 'site web'],
+  email: ['email', 'work email', 'work_email', 'email address', 'email_address', 'e mail', 'e mail address', 'business email', 'business e mail', 'mail', 'emailadresse', 'e mail adresse', 'mailadresse', 'mail adresse', 'geschäftliche e mail', 'geschaeftliche e mail', 'geschäftliche e mail adresse', 'dienstliche e mail', 'firmen e mail', 'correo', 'correo electrónico', 'courriel', 'adresse e mail', 'adresse email'],
+  linkedin_url: ['linkedin', 'linkedin url', 'linkedin_url', 'linkedin profile', 'linkedin profile url', 'linkedin profil', 'linkedin link', 'person linkedin url', 'profile url', 'profil url'],
+  name: ['name', 'full name', 'full_name', 'contact name', 'contact', 'vollständiger name', 'vollstaendiger name', 'ansprechpartner', 'nombre', 'nom complet'],
+  first_name: ['first name', 'first_name', 'firstname', 'given name', 'vorname', 'prénom', 'prenom', 'nombre de pila'],
+  last_name: ['last name', 'last_name', 'lastname', 'surname', 'family name', 'nachname', 'familienname', 'nom', 'apellido', 'apellidos'],
+  company_name: ['company', 'company name', 'company_name', 'account', 'account name', 'organization', 'organisation', 'organization name', 'employer', 'firma', 'firmenname', 'firma name', 'unternehmen', 'unternehmensname', 'arbeitgeber', 'empresa', 'societe', 'société', 'entreprise'],
+  company_domain: ['domain', 'company domain', 'company_domain', 'website', 'company website', 'website url', 'url', 'web', 'web site', 'webseite', 'internetseite', 'homepage', 'domäne', 'domaene', 'firmen website', 'site web', 'sitio web'],
 };
-const norm = (h) => columnName(h).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+const norm = (h) => columnName(h).normalize('NFC').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 /** Which column holds which identifier, from the header names people actually use. `overrides` wins. */
 export function mapColumns(header, overrides = {}) {

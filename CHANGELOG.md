@@ -3,6 +3,46 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.5.2 - 2026-11-14
+
+Fixes from the pre-launch test report.
+
+### Fixed
+- **Data-source names and bills never reach the user.** Every API answer and error now passes
+  through `server/lib/shield.mjs`: vendor names are taken out of the text, `provider` / `plan`
+  details are dropped, `total_at_provider` becomes `total_matching`, and a data source's own billing
+  or quota message ("payment required", "balance $0", "4 sources failed") becomes one plain line:
+  a data source was unavailable and nothing was charged for it (`source.unavailable`). The user's
+  own wallet error (`credits.insufficient`) is kept as it is.
+- **A wrong server URL no longer says "Not signed in".** With no credential, the client checks the
+  address first and says `unreachable`, `not_agentic_id` or `bad_url`, with how to fix the URL.
+  `agentic_id_status` and `agentic-id doctor` say the same.
+- **Budget caps smaller than the list.** Validate and enrich send only what the cap can pay for,
+  mark the rest `not_checked` / `not_run` (free), and say `partial: true`. They never report "done"
+  for a run that stopped.
+- **A batch failing part way** keeps what earlier batches paid for: the answer is partial with
+  `stopped`, and a file run still writes every row. A partial file run exits non-zero.
+- **Company lists.** `agentic_id_enrich` takes `companies`, and a contact with only a company on it
+  is enriched as a company at 1 credit (it was priced and sent as a person at 2).
+- **Personal data in the Company column** (an email, a phone number, Gmail) is held back on this
+  machine and never sent.
+- **Messy CSVs:** UTF-16 and Windows-1252 exports, Excel's `sep=` line, separators inside quotes,
+  pipes, more German, French and Spanish headers, quoted names, and formulas after spaces or in
+  full-width form.
+- **Discover counts first** even when the user already gave a budget (skill rule, tool description
+  and server instructions). The lookalike skill now triggers on "how would I find more accounts
+  like ..." questions.
+
+### Changed
+- **The marketplace is named `agentic-id`** (it was `icustomer`, the same name as Growth Brain's
+  marketplace, so one replaced the other). Install with
+  `claude plugin marketplace add icustomerai/agentic-id-plugin` and
+  `claude plugin install agentic-id@agentic-id`.
+- docs/agents.md's Claude Code section described a remote MCP with `/mcp` sign-in; it now
+  describes the local server, `/agentic-id-login` and the two plugin options.
+- Eval mocks match what the plugin's server returns, and ship a `_tools.json` with the real tool
+  schemas.
+
 ## 0.5.1 - 2026-11-14
 
 ### Changed

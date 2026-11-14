@@ -29,13 +29,17 @@ export function estimate(tool, args = {}) {
       return { max_credits: rows * RATES.resolve, arithmetic: `${rows} rows x ${RATES.resolve} (repeats and IDs you hold are free)`, free: false };
     }
     case 'enrich': {
-      const people = (args.contacts?.length ?? 0) + (args.contact ? 1 : 0);
-      const companies = args.company ? 1 : 0;
+      // A "contact" that names only a company is enriched (and priced) as a company.
+      const all = [...(Array.isArray(args.contacts) ? args.contacts : []), ...(args.contact ? [args.contact] : [])];
+      const isCompanyOnly = (c) => c && typeof c === 'object' && !c.email && !c.work_email && !c.linkedin_url && !c.linkedin && !c.name && !c.full_name && !c.first_name && !c.last_name && (c.company_domain || c.company_name || c.domain || c.company || c.website);
+      const companyContacts = all.filter(isCompanyOnly).length;
+      const people = all.length - companyContacts;
+      const companies = (args.company ? 1 : 0) + (Array.isArray(args.companies) ? args.companies.length : 0) + companyContacts;
       const phone = (args.fields ?? []).some((f) => /phone|mobile/i.test(f)) ? RATES.enrich_phone : 0;
       const parts = [];
       if (people) parts.push(`${people} ${people === 1 ? 'person' : 'people'} x ${RATES.enrich_person + phone}`);
-      if (companies) parts.push(`1 company x ${RATES.enrich_company}`);
-      return { max_credits: people * (RATES.enrich_person + phone) + companies * RATES.enrich_company, arithmetic: parts.join(' + ') || 'nothing to enrich', free: false };
+      if (companies) parts.push(`${companies} ${companies === 1 ? 'company' : 'companies'} x ${RATES.enrich_company}`);
+      return { max_credits: people * (RATES.enrich_person + phone) + companies * RATES.enrich_company, arithmetic: parts.join(' + ') || 'nothing to enrich', free: false, per_person: RATES.enrich_person + phone };
     }
     case 'find': {
       const limit = n(args.limit, 5);
