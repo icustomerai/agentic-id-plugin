@@ -58,8 +58,9 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
    - **Agentic ID API key.** Leave it empty to sign in with your iCustomer account (step 2). For
      CI and headless runs, paste a key: Claude Code stores it in your system keychain. A key,
      when set, is used instead of a sign-in.
-   - **Agentic ID API URL.** Where the Agentic ID API runs. The default is a local V3 stack
-     (`http://127.0.0.1:3100`); set the URL iCustomer gave you otherwise.
+   - **Agentic ID API URL.** Where the Agentic ID API runs. The default is the hosted service
+     (`https://onesource-v3.icustomer.ai`), so leave it as it is. For a local V3 stack, set
+     `http://127.0.0.1:3100`.
    - **Session credit budget (optional).** The most one Claude Code session may spend, e.g. `100`.
    - **Ask before spending more than.** Claude Code asks you to approve any single call that could
      spend more than this many credits (default 10), showing the amount.

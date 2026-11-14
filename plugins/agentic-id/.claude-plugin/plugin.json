@@ -1,7 +1,7 @@
 {
   "name": "agentic-id",
   "displayName": "Agentic ID",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then validate, enrich, find, discover and find look-alikes, with every value marked verified, corroborated or claimed. Credit-aware skills, a lead-qualification agent, a CLI for CSV lists and a local, PII-free usage log.",
   "author": {
     "name": "iCustomer",
@@ -32,8 +32,8 @@
     "api_url": {
       "type": "string",
       "title": "Agentic ID API URL",
-      "description": "Where the Agentic ID V3 API runs. Leave the default for a local V3 stack; set your hosted URL (https) otherwise.",
-      "default": "http://127.0.0.1:3100"
+      "description": "Where the Agentic ID API runs. Leave the default to use the hosted Agentic ID service. For a local V3 stack, set http://127.0.0.1:3100.",
+      "default": "https://onesource-v3.icustomer.ai"
     },
     "session_budget": {
       "type": "string",
