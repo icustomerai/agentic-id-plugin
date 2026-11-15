@@ -47,7 +47,7 @@ Every paid call carries an idempotency key, so the plugin can ask again without 
 | `service.unavailable` | Agentic ID is not taking requests for a moment | Wait for `retry_after_seconds`, then once more. Nothing was charged. |
 | `service.timeout` | The call may have completed | Check `agentic_id_workspace` for a charge before sending it again. |
 | `idempotency.in_progress` | The same request is still running | Wait; ask again later. It is charged once. |
-| `signed_out` / `auth.token_expired` | The sign-in ended | The user runs `/agentic-id-login`. |
+| `signed_out` / `auth.token_expired` | The sign-in ended | The user runs `/agentic-id:agentic-id-login`. |
 | `id.not_held` | Facts or history were asked for an ID this workspace does not hold | Resolve the person or company first, then ask again. |
 | `feedback.not_held` | An outcome was reported for an ID this workspace does not hold | Resolve or enrich it first, or drop that row. |
 

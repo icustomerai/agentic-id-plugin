@@ -60,7 +60,7 @@ claude plugin install agentic-id@agentic-id
 ```
 
 Restart Claude Code and ask "How many Agentic ID credits do I have?". Claude opens the iCustomer
-sign-in page (or type `/agentic-id-login`). The plugin runs its own small local MCP server
+sign-in page (or type `/agentic-id:agentic-id-login`). The plugin runs its own small local MCP server
 (`server/mcp.mjs`, Node 18 or later, no packages) that calls the Agentic ID API; it is not the
 hosted MCP endpoint above.
 

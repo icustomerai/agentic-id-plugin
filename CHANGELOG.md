@@ -3,6 +3,18 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+Fixes from the Nov 15 retest.
+
+### Fixed
+- **Command names in the docs.** Every slash command is written with the plugin prefix, for example
+  `/agentic-id:agentic-id-status`, which is the name Claude Code shows. A test keeps it that way.
+- **`agentic_id_estimate` checks the arguments like the call would.** Arguments the call refuses
+  (enrich by an id, an empty list, a personal email, find without an account) are refused by the
+  estimate too, with the same fix, instead of "nothing to enrich". Enrich by id points to
+  `agentic_id_facts`. The estimate still makes no paid calls.
+
 ## 0.5.2 - 2026-11-14
 
 Fixes from the pre-launch test report.
@@ -39,7 +51,7 @@ Fixes from the pre-launch test report.
   `claude plugin marketplace add icustomerai/agentic-id-plugin` and
   `claude plugin install agentic-id@agentic-id`.
 - docs/agents.md's Claude Code section described a remote MCP with `/mcp` sign-in; it now
-  describes the local server, `/agentic-id-login` and the two plugin options.
+  describes the local server, `/agentic-id:agentic-id-login` and the two plugin options.
 - Eval mocks match what the plugin's server returns, and ship a `_tools.json` with the real tool
   schemas.
 
@@ -65,7 +77,7 @@ Fixes from the pre-launch test report.
 The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint is no longer used.
 
 ### Added
-- **Sign in with an iCustomer account**, no API key needed: `/agentic-id-login` or `agentic-id login`
+- **Sign in with an iCustomer account**, no API key needed: `/agentic-id:agentic-id-login` or `agentic-id login`
   (OAuth 2.1 with PKCE against the API; the session is kept in `~/.agentic-id/session.json` and
   renews itself for 30 days). `agentic-id logout` ends it. The API key option is now optional.
 - `agentic_id_workspace` / `agentic-id workspace`: credits available and held, spend by tool, the
@@ -112,7 +124,7 @@ The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint i
 - CLI `agentic-id` in the plugin's `bin/`: every tool, CSV in and out for validate, resolve and
   enrich, `--dry-run`, `estimate`, `doctor`, exit codes.
 - Skills `clean-a-list`, `lookalike-prospecting`, `trust-check`.
-- Hook: optional per-session credit budget. Commands `/agentic-id-status`, `/agentic-id-clean-list`.
+- Hook: optional per-session credit budget. Commands `/agentic-id:agentic-id-status`, `/agentic-id:agentic-id-clean-list`.
 - Tests: unit tests for the bundled layer, a stdio protocol test, 8 new eval cases.
 
 ### Not yet updated
@@ -129,7 +141,7 @@ OneSource is now **Agentic ID**. Breaking: every name changed at once, with no a
 - Tools `onesource_<verb>` are now `agentic_id_<verb>` (validate, resolve, enrich, find, discover).
   Needs an MCP server that serves the new names.
 - Skills `onesource` and `onesource-credits` are now `agentic-id` and `agentic-id-credits`; command
-  `/onesource-usage` is now `/agentic-id-usage`; the CLI binary is `agentic-id`.
+  `/onesource-usage` is now `/agentic-id:agentic-id-usage`; the CLI binary is `agentic-id`.
 - Local files move from `~/.onesource/` to `~/.agentic-id/` (usage log, API key). Env vars
   `ONESOURCE_*` are now `AGENTIC_ID_*`. Client header `x-onesource-client` is now `x-agentic-id-client`.
 - API keys are now `ic-live-...` and IDs `ic-...` (iCustomer ID). Old `os_live_` keys and `os_` IDs

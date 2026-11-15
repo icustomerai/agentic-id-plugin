@@ -86,7 +86,7 @@ Restart Claude Code, then ask:
 
 > How many Agentic ID credits do I have?
 
-Claude opens the iCustomer sign-in page in your browser (or type `/agentic-id-login`). Sign in, go back to Claude Code, and it answers with your workspace's balance. There is nothing to configure: the plugin talks to the hosted service at `https://onesource-v3.icustomer.ai`.
+Claude opens the iCustomer sign-in page in your browser (or type `/agentic-id:agentic-id-login`). Sign in, go back to Claude Code, and it answers with your workspace's balance. There is nothing to configure: the plugin talks to the hosted service at `https://onesource-v3.icustomer.ai`.
 
 Then try:
 
@@ -151,7 +151,7 @@ The `cost` block in every answer is authoritative. Exact arguments for every too
 | Skill `lookalike-prospecting` | From your best customers to a shared profile to a list of similar companies |
 | Skill `trust-check` | Whether a record is safe to act on, and why two records are the same ID |
 | Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a list grouped by account |
-| Commands | `/agentic-id-login`, `/agentic-id-status`, `/agentic-id-clean-list <csv>`, `/agentic-id-usage` |
+| Commands | `/agentic-id:agentic-id-login`, `/agentic-id:agentic-id-status`, `/agentic-id:agentic-id-clean-list <csv>`, `/agentic-id:agentic-id-usage` |
 | Hooks | A spend guard before each paid call, and a usage log after each call that never holds inputs or results |
 
 To change an option later, run `/plugin configure agentic-id@agentic-id`. Updates are keyed on the version in `plugin.json`; every release bumps it. Get one with `claude plugin marketplace update agentic-id`.
@@ -232,7 +232,7 @@ Every surface accepts a signed-in iCustomer account or an API key. Each signed-i
 
 | You are | Use | How |
 |---|---|---|
-| A person in Claude Code | Sign-in | Ask Claude to sign you in, or type `/agentic-id-login` |
+| A person in Claude Code | Sign-in | Ask Claude to sign you in, or type `/agentic-id:agentic-id-login` |
 | A person at a terminal | Sign-in | `agentic-id login`. Kept in `~/.agentic-id/session.json`, readable by you only; renews itself for 30 days |
 | A script, CI job or headless agent | API key (`ic-live-...`) | `AGENTIC_ID_API_KEY`, or the file named in `AGENTIC_ID_API_KEY_FILE`. A key, when set, is used instead of a sign-in |
 

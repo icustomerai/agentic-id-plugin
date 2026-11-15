@@ -730,10 +730,42 @@ test('mcp: a crash inside a tool is contained and leaks nothing', async () => {
 test('mcp: estimate and status work without touching the API', async () => {
   const c = fake({ me: { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' } });
   const s = createServer({ client: c });
-  const e = (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool: 'agentic_id_find', arguments: { limit: 10 } } })).result.structuredContent;
+  const e = (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool: 'agentic_id_find', arguments: { account: { domain: 'acme-synthetic.io' }, roles: ['CTO'], limit: 10 } } })).result.structuredContent;
   assert.deepEqual([e.max_credits, e.auto_capped], [20, false]);
   assert.equal(c.calls.length, 0);
   assert.match((await rpc(s, 'tools/call', { name: 'agentic_id_status', arguments: {} })).result.structuredContent.contact_values, /masked/);
+});
+
+test('estimate refuses arguments the call itself would refuse, and never says "nothing to enrich" for 0 credits', async () => {
+  const c = fake();
+  const s = createServer({ client: c });
+  const est = async (tool, args) => (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool, arguments: args } })).result;
+  // Vicky's case: enrich "by ID". enrich takes identifiers, not an Agentic ID.
+  const byId = await est('enrich', { id: 'ic-abc123def' });
+  assert.equal(byId.isError, true);
+  assert.match(byId.structuredContent.message, /does not take id/);
+  assert.match(byId.structuredContent.fix, /agentic_id_facts/);
+  const nestedId = await est('enrich', { contact: { id: 'ic-abc123def' } });
+  assert.equal(nestedId.isError, true);
+  assert.equal(nestedId.structuredContent.error, 'nothing_to_enrich');
+  const empty = await est('enrich', {});
+  assert.equal(empty.isError, true);
+  assert.doesNotMatch(JSON.stringify(empty.structuredContent), /"max_credits":0/);
+  const personal = await est('enrich', { contacts: [{ email: 'someone@gmail.com' }] });
+  assert.equal(personal.isError, true);
+  // The other paid tools: their own refusals come back from the estimate too.
+  assert.equal((await est('find', { limit: 5 })).structuredContent.error, 'account_required');
+  assert.equal((await est('discover', {})).structuredContent.error, 'request.invalid');
+  assert.equal((await est('discover', { account_filters: { colour: 'red' } })).structuredContent.error, 'request.invalid');
+  assert.equal((await est('resolve', { identifiers: { name: 'Jane Doe' } })).structuredContent.error, 'name_alone');
+  assert.equal((await est('lookalike', { seeds: ['gmail.com'] })).structuredContent.error, 'request.invalid');
+  assert.equal((await est('validate', {})).structuredContent.error, 'request.invalid');
+  // Good arguments still give the arithmetic, and nothing is ever sent.
+  const ok = (await est('enrich', { contact: { email: 'jane@acme-synthetic.io' } })).structuredContent;
+  assert.deepEqual([ok.max_credits, ok.auto_capped], [2, true]);
+  const big = (await est('discover', { account_filters: { industry: ['software'] }, max_accounts: 100 })).structuredContent;
+  assert.equal(big.max_credits, 100);
+  assert.equal(c.calls.length, 0, 'an estimate never calls the API');
 });
 
 // ------------------------------------------------------------------ CLI
@@ -1140,4 +1172,14 @@ test('discover: a filter under another name is mapped, an unknown one is refused
   assert.equal(c.calls.length, 1, 'nothing was sent for the refused call');
   await ops.discover(c, { account_filters: { industry: ['software'] }, contact_filters: { titles: ['CTO'] }, count_only: true });
   assert.deepEqual(c.calls[1].body.contact_filters, { job_title: ['CTO'] });
+});
+
+test('docs: slash commands are written with the plugin prefix, as Claude Code shows them', async () => {
+  const { readdirSync, statSync } = await import('node:fs');
+  const root = new URL('../', import.meta.url).pathname;
+  const commands = readdirSync(join(root, 'plugins/agentic-id/commands')).map((f) => f.replace(/\.md$/, ''));
+  const short = new RegExp(`(?<!agentic-id:)/(${commands.join('|')})\\b`);
+  const walk = (d) => readdirSync(d).flatMap((n) => (n === '.git' || n === 'node_modules' ? [] : statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
+  const bad = walk(root).filter((f) => /\.(md|json|mjs)$/.test(f) && !f.includes('/test/') && !/_tools\.json$/.test(f)).filter((f) => short.test(readFileSync(f, 'utf8')));
+  assert.deepEqual(bad, [], `short command names in: ${bad.join(', ')}`);
 });
