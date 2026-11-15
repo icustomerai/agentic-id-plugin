@@ -84,7 +84,8 @@ export const TOOLS = [
       properties: {
         contact: identifiers,
         contacts: { type: 'array', items: identifiers, description: 'Several people in one call. Lists over 100 are sent in batches inside max_credits.' },
-        company: { type: 'object', properties: { domain: str('Company domain.'), name: str('Company name.') }, additionalProperties: false },
+        company: { type: 'object', description: 'One company to enrich (1 credit).', properties: { domain: str('Company domain.'), name: str('Company name.') }, additionalProperties: false },
+        companies: { type: 'array', items: { type: 'object', properties: { domain: str('Company domain.'), name: str('Company name.') }, additionalProperties: false }, description: 'Several companies to enrich, 1 credit each (an account list: industry, employees, revenue ...). A contact with only a company on it is enriched as a company too.' },
         fields: list('Only these fields; leave out for everything. People: work_email, linkedin_url, title, seniority, company_name, company_domain, location, city, country. Companies: name, domain, linkedin_url, industry, employees, revenue_usd, country, city, founded, description.'),
         purpose,
         max_credits: maxCredits,
@@ -121,7 +122,7 @@ export const TOOLS = [
     name: 'agentic_id_discover',
     title: 'Discover new companies and people',
     description:
-      'Net-new companies that match account_filters, and optionally the people in them (contact_filters). Always run it first with count_only: true: that is free and says how many match and which source would be asked. Every company returned meets every filter, checked by Agentic ID itself, not taken on a provider\'s word. 1 credit per account delivered (an account whose size only one source confirms is delivered free) plus 2 per person. Filter values that could not be read come back in "rejected", never silently dropped.',
+      'Net-new companies that match account_filters, and optionally the people in them (contact_filters). Always run it first with count_only: true, even when the user already gave a budget: that is free and says how many match (total_matching). Every company returned meets every filter, checked by Agentic ID itself. 1 credit per account delivered (an account whose size only one source confirms is delivered free) plus 2 per person. Filter values that could not be read come back in "rejected", never silently dropped.',
     inputSchema: {
       type: 'object',
       properties: {

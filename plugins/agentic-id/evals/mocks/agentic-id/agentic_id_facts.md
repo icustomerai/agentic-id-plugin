@@ -20,7 +20,7 @@ type: fixed
         {
           "kind": "profile_lists_employer",
           "lineage": "professional-profile",
-          "source": "provider-a",
+          "source": "data_source",
           "observed_at": "2026-11-01T00:00:00Z"
         },
         {
@@ -40,8 +40,8 @@ type: fixed
       "evidence": [
         {
           "kind": "provider_claim",
-          "lineage": "provider-b",
-          "source": "provider-b",
+          "lineage": "data_source",
+          "source": "data_source",
           "observed_at": "2026-10-20T00:00:00Z"
         }
       ]

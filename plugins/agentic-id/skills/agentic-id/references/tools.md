@@ -35,6 +35,10 @@ and tracking parameters are cleaned for you.
 
 Rows with `"checked": "locally"` were held back on this machine and never sent.
 
+When `max_credits` is below the number of addresses, only as many as it can pay for are sent. The
+rest come back `not_checked` (free), the answer is marked `partial: true`, and `stopped` says why.
+Say how many were checked and how many were not; never call a partial run done.
+
 ## agentic_id_resolve
 
 ```json
@@ -69,6 +73,7 @@ linked for review, never merged.
   company. That is the duplicate report.
 - `outcome: "skipped"` rows had only personal data and were not sent. `not_run` rows were not
   reached before the cap; `stopped` says why.
+- A personal email, a phone number or a mail provider in the company field is held back too.
 
 ## agentic_id_enrich
 
@@ -76,7 +81,13 @@ linked for review, never merged.
 { "contact": { "email": "jane.doe@acme.io" }, "fields": ["title", "company_domain"], "max_credits": 2 }
 ```
 
-- `contact` (one), `contacts` (many; over 100 go in batches), or `company: { "domain": "acme.io" }`.
+- `contact` (one), `contacts` (many; over 100 go in batches), `company: { "domain": "acme.io" }`
+  (one), or `companies: [{ "domain": "acme.io" }, { "name": "Globex" }]` (an account list, 1 credit
+  each). A contact with only a company on it (no email, LinkedIn URL or name) is enriched and
+  priced as a company. Company results come back in `company_results[]`.
+- When `max_credits` is below the full cost, only what it can pay for is sent: the rest comes back
+  `not_run`, the answer is marked `partial: true` and `stopped` says why. Nothing is charged for
+  what was not run.
 - `fields`: only these; leave it out for everything. People: `work_email`, `linkedin_url`,
   `title`, `seniority`, `company_name`, `company_domain`, `location`, `city`, `country`.
   Companies: `name`, `domain`, `linkedin_url`, `industry`, `employees`, `revenue_usd`, `country`,
@@ -115,8 +126,9 @@ linked for review, never merged.
 - `contact_filters` (optional): `job_title`, `job_level`, `countries`, `per_account` (default 1),
   `min_company_size`. Needs a title or a level.
 - `max_accounts`: default 25, max 500. `exclude_seen`: default true.
-- **Always run with `count_only: true` first.** It is free and returns `total_at_provider` and
-  `plan` (which source would be asked and what it can filter itself).
+- **Always run with `count_only: true` first**, even when the user already gave a budget. It is
+  free and returns `total_matching` (how many companies match) and `plan` (what the search can
+  filter by itself, and what Agentic ID checks after).
 - Read back `accounts[]` (`id`, `domain`, `name`, `country`, `employees`, `size_check`,
   `charged`), `contacts[]`, `excluded`, `rejected`, `plan`.
 - `size_check: "single"` means only one source confirmed the size; that account is delivered but

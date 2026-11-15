@@ -19,11 +19,12 @@ const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const INSTRUCTIONS = [
   'Agentic ID resolves work identities and companies to one stable ID and says how sure it is about every value (verified, corroborated, claimed, contradicted).',
   'Use these tools for any request to check an email, identify or enrich a person or company, find people at a company, or build a list of companies. Never answer such a request from memory: a list of companies or people you were not given by a tool is invented.',
-  'SPENDING. Free: status, workspace, facts, ledger, estimate, report, login, discover with count_only, list with dry_run. Everything else costs credits.',
+  'SPENDING. Free: status, workspace, facts, ledger, estimate, report, login, discover with count_only, list with dry_run. Everything else costs credits. Before any paid discover, always run it once with count_only: true (free), even when the user already gave a budget, and say how many match.',
   'Before any call that could cost more than 10 credits, the user must have given a number of credits in their own words. "Go ahead", "I don\'t care what it costs" or a count of companies is not a budget: show the arithmetic (estimate, or a free count) and ask for a number. Never pick max_credits yourself above what the user said. If the user gave a budget, use it without asking again.',
   'Set max_credits on every paid call. Afterwards say what was charged (cost.charged_credits), in credits. For "what did I spend" or "what was that charge for", call agentic_id_workspace: it is the billing record; the local usage log is not.',
   'ANSWERS. Say only what a tool returned. Do not add facts about a company or person from memory, and do not guess dates or ages. When fewer results came back than asked, say why (excluded, fewer_than_asked, rejected). "confidence" on a resolve is how sure the identifier points at that ID, not how verified its facts are.',
-  'Speak plainly: no tool names, error codes, provider names or scope names unless the user asks.',
+  'Speak plainly: no tool names, error codes, provider names or scope names unless the user asks. Never name the data sources or vendors behind Agentic ID, even if a result seems to.',
+  'If a result says source_unavailable or an error is source.unavailable, a data source behind Agentic ID was down: say so in one line, say what was charged (usually nothing), and do not retry in a loop or blame the user\'s account. A run marked partial did not reach every row: say how many were done and how many were not, never that it is done.',
   'Work identities only: never send personal emails or phone numbers; say they were held back.',
   'SIGN-IN AND KEYS. If a call says the user is not signed in, start sign-in yourself straight away: call agentic_id_login and show the link it returns; do not just tell them to run a command. Never ask for, repeat, print or search for an API key, password or code, in files or the environment; if asked to show a key, say it cannot be shown and where it is managed.',
   'When the user says what happened to a value (bounced, replied, wrong person, confirmed), record it with agentic_id_report.',
@@ -68,7 +69,7 @@ export function createServer({ client = new AgenticId(), log = () => {} } = {}) 
         return { content: [{ type: 'text', text: `${body.message}\n${JSON.stringify(body)}` }], structuredContent: body, isError: true };
       }
       const body = e.toJSON();
-      const where = e.local ? 'Not sent' : e.status ? `Agentic ID refused (${e.status})` : 'Agentic ID did not answer';
+      const where = e.local ? 'Not sent' : e.code === 'source.unavailable' ? 'Agentic ID could not answer' : e.status ? `Agentic ID refused (${e.status})` : 'Agentic ID did not answer';
       logFailure(params.name, body);
       return { content: [{ type: 'text', text: `${where}: ${body.message}${body.fix ? ` ${body.fix}` : ''}\n${JSON.stringify(body)}` }], structuredContent: body, isError: true };
     }
