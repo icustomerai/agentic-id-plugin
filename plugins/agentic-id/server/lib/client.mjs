@@ -15,7 +15,7 @@ import { isSourceFailure, shieldProblem, shieldReply, SOURCE_DOWN, SOURCE_FIX } 
 // The hosted Agentic ID service. A local V3 stack is http://127.0.0.1:3100: set it in the plugin
 // options or as AGENTIC_ID_URL.
 export const DEFAULT_URL = 'https://onesource-v3.icustomer.ai';
-export const CLIENT = 'agentic-id-plugin/0.5.2';
+export const CLIENT = 'agentic-id-plugin/0.6.0';
 
 const FIXES = {
   'auth.invalid_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set a valid API key in the plugin options. Never ask for a key in the chat.',
