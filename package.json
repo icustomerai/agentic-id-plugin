@@ -1,0 +1,32 @@
+{
+  "name": "agentic-id",
+  "version": "0.5.2",
+  "description": "Agentic ID from any terminal: resolve people and companies to one stable ID, then validate, enrich, find and discover, with CSV lists in and out.",
+  "keywords": ["agentic-id", "identity", "identity-resolution", "enrichment", "email-validation", "prospecting", "gtm", "cli"],
+  "homepage": "https://github.com/icustomerai/agentic-id-plugin#cli",
+  "bugs": "https://github.com/icustomerai/agentic-id-plugin/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icustomerai/agentic-id-plugin.git"
+  },
+  "license": "MIT",
+  "author": "iCustomer (https://icustomer.ai)",
+  "bin": {
+    "agentic-id": "plugins/agentic-id/scripts/agentic-id"
+  },
+  "files": [
+    "plugins/agentic-id/scripts/agentic-id",
+    "plugins/agentic-id/scripts/usage-summary.mjs",
+    "plugins/agentic-id/server/cli.mjs",
+    "plugins/agentic-id/server/lib/"
+  ],
+  "engines": {
+    "node": ">=18.3"
+  },
+  "scripts": {
+    "test": "bash test/validate.sh"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1233,6 +1233,37 @@ test('docs: slash commands are written with the plugin prefix, as Claude Code sh
   assert.deepEqual(bad, [], `short command names in: ${bad.join(', ')}`);
 });
 
+test('npm package: one version everywhere, and it ships every file the agentic-id command loads', async () => {
+  const { existsSync, statSync } = await import('node:fs');
+  const { dirname, relative, resolve } = await import('node:path');
+  const { CLIENT } = await import('../plugins/agentic-id/server/lib/client.mjs');
+  const root = new URL('../', import.meta.url).pathname;
+  const read = (p) => JSON.parse(readFileSync(join(root, p), 'utf8'));
+  const pkg = read('package.json');
+  const version = read('plugins/agentic-id/.claude-plugin/plugin.json').version;
+  assert.equal(pkg.name, 'agentic-id');
+  assert.equal(pkg.version, version, 'package.json and plugin.json carry the same version');
+  assert.equal(read('.claude-plugin/marketplace.json').plugins[0].version, version);
+  assert.equal(CLIENT, `agentic-id-plugin/${version}`);
+  assert.equal(pkg.type, undefined, 'no "type": an extensionless bin under "type": "module" fails on Node 18');
+  const bin = join(root, pkg.bin['agentic-id']);
+  assert.ok(existsSync(bin), 'bin target exists');
+  assert.ok(statSync(bin).mode & 0o111, 'bin target is executable');
+  const shipped = (f) => pkg.files.some((p) => (p.endsWith('/') ? f.startsWith(p) : f === p));
+  // Walk every relative import from the command, so a new module can't be left out of the package.
+  const seen = new Set();
+  const walk = (file) => {
+    const rel = relative(root, file);
+    if (seen.has(rel)) return;
+    seen.add(rel);
+    for (const [, spec] of readFileSync(file, 'utf8').matchAll(/(?:from\s+|import\()\s*['"](\.{1,2}\/[^'"]+)['"]/g)) walk(resolve(dirname(file), spec));
+  };
+  walk(bin);
+  walk(join(root, 'plugins/agentic-id/scripts/usage-summary.mjs')); // `agentic-id usage` runs it
+  const missing = [...seen].filter((f) => !shipped(f));
+  assert.deepEqual(missing, [], `not in package.json "files": ${missing.join(', ')}`);
+});
+
 test('the sign-in helper runs a command that exists (scripts/agentic-id, not the old bin/)', async () => {
   const { existsSync } = await import('node:fs');
   const { CLI_SCRIPT } = await import('../plugins/agentic-id/server/lib/operations.mjs');
