@@ -717,11 +717,40 @@ export async function report(client, args = {}) {
   };
 }
 
-export function estimateCall(_client, args = {}) {
+// The operation behind each paid tool, so an estimate can check its arguments the same way the call would.
+const PLANNED = { validate, resolve, resolve_many: resolveMany, enrich, find, discover, lookalike };
+class PlanStop extends Error {}
+// A client that stops the operation at its first request: everything before it (cleaning, local
+// refusals, the cap) has run, and nothing is sent.
+const planClient = new Proxy({}, { get: () => async () => { throw new PlanStop(); } });
+
+/**
+ * What a planned call could cost. The arguments are checked exactly as the call itself would check
+ * them, so an estimate never reports "0 credits" for a call that would be refused: an argument the
+ * tool does not take, or input with nothing usable in it, is refused here too.
+ */
+export async function estimateCall(_client, args = {}, catalog) {
   const tool = String(args.tool ?? '').replace(/^agentic_id_/, '');
-  const est = estimate(tool, args.arguments ?? {});
-  if (!est) throw new LocalRefusal('request.invalid', `Unknown tool "${args.tool}".`, 'Use one of: validate, resolve, resolve_many, enrich, find, discover, lookalike.');
-  const asked = Number((args.arguments ?? {}).max_accounts);
+  const planned = args.arguments ?? {};
+  const est = estimate(tool, planned);
+  if (!est || !PLANNED[tool]) throw new LocalRefusal('request.invalid', `Unknown tool "${args.tool}".`, 'Use one of: validate, resolve, resolve_many, enrich, find, discover, lookalike.');
+  if (typeof planned !== 'object' || Array.isArray(planned)) throw new LocalRefusal('request.invalid', 'arguments must be an object: the arguments you would pass to the tool.', 'Pass the same arguments you would send to the tool.');
+  const schema = catalog?.get(`agentic_id_${tool}`)?.inputSchema;
+  if (schema) {
+    const unknown = Object.keys(planned).filter((k) => !(k in schema.properties));
+    if (unknown.length) {
+      const byId = unknown.some((k) => /^(id|ids|agentic_id)$/i.test(k));
+      throw new LocalRefusal('request.invalid', `agentic_id_${tool} does not take ${unknown.join(', ')}, so this call would be refused. Nothing was estimated.`, byId && tool === 'enrich' ? 'enrich takes what you know (a work email, a LinkedIn URL, a name with a company, or a company domain), not an Agentic ID. For what Agentic ID already holds on an ID, use agentic_id_facts.' : `Allowed: ${Object.keys(schema.properties).join(', ')}.`);
+    }
+  }
+  const asked = Number(planned.max_accounts);
   if ((tool === 'discover' || tool === 'lookalike') && asked > 500) throw new LocalRefusal('request.invalid', `${asked} accounts in one call; the limit is 500.`, `Plan ${Math.ceil(asked / 500)} calls of up to 500 accounts each (${asked} credits in all for accounts). Companies already delivered are skipped, so each call returns new ones.`);
+  // Run the call's own checks with a client that sends nothing. A refusal there is the answer.
+  try {
+    await PLANNED[tool](planClient, { ...planned, max_credits: planned.max_credits ?? 100000 });
+  } catch (e) {
+    if (!(e instanceof PlanStop)) throw e;
+  }
+  if (!est.free && !(est.max_credits > 0)) throw new LocalRefusal('request.invalid', `Nothing in these arguments can be ${tool === 'enrich' ? 'enriched' : 'priced'}, so the call would be refused.`, 'Check the arguments against the tool, then estimate again.');
   return { tool, ...est, summary: est.free ? `Free: ${est.arithmetic}.` : `At most ${est.max_credits} credits: ${est.arithmetic}. Only results are charged; misses are free.`, auto_capped: !est.free && est.max_credits <= AUTO_CAP };
 }

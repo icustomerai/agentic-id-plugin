@@ -263,7 +263,7 @@ export const TOOLS = [
   {
     name: 'agentic_id_estimate',
     title: 'Estimate a call before making it',
-    description: 'What a planned call could cost at most, worked out on this machine without contacting Agentic ID. Give the tool name and the arguments you would send. Use it to show the user the arithmetic before any call over 10 credits. Free.',
+    description: 'What a planned call could cost at most, worked out on this machine without contacting Agentic ID. Give the tool name and the arguments you would send. Use it to show the user the arithmetic before any call over 10 credits. It checks the arguments the way the call would and refuses ones the call would refuse, so a refusal here means fix the arguments, not skip the call. Free.',
     inputSchema: {
       type: 'object',
       properties: { tool: { type: 'string', enum: ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike'], description: 'The tool you plan to call.' }, arguments: { type: 'object', description: 'The arguments you would pass to it.' } },
@@ -271,7 +271,7 @@ export const TOOLS = [
       additionalProperties: false,
     },
     annotations: { ...free, openWorldHint: false },
-    run: ops.estimateCall,
+    run: (client, args) => ops.estimateCall(client, args, byName),
   },
   {
     name: 'agentic_id_status',

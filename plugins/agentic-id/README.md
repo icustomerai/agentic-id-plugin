@@ -46,10 +46,10 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
 | Skill `lookalike-prospecting` | From your best customers to a shared profile to a list of similar companies |
 | Skill `trust-check` | Whether a record is safe to act on, and why two records are the same ID |
 | Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a list grouped by account |
-| Command `/agentic-id-login` | Signs you in with your iCustomer account, in the browser |
-| Command `/agentic-id-status` | Checks the connection |
-| Command `/agentic-id-clean-list <csv>` | Starts `clean-a-list` on a file, estimate first |
-| Command `/agentic-id-usage` | Credits used per tool and the last 20 calls, from the local usage log |
+| Command `/agentic-id:agentic-id-login` | Signs you in with your iCustomer account, in the browser |
+| Command `/agentic-id:agentic-id-status` | Checks the connection |
+| Command `/agentic-id:agentic-id-clean-list <csv>` | Starts `clean-a-list` on a file, estimate first |
+| Command `/agentic-id:agentic-id-usage` | Credits used per tool and the last 20 calls, from the local usage log |
 | CLI `agentic-id` | The same tools from a terminal, with CSV in and out |
 
 ## Set up
@@ -64,12 +64,12 @@ credits quoted and charged. The `cost` block in each answer is authoritative.
    - **Session credit budget (optional).** The most one Claude Code session may spend, e.g. `100`.
    - **Ask before spending more than.** Claude Code asks you to approve any single call that could
      spend more than this many credits (default 10), showing the amount.
-2. Sign in: type `/agentic-id-login` (or just ask Claude to sign you in), or run
+2. Sign in: type `/agentic-id:agentic-id-login` (or just ask Claude to sign you in), or run
    `agentic-id login` in a terminal. Your browser opens
    the iCustomer sign-in page; when it says you are signed in, go back to Claude Code. The
    sign-in is kept in `~/.agentic-id/session.json`, readable by you only, and renews itself for
    30 days. `agentic-id logout` ends it. (Skip this step if you set an API key.)
-3. Type `/agentic-id-status`. It should say which workspace you are connected as.
+3. Type `/agentic-id:agentic-id-status`. It should say which workspace you are connected as.
 4. Ask Claude something like "Who are the VP-level marketing people at tallpinesoftware.com? Two
    people, at most 4 credits." Then "how many credits do I have left?"
 
@@ -125,7 +125,7 @@ policy. Contact values such as emails come back masked unless your key is allowe
 - `hooks/budget-guard.mjs` runs before each Agentic ID tool call. With no session budget set it
   does nothing. With one, it reads that log, and blocks a paid call once the session has spent
   the budget.
-- `scripts/usage-summary.mjs` runs when you type `/agentic-id-usage`.
+- `scripts/usage-summary.mjs` runs when you type `/agentic-id:agentic-id-usage`.
 - `bin/agentic-id` runs only when you or Claude type the command.
 
 The plugin does not change Claude Code's permission settings. The `evals/` folder holds test
@@ -136,7 +136,7 @@ cases for `claude plugin eval`; Claude Code doesn't load them when you use the p
 | Code | What to do |
 | --- | --- |
 | `auth.missing_key`, `auth.invalid_key` | Set or correct the API key in the plugin's options |
-| `unreachable` | Check the API URL in the plugin's options; run `/agentic-id-status` |
+| `unreachable` | Check the API URL in the plugin's options; run `/agentic-id:agentic-id-status` |
 | `cap_required` | The call could cost more than 10 credits. Agree a budget and pass `max_credits` |
 | `credits.insufficient` | The workspace balance can't cover the call. Top up with your iCustomer team |
 | `rate_limited` | The plugin waits and retries once; if it persists, slow down |

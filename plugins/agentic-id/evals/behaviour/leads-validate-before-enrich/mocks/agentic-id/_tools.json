@@ -918,7 +918,7 @@
     {
       "name": "agentic_id_estimate",
       "title": "Estimate a call before making it",
-      "description": "What a planned call could cost at most, worked out on this machine without contacting Agentic ID. Give the tool name and the arguments you would send. Use it to show the user the arithmetic before any call over 10 credits. Free.",
+      "description": "What a planned call could cost at most, worked out on this machine without contacting Agentic ID. Give the tool name and the arguments you would send. Use it to show the user the arithmetic before any call over 10 credits. It checks the arguments the way the call would and refuses ones the call would refuse, so a refusal here means fix the arguments, not skip the call. Free.",
       "inputSchema": {
         "type": "object",
         "properties": {
