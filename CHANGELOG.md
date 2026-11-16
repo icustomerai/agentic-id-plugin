@@ -8,6 +8,9 @@ All notable changes to this marketplace and the `agentic-id` plugin (named `ones
 Fixes from the Nov 15 retest.
 
 ### Fixed
+- **Sign-in from Claude Code.** `agentic_id_login` started its helper from the old `bin/agentic-id`
+  path, removed below, so the browser sign-in never opened. It now runs `scripts/agentic-id`,
+  and a test checks the path exists.
 - **Command names in the docs.** Every slash command is written with the plugin prefix, for example
   `/agentic-id:agentic-id-status`, which is the name Claude Code shows. A test keeps it that way.
 - **`agentic_id_estimate` checks the arguments like the call would.** Arguments the call refuses
