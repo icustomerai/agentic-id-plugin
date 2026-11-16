@@ -112,7 +112,7 @@ Every surface calls the same API, with the same inputs, outputs, error codes and
 | Claude Code plugin | You work in Claude Code | `claude plugin install agentic-id@agentic-id` |
 | Hosted MCP server | Your agent speaks MCP over HTTP | `https://onesource-v3.icustomer.ai/mcp` |
 | Agent Skills | Your agent reads SKILL.md | Link `plugins/agentic-id/skills/*` ([how](docs/agents.md)) |
-| CLI | CSV files, scripts, CI, agents without MCP | `agentic-id`, shipped inside the plugin |
+| CLI | CSV files, scripts, CI, agents without MCP | `npm install -g agentic-id` |
 | REST API | Any other language | `POST https://onesource-v3.icustomer.ai/v1/<verb>` |
 
 ## The tools
@@ -170,15 +170,23 @@ To change an option later, run `/plugin configure agentic-id@agentic-id`. Update
 
 ## CLI
 
-`agentic-id` ships inside the plugin, in `scripts/agentic-id`. Inside Claude Code a session-start hook puts it on the PATH. In your own terminal it is not on the PATH yet: after the two install commands in the Quickstart, link it once (`~/.local/bin` must be on your PATH):
+Install it from npm and run it in any terminal. You do not need Claude Code. It needs Node.js 18 or later and pulls in no other packages.
+
+```bash
+npm install -g agentic-id
+agentic-id --version
+```
+
+Update with `npm install -g agentic-id@latest`. Remove with `npm uninstall -g agentic-id`. To run it once without installing: `npx agentic-id doctor`.
+
+The same command also ships inside the Claude Code plugin, in `scripts/agentic-id`, and a session-start hook puts it on the PATH there. If you have the plugin and not the npm package, you can link the plugin's copy instead (`~/.local/bin` must be on your PATH):
 
 ```bash
 mkdir -p ~/.local/bin
 ln -sf ~/.claude/plugins/marketplaces/agentic-id/plugins/agentic-id/scripts/agentic-id ~/.local/bin/agentic-id
-agentic-id --version
 ```
 
-The link points at the marketplace copy, so it keeps working when the plugin updates. From a checkout of this repository, run `plugins/agentic-id/scripts/agentic-id` instead.
+From a checkout of this repository, run `plugins/agentic-id/scripts/agentic-id`.
 
 ```bash
 agentic-id login      # browser sign-in with your iCustomer account
@@ -323,6 +331,12 @@ test/                               unit tests, protocol test, evals, sign-in ch
 ```
 
 This repository is its own marketplace, named `agentic-id` (`.claude-plugin/marketplace.json`).
+
+The root `package.json` publishes the CLI to npm as `agentic-id`. It ships only `scripts/` and the CLI's part of `server/`, and its version always matches `plugin.json` (a unit test checks both). To release:
+
+1. Bump the version in `package.json`, `plugins/agentic-id/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `CLIENT` in `server/lib/client.mjs`, and merge.
+2. Check the package: `npm pack --dry-run`.
+3. Tag the merge commit `v<version>` and push the tag. `.github/workflows/publish-npm.yml` runs the tests, installs the packed CLI, and publishes. It needs the `NPM_TOKEN` repository secret.
 
 ## Editions
 

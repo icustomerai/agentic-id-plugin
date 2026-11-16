@@ -26,6 +26,10 @@ Fixes from the Nov 15 retest.
   `bin/` folder, so `agentic-id ...` still works by name in Claude Code. Where a host does not
   offer that, the skills give the full path.
 - From a checkout the command is now `plugins/agentic-id/scripts/agentic-id`.
+- The CLI can be installed on its own from npm: `npm install -g agentic-id`, no Claude Code needed.
+  The root `package.json` publishes only the command and the modules it loads; a tag `v<version>`
+  publishes it through `.github/workflows/publish-npm.yml`. A test keeps the package version equal
+  to the plugin version and checks that every module the command loads is in the package.
 
 ## 0.5.2 - 2026-11-14
 

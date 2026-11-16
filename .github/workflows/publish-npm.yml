@@ -1,0 +1,58 @@
+# Publishes the agentic-id CLI to npm when a version tag is pushed, for example v0.6.0.
+# Needs one repository secret, NPM_TOKEN: an npm "automation" or granular token that can publish
+# the agentic-id package. Nothing here runs on pull requests or on plain pushes.
+name: Publish CLI to npm
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: # a manual run checks and packs only; it never publishes
+
+permissions:
+  contents: read
+  id-token: write # lets npm record where the package was built (provenance) once the repo is public
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Tag matches the version in package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json ($want). Bump the version first."
+            exit 1
+          fi
+
+      - name: Tests (no network, no credits)
+        run: bash test/validate.sh
+
+      - name: Install the packed CLI and run it
+        run: |
+          npm pack
+          npm install -g ./agentic-id-*.tgz
+          agentic-id --version
+          agentic-id --help > /dev/null
+          agentic-id estimate find hubspot.com --role "VP Marketing" --limit 5
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          flags="--access public"
+          # npm can record provenance only for a public repository.
+          if [ "${{ github.event.repository.private }}" = "false" ]; then flags="$flags --provenance"; fi
+          npm publish $flags
