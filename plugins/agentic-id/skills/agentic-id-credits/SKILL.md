@@ -77,6 +77,6 @@ suggest ways around it.
   many credits do I have", "what did that cost" and "why was I charged", and before any job over
   about 50 credits. If `available` is below the estimate, say so and stop before calling.
 - `held` credits are reserved by calls still running; they come back if not used.
-- `/agentic-id-usage` (or `agentic-id usage`) shows this machine's own log
+- `/agentic-id:agentic-id-usage` (or `agentic-id usage`) shows this machine's own log
   (`~/.agentic-id/usage.jsonl`): calls made through this plugin here only, with no inputs. When
   the two disagree, the workspace answer is right.

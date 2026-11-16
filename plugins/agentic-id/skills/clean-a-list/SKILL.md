@@ -40,7 +40,12 @@ agreed `max_credits`.
 The tool never overwrites the input. Never overwrite the user's original file yourself either.
 
 If a run stops at its cap, the result file holds what was done and marks the rest `not_run`:
-say how many rows were left and what it would cost to finish.
+say how many rows were left and what it would cost to finish. The same holds when a run stops
+part-way on an error: the answer says `partial: true` and `stopped`, the file still holds every row
+done so far, and only those were charged. Never call a partial run done.
+
+If the answer says `source_unavailable`, a data source behind Agentic ID was down: say so in one
+line and what was charged (often nothing). The file never holds vendor or billing text.
 
 ## 3. Read the result
 

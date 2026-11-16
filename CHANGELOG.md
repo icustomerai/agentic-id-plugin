@@ -3,9 +3,17 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## 0.5.2 - 2026-11-14
+## Unreleased
+
+Fixes from the Nov 15 retest.
 
 ### Fixed
+- **Command names in the docs.** Every slash command is written with the plugin prefix, for example
+  `/agentic-id:agentic-id-status`, which is the name Claude Code shows. A test keeps it that way.
+- **`agentic_id_estimate` checks the arguments like the call would.** Arguments the call refuses
+  (enrich by an id, an empty list, a personal email, find without an account) are refused by the
+  estimate too, with the same fix, instead of "nothing to enrich". Enrich by id points to
+  `agentic_id_facts`. The estimate still makes no paid calls.
 - **The plugin can be saved to claude.ai.** Saving it failed with "Plugin contains a top-level
   bin/ directory": plugins hosted on claude.ai may not ship one. The `agentic-id` command moved
   from `bin/agentic-id` to `scripts/agentic-id`.
@@ -15,6 +23,46 @@ All notable changes to this marketplace and the `agentic-id` plugin (named `ones
   `bin/` folder, so `agentic-id ...` still works by name in Claude Code. Where a host does not
   offer that, the skills give the full path.
 - From a checkout the command is now `plugins/agentic-id/scripts/agentic-id`.
+
+## 0.5.2 - 2026-11-14
+
+Fixes from the pre-launch test report.
+
+### Fixed
+- **Data-source names and bills never reach the user.** Every API answer and error now passes
+  through `server/lib/shield.mjs`: vendor names are taken out of the text, `provider` / `plan`
+  details are dropped, `total_at_provider` becomes `total_matching`, and a data source's own billing
+  or quota message ("payment required", "balance $0", "4 sources failed") becomes one plain line:
+  a data source was unavailable and nothing was charged for it (`source.unavailable`). The user's
+  own wallet error (`credits.insufficient`) is kept as it is.
+- **A wrong server URL no longer says "Not signed in".** With no credential, the client checks the
+  address first and says `unreachable`, `not_agentic_id` or `bad_url`, with how to fix the URL.
+  `agentic_id_status` and `agentic-id doctor` say the same.
+- **Budget caps smaller than the list.** Validate and enrich send only what the cap can pay for,
+  mark the rest `not_checked` / `not_run` (free), and say `partial: true`. They never report "done"
+  for a run that stopped.
+- **A batch failing part way** keeps what earlier batches paid for: the answer is partial with
+  `stopped`, and a file run still writes every row. A partial file run exits non-zero.
+- **Company lists.** `agentic_id_enrich` takes `companies`, and a contact with only a company on it
+  is enriched as a company at 1 credit (it was priced and sent as a person at 2).
+- **Personal data in the Company column** (an email, a phone number, Gmail) is held back on this
+  machine and never sent.
+- **Messy CSVs:** UTF-16 and Windows-1252 exports, Excel's `sep=` line, separators inside quotes,
+  pipes, more German, French and Spanish headers, quoted names, and formulas after spaces or in
+  full-width form.
+- **Discover counts first** even when the user already gave a budget (skill rule, tool description
+  and server instructions). The lookalike skill now triggers on "how would I find more accounts
+  like ..." questions.
+
+### Changed
+- **The marketplace is named `agentic-id`** (it was `icustomer`, the same name as Growth Brain's
+  marketplace, so one replaced the other). Install with
+  `claude plugin marketplace add icustomerai/agentic-id-plugin` and
+  `claude plugin install agentic-id@agentic-id`.
+- docs/agents.md's Claude Code section described a remote MCP with `/mcp` sign-in; it now
+  describes the local server, `/agentic-id:agentic-id-login` and the two plugin options.
+- Eval mocks match what the plugin's server returns, and ship a `_tools.json` with the real tool
+  schemas.
 
 ## 0.5.1 - 2026-11-14
 
@@ -38,7 +86,7 @@ All notable changes to this marketplace and the `agentic-id` plugin (named `ones
 The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint is no longer used.
 
 ### Added
-- **Sign in with an iCustomer account**, no API key needed: `/agentic-id-login` or `agentic-id login`
+- **Sign in with an iCustomer account**, no API key needed: `/agentic-id:agentic-id-login` or `agentic-id login`
   (OAuth 2.1 with PKCE against the API; the session is kept in `~/.agentic-id/session.json` and
   renews itself for 30 days). `agentic-id logout` ends it. The API key option is now optional.
 - `agentic_id_workspace` / `agentic-id workspace`: credits available and held, spend by tool, the
@@ -85,7 +133,7 @@ The plugin runs on the Agentic ID V3 API. Breaking: the hosted v2 MCP endpoint i
 - CLI `agentic-id` in the plugin's `bin/`: every tool, CSV in and out for validate, resolve and
   enrich, `--dry-run`, `estimate`, `doctor`, exit codes.
 - Skills `clean-a-list`, `lookalike-prospecting`, `trust-check`.
-- Hook: optional per-session credit budget. Commands `/agentic-id-status`, `/agentic-id-clean-list`.
+- Hook: optional per-session credit budget. Commands `/agentic-id:agentic-id-status`, `/agentic-id:agentic-id-clean-list`.
 - Tests: unit tests for the bundled layer, a stdio protocol test, 8 new eval cases.
 
 ### Not yet updated
@@ -102,7 +150,7 @@ OneSource is now **Agentic ID**. Breaking: every name changed at once, with no a
 - Tools `onesource_<verb>` are now `agentic_id_<verb>` (validate, resolve, enrich, find, discover).
   Needs an MCP server that serves the new names.
 - Skills `onesource` and `onesource-credits` are now `agentic-id` and `agentic-id-credits`; command
-  `/onesource-usage` is now `/agentic-id-usage`; the CLI binary is `agentic-id`.
+  `/onesource-usage` is now `/agentic-id:agentic-id-usage`; the CLI binary is `agentic-id`.
 - Local files move from `~/.onesource/` to `~/.agentic-id/` (usage log, API key). Env vars
   `ONESOURCE_*` are now `AGENTIC_ID_*`. Client header `x-onesource-client` is now `x-agentic-id-client`.
 - API keys are now `ic-live-...` and IDs `ic-...` (iCustomer ID). Old `os_live_` keys and `os_` IDs

@@ -1,0 +1,972 @@
+{
+  "tools": [
+    {
+      "name": "agentic_id_validate",
+      "title": "Validate work emails",
+      "description": "Is this mailbox real? Each address comes back valid, invalid, catch-all (the server accepts everything, so not proven), unknown (no answer; free) or rejected (malformed, disposable or personal; free). 1 credit per valid, invalid or catch-all answer. Send many addresses in one call with \"emails\"; repeats are checked once. B2B only: work identities and companies. Personal mailboxes and phone numbers are held back on this machine and never sent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "One work email."
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Several work emails in one call. Lists over 1,000 are sent in batches inside max_credits."
+          },
+          "domain": {
+            "type": "string",
+            "description": "A company domain: is it live and does it take mail? Free."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_resolve",
+      "title": "Resolve to an Agentic ID",
+      "description": "Turn a work email, LinkedIn profile URL, name plus company, or a company domain into one stable Agentic ID (ic-...). \"confidence\" is how sure the identifier points at this ID, not how verified its facts are (see agentic_id_facts). outcome says what happened: known (Agentic ID already had it; not the same as this workspace holding it), new (just created), review (probably a match, not sure enough to link), conflict (the identifiers point at two different IDs; nothing was merged) or unresolvable (not enough to go on; free). 1 credit per ID returned, 0 for one your workspace already holds. Use the ID with enrich, facts and ledger.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "identifiers": {
+            "type": "object",
+            "description": "What you know about the person or company. Any one strong identifier is enough: a work email, a LinkedIn profile URL, a name with a company, or a company domain.",
+            "properties": {
+              "email": {
+                "type": "string",
+                "description": "Work email."
+              },
+              "linkedin_url": {
+                "type": "string",
+                "description": "LinkedIn profile URL (linkedin.com/in/...)."
+              },
+              "name": {
+                "type": "string",
+                "description": "Full name. Needs a company or another identifier with it."
+              },
+              "company_name": {
+                "type": "string",
+                "description": "Company name."
+              },
+              "company_domain": {
+                "type": "string",
+                "description": "Company website domain, e.g. acme.io. A full URL is accepted."
+              }
+            },
+            "additionalProperties": false
+          },
+          "email": {
+            "type": "string",
+            "description": "Work email (same as identifiers.email)."
+          },
+          "linkedin_url": {
+            "type": "string",
+            "description": "LinkedIn profile URL (same as identifiers.linkedin_url)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Full name (same as identifiers.name)."
+          },
+          "company_name": {
+            "type": "string",
+            "description": "Company name (same as identifiers.company_name)."
+          },
+          "company_domain": {
+            "type": "string",
+            "description": "Company domain (same as identifiers.company_domain)."
+          },
+          "domain": {
+            "type": "string",
+            "description": "Company domain (same as identifiers.company_domain)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "company"
+            ],
+            "description": "Inferred when omitted: a person if any person field is given."
+          },
+          "spend": {
+            "type": "boolean",
+            "description": "Ask paid sources when the ledger cannot resolve it. Default false."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_resolve_many",
+      "title": "Resolve a list and find its duplicates",
+      "description": "Resolve up to 500 rows in one call (CRM export, event list, form fills). Rows that are the same lookup are paid once, and rows that resolve to the same Agentic ID are grouped in \"same_id\": that is the duplicate report. Rows with only personal data are skipped, not sent. Stops at max_credits and says which rows were not run. 1 credit per ID returned.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "description": "What you know about the person or company. Any one strong identifier is enough: a work email, a LinkedIn profile URL, a name with a company, or a company domain.",
+              "properties": {
+                "email": {
+                  "type": "string",
+                  "description": "Work email."
+                },
+                "linkedin_url": {
+                  "type": "string",
+                  "description": "LinkedIn profile URL (linkedin.com/in/...)."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Full name. Needs a company or another identifier with it."
+                },
+                "company_name": {
+                  "type": "string",
+                  "description": "Company name."
+                },
+                "company_domain": {
+                  "type": "string",
+                  "description": "Company website domain, e.g. acme.io. A full URL is accepted."
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "One identifier object per row, in the order of the list."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "company"
+            ]
+          },
+          "spend": {
+            "type": "boolean"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_enrich",
+      "title": "Enrich a contact or company",
+      "description": "Fill in missing facts: title, company, work email, firmographics. Every value comes with its level: verified (proved by a direct check or something the person did), corroborated (independent sources agree), claimed (one source said so), contradicted (newer evidence disagrees). Only verified and corroborated values are safe to act on without a check. 2 credits per person enriched, 1 per company; nothing found, nothing charged. Contact values are masked unless the key may read them. B2B only: work identities and companies. Personal mailboxes and phone numbers are held back on this machine and never sent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contact": {
+            "type": "object",
+            "description": "What you know about the person or company. Any one strong identifier is enough: a work email, a LinkedIn profile URL, a name with a company, or a company domain.",
+            "properties": {
+              "email": {
+                "type": "string",
+                "description": "Work email."
+              },
+              "linkedin_url": {
+                "type": "string",
+                "description": "LinkedIn profile URL (linkedin.com/in/...)."
+              },
+              "name": {
+                "type": "string",
+                "description": "Full name. Needs a company or another identifier with it."
+              },
+              "company_name": {
+                "type": "string",
+                "description": "Company name."
+              },
+              "company_domain": {
+                "type": "string",
+                "description": "Company website domain, e.g. acme.io. A full URL is accepted."
+              }
+            },
+            "additionalProperties": false
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "What you know about the person or company. Any one strong identifier is enough: a work email, a LinkedIn profile URL, a name with a company, or a company domain.",
+              "properties": {
+                "email": {
+                  "type": "string",
+                  "description": "Work email."
+                },
+                "linkedin_url": {
+                  "type": "string",
+                  "description": "LinkedIn profile URL (linkedin.com/in/...)."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Full name. Needs a company or another identifier with it."
+                },
+                "company_name": {
+                  "type": "string",
+                  "description": "Company name."
+                },
+                "company_domain": {
+                  "type": "string",
+                  "description": "Company website domain, e.g. acme.io. A full URL is accepted."
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "Several people in one call. Lists over 100 are sent in batches inside max_credits."
+          },
+          "company": {
+            "type": "object",
+            "description": "One company to enrich (1 credit).",
+            "properties": {
+              "domain": {
+                "type": "string",
+                "description": "Company domain."
+              },
+              "name": {
+                "type": "string",
+                "description": "Company name."
+              }
+            },
+            "additionalProperties": false
+          },
+          "companies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Company domain."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Company name."
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "Several companies to enrich, 1 credit each (an account list: industry, employees, revenue ...). A contact with only a company on it is enriched as a company too."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Only these fields; leave out for everything. People: work_email, linkedin_url, title, seniority, company_name, company_domain, location, city, country. Companies: name, domain, linkedin_url, industry, employees, revenue_usd, country, city, founded, description."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_find",
+      "title": "Find people inside a company",
+      "description": "People in a role at one known company. Give account.domain (or account.id) and roles (job titles) or a seniority. Former roles, advisors and board seats never count. People already delivered to this workspace are skipped, so calling again pages forward. 2 credits per person delivered. \"excluded\" says why candidates were left out; \"rejected\" lists filter values that could not be read.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The company's Agentic ID."
+              },
+              "domain": {
+                "type": "string",
+                "description": "The company's domain."
+              }
+            },
+            "additionalProperties": false
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Job titles, e.g. [\"VP Marketing\", \"Head of Growth\"]."
+          },
+          "seniority": {
+            "description": "Seniority, e.g. \"director+\", \"vp\", or a list like [\"vp\", \"c_suite\"].",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Where the person is (not the company's HQ), as ISO codes, e.g. [\"GB\", \"US\"]."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25,
+            "description": "How many people. Default 5, max 25."
+          },
+          "exclude_seen": {
+            "type": "boolean",
+            "description": "Skip people already delivered to this workspace. Default true."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          }
+        },
+        "required": [
+          "account"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_discover",
+      "title": "Discover new companies and people",
+      "description": "Net-new companies that match account_filters, and optionally the people in them (contact_filters). Always run it first with count_only: true, even when the user already gave a budget: that is free and says how many match (total_matching). Every company returned meets every filter, checked by Agentic ID itself. 1 credit per account delivered (an account whose size only one source confirms is delivered free) plus 2 per person. Filter values that could not be read come back in \"rejected\", never silently dropped.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account_filters": {
+            "type": "object",
+            "properties": {
+              "industry": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Industries in plain words, e.g. [\"software\", \"fintech\"]."
+              },
+              "country": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "ISO country codes, e.g. [\"GB\", \"US\"]."
+              },
+              "employees_min": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "employees_max": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "technologies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Technologies the company uses, e.g. [\"Snowflake\"]."
+              },
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Words in the company description. They rank results; they filter only with keywords_required."
+              },
+              "keywords_required": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "contact_filters": {
+            "type": "object",
+            "properties": {
+              "job_title": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Titles, e.g. [\"CTO\"]."
+              },
+              "job_level": {
+                "description": "Seniority, e.g. \"director+\", \"vp\", or a list like [\"vp\", \"c_suite\"].",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "countries": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Where the person is, as ISO codes."
+              },
+              "per_account": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10,
+                "description": "People per company. Default 1."
+              },
+              "min_company_size": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Skip people at companies smaller than this."
+              }
+            },
+            "additionalProperties": false
+          },
+          "max_accounts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "How many companies. Default 25."
+          },
+          "exclude_seen": {
+            "type": "boolean",
+            "description": "Skip companies already delivered to this workspace. Default true."
+          },
+          "count_only": {
+            "type": "boolean",
+            "description": "Free: how many match and which source would be asked. Nothing is delivered."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_lookalike",
+      "title": "Find companies like these",
+      "description": "Give the domains of companies you want more of (your best customers). Agentic ID works out what they share (industry, size, country, technology), searches for more like them with the same checks as discover, never returns the seeds, and ranks the results by how alike they are, with the reasons. Read \"profile\" first: it is the search that was run. \"bigger_than_seeds\" warns when the list leans to famous companies. 1 credit per account delivered.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "seeds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "1 to 50 company domains. Three or more of a similar kind give a usable profile."
+          },
+          "max_accounts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "How many companies. Default 25."
+          },
+          "exclude_seen": {
+            "type": "boolean"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          }
+        },
+        "required": [
+          "seeds"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_facts",
+      "title": "Check what Agentic ID can prove",
+      "description": "For one Agentic ID: each fact's level (verified, corroborated, claimed, contradicted), the reason, how many independent sources stand behind it, when it needs re-checking, and whether the ID is a Verified ID (and what is missing if not). Use it before acting on a value: to decide whether an email is safe to send to, or whether a title is still current. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "An Agentic ID (ic-...) from resolve, find or discover."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_ledger",
+      "title": "Show an ID's history",
+      "description": "Everything that ever happened to one Agentic ID (created, linked, merged, split), oldest first, each entry hash-linked to the one before, with the whole chain re-checked (\"verified\"). Use it to explain why two records are the same ID, or to audit a merge. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "An Agentic ID (ic-...)."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_workspace",
+      "title": "Show the workspace and its credits",
+      "description": "The workspace this caller acts as: credits available and held, what was spent today and in the last 30 days by tool, the latest grants and charges, the IDs most recently delivered with what each cost (companies with their name or domain, people by ID only), so a charge can be traced to what it was for. This is the billing record: use it, not the local log, for any question about spend. Times and \"today\" are UTC. how many IDs it holds, and whether it contributes (identifiers it sends help everyone resolve) or is private. Use it for \"how many credits do I have\", \"what did that cost\", \"why was I charged\", and before any large job. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200,
+            "description": "How many of the latest grants and charges to list. Default 10."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_report",
+      "title": "Report what happened to a value",
+      "description": "Tell Agentic ID the outcome after a value was used: bounced (the email bounced), replied (the person answered), wrong_person (it reached someone else), confirmed (your CRM confirms it). Only for IDs this workspace holds. A bounced or wrong-person value is no longer served to this workspace and counts against the source that supplied it; a reply or confirmation is proof for this workspace. Nothing reported is shown to another workspace. One report, or up to 200 in \"reports\". Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Agentic ID (ic-...) the value belongs to."
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "work_email",
+              "title",
+              "company_domain"
+            ],
+            "description": "Which value was used. Default work_email."
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "bounced",
+              "replied",
+              "wrong_person",
+              "confirmed"
+            ]
+          },
+          "reports": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "Several reports in one call, in place of id / field / outcome.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Agentic ID."
+                },
+                "field": {
+                  "type": "string",
+                  "enum": [
+                    "work_email",
+                    "title",
+                    "company_domain"
+                  ]
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "bounced",
+                    "replied",
+                    "wrong_person",
+                    "confirmed"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "outcome"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_list",
+      "title": "Work a CSV file",
+      "description": "Run one action over a whole CSV file on disk: validate (adds email_verdict, email_reason), resolve (adds agentic_id, resolve_outcome, resolve_note, same_id_as_row: the duplicate report; row numbers count data rows, the first under the header is 1), enrich (adds one column per field plus its level) or report (sends outcomes from columns agentic_id, outcome[, field]; adds report_status). The rows are read and written by the plugin and never enter the conversation. Repeats are paid once; personal emails and phones never leave this machine. Always call it first with dry_run: true: that is free and gives the row count and the most it could cost; show the user, then call again with max_credits. The result is a new file next to the input, never the input itself.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "validate",
+              "resolve",
+              "enrich",
+              "report"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "description": "Full path of the CSV file."
+          },
+          "out": {
+            "type": "string",
+            "description": "Where to write the result (.csv). Default: next to the input, named <name>.agentic-id.csv."
+          },
+          "replace_original": {
+            "type": "boolean",
+            "description": "Only when the user asked for the result in the same file: the original is first saved beside it as <name>.original.csv, then the result takes its place. Tell the user both names."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Free: count the rows and estimate the cost. Nothing is sent."
+          },
+          "max_credits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "description": "The most this call may charge. Never charged past it. Calls that could cost more than 10 credits are refused without it. Above 10 it must be a number of credits the user stated; never choose it for them."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "enrich only: the fields to fill, e.g. [\"title\", \"work_email\"]."
+          },
+          "column": {
+            "type": "string",
+            "description": "The email column, when it cannot be found by its name."
+          },
+          "columns": {
+            "type": "object",
+            "description": "Column names, when they cannot be found by name.",
+            "properties": {
+              "email": {
+                "type": "string",
+                "description": "Email column."
+              },
+              "linkedin": {
+                "type": "string",
+                "description": "LinkedIn URL column."
+              },
+              "name": {
+                "type": "string",
+                "description": "Full name column."
+              },
+              "company": {
+                "type": "string",
+                "description": "Company name column."
+              },
+              "domain": {
+                "type": "string",
+                "description": "Company domain column."
+              }
+            },
+            "additionalProperties": false
+          },
+          "limit_rows": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Only the first N rows."
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "work_email",
+              "title",
+              "company_domain"
+            ],
+            "description": "report only: the field every outcome is about, when the file has no field column."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "description": "Why you are asking. Defaults to b2b_outbound."
+          }
+        },
+        "required": [
+          "action",
+          "file"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_login",
+      "title": "Sign in to Agentic ID",
+      "description": "Sign in with an iCustomer account, or sign out. Opens the sign-in page in the browser and returns at once with the link; nothing secret passes through the conversation. Call it again after the user has signed in to confirm. Use it when status says not signed in. Never ask the user for a password, a code or an API key. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "login",
+              "logout"
+            ],
+            "description": "Default login."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "agentic_id_estimate",
+      "title": "Estimate a call before making it",
+      "description": "What a planned call could cost at most, worked out on this machine without contacting Agentic ID. Give the tool name and the arguments you would send. Use it to show the user the arithmetic before any call over 10 credits. It checks the arguments the way the call would and refuses ones the call would refuse, so a refusal here means fix the arguments, not skip the call. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "enum": [
+              "validate",
+              "resolve",
+              "resolve_many",
+              "enrich",
+              "find",
+              "discover",
+              "lookalike"
+            ],
+            "description": "The tool you plan to call."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "The arguments you would pass to it."
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "agentic_id_status",
+      "title": "Check the Agentic ID connection",
+      "description": "Is the plugin set up? Says which server it talks to, whether a key is configured, which workspace the key belongs to and whether contact values come back readable or masked. Call it first when another tool fails with an auth or connection error. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

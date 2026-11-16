@@ -1,6 +1,6 @@
 ---
 name: lookalike-prospecting
-description: Build a net-new account list from the user's best customers - turn seed companies into a shared profile, find companies like them with Agentic ID, check the list is not just famous names, and optionally find the right people in each. Use for "find companies like our top customers", "lookalike accounts", "more accounts like these", "expand our ICP from closed-won", "TAM from seeds".
+description: Build a net-new account list from the user's best customers - turn seed companies into a shared profile, find companies like them with Agentic ID, check the list is not just famous names, and optionally find the right people in each. Use for "find companies like our top customers", "lookalike accounts", "more accounts like these", "expand our ICP from closed-won", "TAM from seeds", and questions about the approach such as "how would I find more accounts that look like our top customers?" or "explain how lookalike targeting works" (explain from this skill first, then offer to run it).
 ---
 
 # Lookalike prospecting

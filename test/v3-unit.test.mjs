@@ -175,9 +175,14 @@ test('validate: a long list goes in batches of 1,000 and stops at the cap', asyn
   const c = fake({ validate: (b) => ({ request_id: 'r', summary: '', cost: { quoted_credits: b.emails.length, charged_credits: Math.min(b.emails.length, b.max_credits) }, results: b.emails.map((email) => ({ email, verdict: 'valid', role: false })) }) });
   assert.equal((await refused(() => ops.validate(c, { emails }))).code, 'cap_required', 'a 2,500-credit call is not sent without a cap');
   const r = await ops.validate(c, { emails, max_credits: 1500 });
-  assert.deepEqual(c.calls.map((x) => [x.body.emails.length, x.body.max_credits]), [[1000, 1500], [1000, 500]]);
+  // Never more addresses in a batch than the cap has left to pay for (Vicky #12): the second batch is 500, not 1,000.
+  assert.deepEqual(c.calls.map((x) => [x.body.emails.length, x.body.max_credits]), [[1000, 1500], [500, 500]]);
   assert.equal(r.cost.charged_credits, 1500);
   assert.match(r.input_notes.at(-1), /cap was reached/);
+  assert.equal(r.partial, true);
+  assert.equal(r.not_checked, 1000);
+  assert.equal(r.results.filter((x) => x.verdict === 'not_checked').length, 1000);
+  assert.match(r.summary, /Partial: 1000 not checked/);
 });
 
 test('resolve: cleaned, capped at 1, and refused locally when it cannot work', async () => {
@@ -633,7 +638,19 @@ test('client: a 429 is retried once after the wait; other failures are not repla
 });
 
 test('client: no key, an unreachable server and a slow one are told apart', async () => {
-  assert.equal((await refused(() => new AgenticId({ apiKey: '', baseUrl: 'http://127.0.0.1:9' }).me())).code, 'auth.missing_key');
+  // No credential and nothing at the address: the address is the problem, not the sign-in (Vicky #3).
+  const typo = await refused(() => new AgenticId({ apiKey: '', baseUrl: 'http://127.0.0.1:9' }).me());
+  assert.equal(typo.code, 'unreachable');
+  assert.match(typo.detail, /Cannot reach the Agentic ID server at http:\/\/127\.0\.0\.1:9/);
+  assert.doesNotMatch(`${typo.detail} ${typo.fix}`, /Not signed in/);
+  // No credential and a real server: then it is the sign-in.
+  await withApi(
+    (_req, res) => { res.writeHead(401, { 'content-type': 'application/problem+json' }); res.end(JSON.stringify({ code: 'auth.missing_key', detail: 'No credential.' })); },
+    async (baseUrl, seen) => {
+      assert.equal((await refused(() => new AgenticId({ apiKey: '', baseUrl, env: { AGENTIC_ID_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'aid-nosess-')) } }).me())).code, 'auth.missing_key');
+      assert.equal(seen[0].headers.authorization, undefined, 'the check sends no credential');
+    },
+  );
   assert.equal((await refused(() => new AgenticId({ apiKey: 'k', baseUrl: 'http://127.0.0.1:9' }).resolve({}))).code, 'unreachable');
   await withApi(
     () => {},
@@ -713,10 +730,42 @@ test('mcp: a crash inside a tool is contained and leaks nothing', async () => {
 test('mcp: estimate and status work without touching the API', async () => {
   const c = fake({ me: { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' } });
   const s = createServer({ client: c });
-  const e = (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool: 'agentic_id_find', arguments: { limit: 10 } } })).result.structuredContent;
+  const e = (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool: 'agentic_id_find', arguments: { account: { domain: 'acme-synthetic.io' }, roles: ['CTO'], limit: 10 } } })).result.structuredContent;
   assert.deepEqual([e.max_credits, e.auto_capped], [20, false]);
   assert.equal(c.calls.length, 0);
   assert.match((await rpc(s, 'tools/call', { name: 'agentic_id_status', arguments: {} })).result.structuredContent.contact_values, /masked/);
+});
+
+test('estimate refuses arguments the call itself would refuse, and never says "nothing to enrich" for 0 credits', async () => {
+  const c = fake();
+  const s = createServer({ client: c });
+  const est = async (tool, args) => (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool, arguments: args } })).result;
+  // Vicky's case: enrich "by ID". enrich takes identifiers, not an Agentic ID.
+  const byId = await est('enrich', { id: 'ic-abc123def' });
+  assert.equal(byId.isError, true);
+  assert.match(byId.structuredContent.message, /does not take id/);
+  assert.match(byId.structuredContent.fix, /agentic_id_facts/);
+  const nestedId = await est('enrich', { contact: { id: 'ic-abc123def' } });
+  assert.equal(nestedId.isError, true);
+  assert.equal(nestedId.structuredContent.error, 'nothing_to_enrich');
+  const empty = await est('enrich', {});
+  assert.equal(empty.isError, true);
+  assert.doesNotMatch(JSON.stringify(empty.structuredContent), /"max_credits":0/);
+  const personal = await est('enrich', { contacts: [{ email: 'someone@gmail.com' }] });
+  assert.equal(personal.isError, true);
+  // The other paid tools: their own refusals come back from the estimate too.
+  assert.equal((await est('find', { limit: 5 })).structuredContent.error, 'account_required');
+  assert.equal((await est('discover', {})).structuredContent.error, 'request.invalid');
+  assert.equal((await est('discover', { account_filters: { colour: 'red' } })).structuredContent.error, 'request.invalid');
+  assert.equal((await est('resolve', { identifiers: { name: 'Jane Doe' } })).structuredContent.error, 'name_alone');
+  assert.equal((await est('lookalike', { seeds: ['gmail.com'] })).structuredContent.error, 'request.invalid');
+  assert.equal((await est('validate', {})).structuredContent.error, 'request.invalid');
+  // Good arguments still give the arithmetic, and nothing is ever sent.
+  const ok = (await est('enrich', { contact: { email: 'jane@acme-synthetic.io' } })).structuredContent;
+  assert.deepEqual([ok.max_credits, ok.auto_capped], [2, true]);
+  const big = (await est('discover', { account_filters: { industry: ['software'] }, max_accounts: 100 })).structuredContent;
+  assert.equal(big.max_credits, 100);
+  assert.equal(c.calls.length, 0, 'an estimate never calls the API');
 });
 
 // ------------------------------------------------------------------ CLI
@@ -898,4 +947,262 @@ test('the CLI is put on PATH by a session-start hook, since claude.ai-hosted plu
   const out = execFileSync('bash', ['-c', `source "${envFile}" && agentic-id --help`], { encoding: 'utf8' });
   assert.match(out, /agentic-id <command>/);
   assert.match(pathLine("/a b/it's"), /^export PATH='\/a b\/it'\\''s':"\$PATH"$/, 'a folder with spaces or a quote stays one word');
+});
+
+// ------------------------------------------------------------------ Vicky's test report (0.5.2)
+// One test per item that is code. Synthetic data only.
+const { shieldReply, shieldProblem, isSourceFailure, leaksSource } = await import('../plugins/agentic-id/server/lib/shield.mjs');
+const { companyNameProblem } = await import('../plugins/agentic-id/server/lib/guards.mjs');
+const { decodeText, sniffDelimiter, FORMULA_START } = await import('../plugins/agentic-id/server/lib/csv.mjs');
+
+test('shield (#4 #7 #8): vendor names, plans, provider counts and a source\'s bill never reach the user', () => {
+  const r = shieldReply({
+    request_id: 'req_1',
+    summary: 'About 1,637 match at Treg. 4 sources failed.',
+    cost: { quoted_credits: 0, charged_credits: 0 },
+    total_at_provider: 1637,
+    provider: 'treg',
+    plan: [{ provider: 'treg', why: 'applies countries; we check size' }],
+    accounts: [{ id: 'ic-x', name: 'Acme Synthetic', domain: 'acme-synthetic.com', source: 'treg', fields: [{ field: 'title', value: 'CTO', lineage: 'provider-a' }] }],
+  });
+  const text = JSON.stringify(r);
+  assert.equal(leaksSource(text), false, text);
+  assert.doesNotMatch(text, /treg|provider-a|total_at_provider|sources failed/i);
+  assert.equal(r.total_matching, 1637);
+  assert.deepEqual(r.plan, [{ why: 'applies countries; we check size' }]);
+  assert.equal(r.accounts[0].name, 'Acme Synthetic', 'values about a company are left as they came');
+  assert.equal(r.accounts[0].source, 'data_source');
+  assert.equal(r.source_unavailable, true);
+  // A source's billing message is replaced, and says nothing was charged.
+  const bill = shieldReply({ summary: 'Payment required: your Treg balance is $0.', cost: { charged_credits: 0 }, results: [] });
+  assert.match(bill.summary, /data source .* unavailable.*Nothing was charged/i);
+  assert.doesNotMatch(JSON.stringify(bill), /treg|\$0|payment required/i);
+  // An ordinary answer passes through untouched.
+  const plain = { summary: '2 accounts delivered. 2 credits charged.', cost: { charged_credits: 2 }, accounts: [{ id: 'ic-a', name: 'Treg Holdings Synthetic' }] };
+  assert.deepEqual(shieldReply(plain), plain, 'a company that happens to share a vendor name, in a value, is not touched');
+});
+
+test('shield (#4 #5 #6): a source\'s 402 is "a data source was unavailable"; our own wallet stays a wallet error', async () => {
+  assert.equal(isSourceFailure('provider.error', 'x', 502), true);
+  assert.equal(isSourceFailure(undefined, 'Upstream returned 402 Payment Required', 502), true);
+  assert.equal(isSourceFailure('credits.insufficient', 'Not enough credits.', 402), false);
+  assert.equal(isSourceFailure('request.invalid', 'domain is required', 400), false);
+  assert.match(shieldProblem({ detail: 'treg: insufficient balance' }).detail, /data source/);
+  assert.equal(shieldProblem({ detail: 'Not enough credits: balance is $0.' }, { ownWallet: true }).detail, 'Not enough credits: balance is $0.');
+  await withApi(
+    (req, res) => (req.url === '/v1/validate' ? json(res, 402, { code: 'upstream.payment_required', detail: 'Treg: payment required, account balance $0', request_id: 'req_v' }) : json(res, 402, { code: 'credits.insufficient', detail: 'Not enough credits.', available: 0 })),
+    async (baseUrl) => {
+      const c = new AgenticId({ apiKey: 'k', baseUrl });
+      const e = await refused(() => c.validate({ emails: ['ada@acme-synthetic.com'], max_credits: 1 }));
+      assert.deepEqual([e.status, e.code], [503, 'source.unavailable']);
+      assert.equal(e.toJSON().request_id, 'req_v');
+      assert.doesNotMatch(JSON.stringify(e.toJSON()) + e.fix, /treg|payment required|\$0|402/i);
+      assert.match(e.detail, /Nothing was charged/);
+      const own = await refused(() => c.enrich({ contact: { email: 'ada@acme-synthetic.com' }, max_credits: 2 }));
+      assert.equal(own.code, 'credits.insufficient', 'the user\'s own wallet is still reported as such');
+      const tool = await createServer({ client: c }).callTool({ name: 'agentic_id_validate', arguments: { emails: ['ada@acme-synthetic.com'], max_credits: 1 } });
+      assert.equal(tool.isError, true);
+      assert.match(tool.content[0].text, /^Agentic ID could not answer: A data source/);
+      assert.doesNotMatch(tool.content[0].text, /treg|refused \(402\)/i);
+    },
+  );
+});
+
+test('server address (#3): a typo, a non-Agentic server and a bad URL are not "not signed in"', async () => {
+  const env = { AGENTIC_ID_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'aid-probe-')) };
+  const typo = await ops.status(new AgenticId({ apiKey: '', baseUrl: 'http://127.0.0.1:9', env }));
+  assert.deepEqual([typo.ok, typo.reachable, typo.error], [false, false, 'unreachable']);
+  assert.doesNotMatch(`${typo.summary} ${typo.fix}`, /Not signed in|agentic_id_login/);
+  assert.match(typo.fix, /server URL/);
+  const bad = await ops.status(new AgenticId({ apiKey: '', baseUrl: 'onesource-v3.icustomer', env }));
+  assert.equal(bad.error, 'bad_url');
+  await withApi(
+    (_req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end('<html>parked domain</html>'),
+    async (baseUrl) => {
+      const s = await ops.status(new AgenticId({ apiKey: '', baseUrl, env }));
+      assert.equal(s.error, 'not_agentic_id');
+      assert.equal((await refused(() => new AgenticId({ apiKey: '', baseUrl, env }).resolve({}))).code, 'not_agentic_id');
+    },
+  );
+  await withApi(
+    (_req, res) => json(res, 401, { code: 'auth.missing_key', detail: 'No credential.' }),
+    async (baseUrl) => {
+      const s = await ops.status(new AgenticId({ apiKey: '', baseUrl, env }));
+      assert.deepEqual([s.ok, s.reachable], [false, true]);
+      assert.match(s.fix, /agentic_id_login/, 'a real server with no sign-in still says to sign in');
+    },
+  );
+});
+
+test('company field (#11): an email, a phone number or a mail provider in "company" is never sent', async () => {
+  for (const [v, why] of [['jane.doe@gmail.com', 'personal_email_in_company_field'], ['sales@acme-synthetic.com', 'email_in_company_field'], ['+1 (415) 555-0100', 'phone_numbers_are_not_sent'], ['0049 30 1234567', 'phone_numbers_are_not_sent'], ['gmail.com', 'personal_mail_provider_is_not_a_company'], ['Gmail', 'personal_mail_provider_is_not_a_company'], ['Yahoo Mail', 'personal_mail_provider_is_not_a_company']]) {
+    assert.equal(companyNameProblem(v), why, v);
+  }
+  for (const ok of ['Acme Synthetic GmbH', '3M', 'Studio 54 Synthetic', '"Müller & Söhne"']) assert.equal(companyNameProblem(ok), undefined, ok);
+  const r = cleanIdentifiers({ name: '"Ada Lovelace"', company: 'ada@gmail.com' });
+  assert.equal(r.identifiers.name, 'Ada Lovelace', 'quotes around a name are removed');
+  assert.equal(r.identifiers.company_name, undefined);
+  assert.deepEqual(r.dropped, [{ field: 'company_name', reason: 'personal_email_in_company_field' }]);
+  const c = fake({ resolve: (b) => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: 'ic-p', outcome: 'new', b }) });
+  await ops.resolveMany(c, { records: [{ name: 'Ada Lovelace', company: '+44 20 7946 0000', domain: 'acme-synthetic.com' }], max_credits: 2 });
+  assert.doesNotMatch(JSON.stringify(c.calls), /7946|\+44/, 'the phone number never left this machine');
+});
+
+test('validate (#12): a cap smaller than the list checks what it can and says the rest were not checked', async () => {
+  const c = fake({ validate: (b) => ({ request_id: 'r', summary: 'ok', cost: { quoted_credits: b.emails.length, charged_credits: b.emails.length }, results: b.emails.map((email) => ({ email, verdict: 'valid', charged: true })) }) });
+  const emails = Array.from({ length: 5 }, (_, i) => `p${i}@acme-synthetic.com`);
+  const r = await ops.validate(c, { emails, max_credits: 3 });
+  assert.deepEqual(c.calls.map((x) => x.body.emails.length), [3], 'never sends more than the cap can pay for');
+  assert.equal(r.partial, true);
+  assert.equal(r.not_checked, 2);
+  assert.equal(r.results.filter((x) => x.verdict === 'not_checked' && x.reason === 'cap_reached' && x.charged === false).length, 2);
+  assert.match(r.summary, /Partial: 2 not checked/);
+  assert.doesNotMatch(r.summary, /^5 emails checked/);
+});
+
+test('validate (#13): a batch failing part way keeps what was done and says why it stopped', async () => {
+  const c = fake({ validate: (b, n) => { if (n === 2) throw new AgenticIdError(503, 'source.unavailable', 'A data source Agentic ID relies on was unavailable.'); return { request_id: `r${n}`, cost: { quoted_credits: b.emails.length, charged_credits: b.emails.length }, results: b.emails.map((email) => ({ email, verdict: 'valid' })) }; } });
+  const emails = Array.from({ length: 1500 }, (_, i) => `p${i}@acme-synthetic.com`);
+  const r = await ops.validate(c, { emails, max_credits: 1500 });
+  assert.equal(r.partial, true);
+  assert.equal(r.cost.charged_credits, 1000);
+  assert.equal(r.stopped.error, 'source.unavailable');
+  assert.equal(r.results.filter((x) => x.verdict === 'not_checked' && x.reason === 'stopped_early').length, 500);
+});
+
+test('enrich (#12 #13): a cap or an error part way leaves a partial answer, not "done" and not an error', async () => {
+  const ok = (b, n) => ({ request_id: `r${n}`, cost: { quoted_credits: b.contacts.length * 2, charged_credits: b.contacts.length * 2 }, results: b.contacts.map(() => ({ status: 'enriched', fields: [{ field: 'title', value: 'CTO', level: 'claimed' }] })) });
+  const contacts = Array.from({ length: 5 }, (_, i) => ({ email: `p${i}@acme-synthetic.com` }));
+  const capped = await ops.enrich(fake({ enrich: ok }), { contacts, max_credits: 6 });
+  assert.equal(capped.partial, true);
+  assert.equal(capped.cost.charged_credits, 6);
+  assert.deepEqual(capped.results.map((x) => x.status), ['enriched', 'enriched', 'enriched', 'not_run', 'not_run']);
+  assert.match(capped.summary, /Partial: 2 not run/);
+  const many = Array.from({ length: 150 }, (_, i) => ({ email: `p${i}@acme-synthetic.com` }));
+  const broke = fake({ enrich: (b, n) => { if (n === 2) throw new AgenticIdError(402, 'credits.insufficient', 'Not enough credits.', { available: 0 }); return ok(b, n); } });
+  const r = await ops.enrich(broke, { contacts: many, max_credits: 400 });
+  assert.equal(r.partial, true);
+  assert.equal(r.cost.charged_credits, 200);
+  assert.equal(r.stopped.error, 'credits.insufficient');
+  assert.equal(r.results.filter((x) => x.status === 'not_run').length, 50);
+});
+
+test('enrich (#14): companies are enriched as companies, at 1 credit each, and a cap stops part way', async () => {
+  const c = fake({ enrich: (b) => ({ request_id: 'r', cost: { quoted_credits: 1, charged_credits: 1 }, results: [{ id: `ic-${b.company.domain}`, status: 'enriched', fields: [{ field: 'industry', value: 'Software' }] }] }) });
+  assert.equal(estimate('enrich', { companies: [{ domain: 'a-synthetic.com' }, { domain: 'b-synthetic.com' }] }).max_credits, 2);
+  const r = await ops.enrich(c, { companies: ['a-synthetic.com', { domain: 'b-synthetic.com' }, { domain: 'gmail.com' }], max_credits: 5 });
+  assert.equal(r.company_results.length, 2);
+  assert.equal(r.cost.charged_credits, 2);
+  assert.ok(c.calls.every((x) => x.body.company && !x.body.contacts), 'each company goes as a company');
+  assert.match(JSON.stringify(r), /1 company had no usable domain or name and was not sent/);
+  // A "contact" with only a company on it, from a company list, is a company too.
+  const c2 = fake({ enrich: c.enrich === undefined ? undefined : (b) => ({ request_id: 'r', cost: { quoted_credits: 1, charged_credits: 1 }, results: [{ status: 'enriched', fields: [{ field: 'industry', value: 'Software' }] }] }) });
+  const r2 = await ops.enrich(c2, { contacts: [{ company: 'Acme Synthetic', domain: 'acme-synthetic.com' }, { company_domain: 'beta-synthetic.com' }, { company_domain: 'gamma-synthetic.com' }], max_credits: 2 });
+  assert.equal(c2.calls.length, 2, 'the cap of 2 pays for 2 companies');
+  assert.equal(r2.partial, true);
+  assert.equal(r2.company_results.filter((x) => x.status === 'not_run').length, 1);
+  assert.equal(r2.cost.charged_credits, 2);
+});
+
+test('csv (#17): UTF-16 and Windows-1252 exports, a sep= line, quoted separators and German headers', () => {
+  const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('E-Mail-Adresse\tFirma\r\nada@acme-synthetic.com\tAcme\r\n', 'utf16le')]);
+  const a = parseCsv(decodeText(utf16).text);
+  assert.equal(a.delimiter ?? a.sep ?? '\t', '\t');
+  assert.equal(mapColumns(a.header).email !== undefined, true);
+  const cp = Buffer.from([...Buffer.from('Vorname;Nachname;Unternehmen;Gesch'), 0xe4, ...Buffer.from('ftliche E-Mail\nJ'), 0xfc, ...Buffer.from('rgen;M'), 0xfc, ...Buffer.from('ller;Acme;j@acme-synthetic.com\n')]);
+  const d = decodeText(cp);
+  assert.equal(d.encoding, 'windows-1252');
+  const b = parseCsv(d.text);
+  const m = mapColumns(b.header);
+  assert.ok(m.email && m.first_name && m.last_name && m.company_name, JSON.stringify(m));
+  assert.equal(b.rows[0][b.header[0]], 'Jürgen');
+  const s = parseCsv('sep=;\nName;Email\n"Doe, Jane";jane@acme-synthetic.com\n');
+  assert.equal(s.sep, ';');
+  assert.equal(s.rows[0].Name, 'Doe, Jane');
+  assert.match(toCsv(s.header, s.rows, ';', { sep: ';' }), /^sep=;\n/);
+  assert.equal(sniffDelimiter('"Name, Full";Email;Company', ['"Doe, J";j@a.io;A']), ';');
+  assert.equal(sniffDelimiter('a|b|c'), '|');
+});
+
+test('csv (#10 #17): formulas are neutralised, also after spaces and in full-width form; numbers are not', () => {
+  for (const f of ['=HYPERLINK("x")', ' =1+1', '　@SUM(A1)', '＝cmd', '+cmd|x', '-1+cmd', '\tx']) assert.ok(FORMULA_START.test(f), f);
+  const out = toCsv(['v'], [{ v: ' =1+1' }, { v: '＋1' }, { v: '+1 415 555 0100' }, { v: '-42.5' }, { v: 'Acme' }]);
+  assert.deepEqual(out.trim().split('\n').slice(1), ["' =1+1", "'＋1", '+1 415 555 0100', '-42.5', 'Acme']);
+});
+
+test('file runs (#10 #13): a source failure part way writes the file, marks the rest and leaks nothing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aid-vicky-'));
+  const file = join(dir, 'in.csv');
+  writeFileSync(file, `email\n${Array.from({ length: 1200 }, (_, i) => `p${i}@acme-synthetic.com`).join('\n')}\n`);
+  const client = fake({ validate: (b, n) => { if (n === 2) throw new AgenticIdError(503, 'source.unavailable', 'A data source Agentic ID relies on was unavailable, so nothing came back for this. Nothing was charged for it.'); return { request_id: `r${n}`, cost: { quoted_credits: b.emails.length, charged_credits: b.emails.length }, results: b.emails.map((email) => ({ email, verdict: 'valid' })) }; } });
+  const out = join(dir, 'out.csv');
+  const r = await cli(['validate', '--file', file, '--max-credits', '1200', '--out', out, '--json'], client);
+  assert.notEqual(r.code, 0, 'a partial run does not exit as done');
+  const rows = parseCsv(readFileSync(out, 'utf8')).rows;
+  assert.equal(rows.length, 1200, 'the file holds every row');
+  assert.equal(rows.filter((x) => x.email_verdict === 'valid').length, 1000);
+  assert.equal(rows.filter((x) => x.email_verdict === 'not_checked').length, 200);
+  assert.equal(leaksSource(readFileSync(out, 'utf8') + r.out + r.err), false);
+  assert.equal(JSON.parse(r.out).partial, true);
+});
+
+test('resolve file run (#10): a source that is down writes no vendor text into the file', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aid-vicky2-'));
+  const file = join(dir, 'in.csv');
+  writeFileSync(file, 'email\nada@acme-synthetic.com\nbo@beta-synthetic.com\n');
+  const client = fake({ resolve: () => { throw new AgenticIdError(503, 'source.unavailable', 'A data source Agentic ID relies on was unavailable, so nothing came back for this. Nothing was charged for it.'); } });
+  const out = join(dir, 'out.csv');
+  const r = await cli(['resolve', '--file', file, '--max-credits', '5', '--out', out], client);
+  assert.equal(r.code, 5);
+  const text = (await import('node:fs')).existsSync(out) ? readFileSync(out, 'utf8') : '';
+  assert.equal(leaksSource(text + r.err + r.out), false);
+});
+
+test('list tool (#15): upload a CSV and enrich the people in it, with the result in a new file', async () => {
+  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'aid-list-enrich-'));
+  const file = join(dir, 'people.csv');
+  writeFileSync(file, 'First Name,Last Name,Company,Email\nAda,Lovelace,Acme Synthetic,ada@acme-synthetic.com\nBo,Smith,bo@gmail.com,bo@beta-synthetic.com\n,,,\n');
+  const c = fake({ enrich: (b) => ({ request_id: 'r', summary: 'ok', cost: { quoted_credits: 4, charged_credits: 4 }, results: (b.contacts ?? [b.contact]).map(() => ({ status: 'enriched', fields: [{ field: 'title', value: 'CTO', level: 'corroborated' }] })) }) });
+  const dry = await list(c, { action: 'enrich', file, dry_run: true });
+  assert.equal(dry.dry_run, true);
+  assert.equal(c.calls.length, 0);
+  const done = await list(c, { action: 'enrich', file, max_credits: 4 });
+  assert.equal(done.cost.charged_credits, 4);
+  assert.doesNotMatch(JSON.stringify(c.calls), /gmail/, 'the personal email typed as a company was not sent');
+  const rows = parseCsv(readFileSync(done.out_file, 'utf8')).rows;
+  assert.equal(rows.length, 3);
+  assert.ok(Object.keys(rows[0]).some((k) => /title/.test(k)), Object.keys(rows[0]).join(','));
+});
+
+test('evals: the mock tool list is the server\'s tool list', async () => {
+  const { readdirSync } = await import('node:fs');
+  const root = new URL('../plugins/agentic-id/evals/', import.meta.url).pathname;
+  const want = JSON.stringify({ tools: TOOLS.map(({ run: _r, ...t }) => t) }, null, 2) + '\n';
+  const dirs = [join(root, 'mocks/agentic-id'), ...readdirSync(join(root, 'behaviour')).map((d) => join(root, 'behaviour', d, 'mocks/agentic-id'))].filter((d) => (() => { try { return readdirSync(d).includes('_tools.json'); } catch { return false; } })());
+  assert.ok(dirs.length >= 1);
+  for (const d of dirs) assert.equal(readFileSync(join(d, '_tools.json'), 'utf8'), want, d);
+  for (const d of dirs) for (const f of readdirSync(d).filter((n) => n.endsWith('.md'))) assert.equal(leaksSource(readFileSync(join(d, f), 'utf8').replace(/"source": "provider"/g, '')), false, `${d}/${f}`);
+});
+
+test('discover: a filter under another name is mapped, an unknown one is refused, never silently dropped', async () => {
+  const c = fake({ discover: { request_id: 'r', summary: 'About 812 match.', cost: { quoted_credits: 0, charged_credits: 0 }, total_matching: 812, accounts: [] } });
+  await ops.discover(c, { account_filters: { industries: ['software'], countries: ['gb'] }, count_only: true });
+  assert.deepEqual(c.calls[0].body.account_filters, { industry: ['software'], country: ['GB'] });
+  const e = await refused(() => ops.discover(c, { account_filters: { industry: ['software'], region: 'EMEA' }, count_only: true }));
+  assert.equal(e.code, 'request.invalid');
+  assert.match(e.detail, /Unknown account_filters key: region/);
+  assert.equal(c.calls.length, 1, 'nothing was sent for the refused call');
+  await ops.discover(c, { account_filters: { industry: ['software'] }, contact_filters: { titles: ['CTO'] }, count_only: true });
+  assert.deepEqual(c.calls[1].body.contact_filters, { job_title: ['CTO'] });
+});
+
+test('docs: slash commands are written with the plugin prefix, as Claude Code shows them', async () => {
+  const { readdirSync, statSync } = await import('node:fs');
+  const root = new URL('../', import.meta.url).pathname;
+  const commands = readdirSync(join(root, 'plugins/agentic-id/commands')).map((f) => f.replace(/\.md$/, ''));
+  const short = new RegExp(`(?<!agentic-id:)/(${commands.join('|')})\\b`);
+  const walk = (d) => readdirSync(d).flatMap((n) => (n === '.git' || n === 'node_modules' ? [] : statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
+  const bad = walk(root).filter((f) => /\.(md|json|mjs)$/.test(f) && !f.includes('/test/') && !/_tools\.json$/.test(f)).filter((f) => short.test(readFileSync(f, 'utf8')));
+  assert.deepEqual(bad, [], `short command names in: ${bad.join(', ')}`);
 });

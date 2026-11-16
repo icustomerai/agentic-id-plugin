@@ -36,6 +36,7 @@ nothing was charged.
 | `identity.merge_blocked` | 409 | Two records disagree on a strong identifier | Report both to the user; do not force it |
 | `rate_limited` | 429 | Too many requests | The plugin waits and retries once. If it still fails, wait `retry_after_seconds` |
 | `service.unavailable` | 503 | Agentic ID's service is down behind the API | Nothing was charged. Try once more later |
+| `source.unavailable` | 503 | A data source behind Agentic ID was down or out of service | Say so in one line. Nothing was charged for it. Not the user's account or credits. Try again later; do not loop |
 
 ## Retried for you, safely
 
@@ -46,7 +47,7 @@ Every paid call carries an idempotency key, so the plugin can ask again without 
 | `service.unavailable` | Agentic ID is not taking requests for a moment | Wait for `retry_after_seconds`, then once more. Nothing was charged. |
 | `service.timeout` | The call may have completed | Check `agentic_id_workspace` for a charge before sending it again. |
 | `idempotency.in_progress` | The same request is still running | Wait; ask again later. It is charged once. |
-| `signed_out` / `auth.token_expired` | The sign-in ended | The user runs `/agentic-id-login`. |
+| `signed_out` / `auth.token_expired` | The sign-in ended | The user runs `/agentic-id:agentic-id-login`. |
 | `id.not_held` | Facts or history were asked for an ID this workspace does not hold | Resolve the person or company first, then ask again. |
 | `feedback.not_held` | An outcome was reported for an ID this workspace does not hold | Resolve or enrich it first, or drop that row. |
 
@@ -56,10 +57,18 @@ Every error carries a `request_id`: quote it when reporting a problem.
 
 | Code | Means | What to do |
 | --- | --- | --- |
-| `unreachable` | The API URL did not answer | Call `agentic_id_status`; check the URL in the plugin options |
+| `unreachable` | Nothing answered at the server address (often a typo in the URL) | Not a sign-in problem: do not start sign-in. Tell the user to check or clear the server URL in the plugin options |
+| `not_agentic_id` | Something answered at that address, but not Agentic ID | Same: check or clear the server URL |
+| `bad_url` | The server address is not a web address | Same: it must start with https:// |
 | `timeout` | The call took too long | Discover and lookalike can take minutes. Narrow the filters or lower `max_accounts`, then retry once. A timed-out paid call may still have been charged: check with the user before repeating it |
 
 ## Not errors
+
+- `partial: true` with `stopped`: a list run stopped at the cap, or on an error after earlier
+  batches were done. What was done is kept (and written to the file); the rest is `not_run` or
+  `not_checked` and was not charged. Say both numbers.
+- `source_unavailable: true` on an answer: some results are missing because a data source was down;
+  only results that came back are charged.
 
 - `outcome: "unresolvable"`, an empty `people[]` or `accounts[]`, or a result with no `fields`:
   Agentic ID does not know. Nothing was charged. Say so; never fill the gap yourself.

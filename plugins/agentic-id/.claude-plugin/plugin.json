@@ -25,7 +25,7 @@
     "api_key": {
       "type": "string",
       "title": "Agentic ID API key (optional)",
-      "description": "Leave empty to sign in with your iCustomer account (type /agentic-id-login). For CI and headless runs, paste an Agentic ID API key: Claude Code keeps it in your system keychain and passes it only to the plugin's own local server process, which sends it to the Agentic ID API as a Bearer token. Never paste a key into a chat.",
+      "description": "Leave empty to sign in with your iCustomer account (type /agentic-id:agentic-id-login). For CI and headless runs, paste an Agentic ID API key: Claude Code keeps it in your system keychain and passes it only to the plugin's own local server process, which sends it to the Agentic ID API as a Bearer token. Never paste a key into a chat.",
       "sensitive": true,
       "default": ""
     },

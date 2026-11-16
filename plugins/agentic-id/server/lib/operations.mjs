@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { logout } from './auth.mjs';
 import { AgenticIdError, CLIENT } from './client.mjs';
 import { AUTO_CAP, estimate } from './estimate.mjs';
-import { chunk, cleanCountry, cleanDomain, cleanEmails, cleanIdentifiers, cleanList, identityKey, isPersonalDomain } from './guards.mjs';
+import { cleanCountry, cleanDomain, cleanEmails, cleanIdentifiers, cleanList, companyNameProblem, identityKey, isPersonalDomain } from './guards.mjs';
 
 /** A refusal made on this machine: nothing was sent and nothing was charged. */
 export class LocalRefusal extends AgenticIdError {
@@ -62,31 +62,60 @@ export async function validate(client, args = {}) {
   const requestIds = [];
   let domainResult;
   let stopped;
-  const batches = send.length ? chunk(send, 1000) : [[]];
-  for (const [i, batch] of batches.entries()) {
+  let sourceDown = false;
+  let first;
+  // Each address can cost 1 credit, so a batch never holds more addresses than the cap has left:
+  // the run stops at the cap with every address it did not check marked, never part-way through
+  // a batch the server then cuts short. Unknown answers are free, so what is left is used again.
+  let rest = [...send];
+  let calls = 0;
+  do {
     const left = cap === undefined ? undefined : cap - cost.charged_credits;
-    if (batch.length && left !== undefined && left <= 0) {
-      stopped = `stopped after ${results.length} addresses: the ${cap}-credit cap was reached`;
+    if (rest.length && left !== undefined && left <= 0) {
+      stopped = { error: 'cap_reached', message: `stopped after ${results.length} of ${send.length} addresses: the ${cap}-credit cap was reached` };
       break;
     }
-    const r = await client.validate(compact({ emails: batch, domain: i === 0 ? domain : undefined, purpose: args.purpose, max_credits: left }));
-    results.push(...(r.results ?? []));
+    const batch = rest.slice(0, Math.min(1000, left === undefined ? 1000 : left));
+    let r;
+    try {
+      r = await client.validate(compact({ emails: batch, domain: calls === 0 ? domain : undefined, purpose: args.purpose, max_credits: left }));
+    } catch (e) {
+      // The first call failing means nothing was done: the error is the answer. A later one keeps
+      // what earlier batches already paid for, and says why it stopped.
+      if (!(e instanceof AgenticIdError) || calls === 0) throw e;
+      stopped = { ...e.toJSON(), message: `stopped after ${results.length} of ${send.length} addresses: ${e.detail}` };
+      break;
+    }
+    calls += 1;
+    first ??= r;
+    const got = r.results ?? [];
+    results.push(...got);
     cost = sumCost(cost, r.cost);
     requestIds.push(r.request_id);
     domainResult ??= r.domain;
-    if (batches.length === 1) return withNotes({ ...r, summary: held.length ? `${r.summary} Plus ${held.length} rejected on this machine without being sent.` : r.summary, results: [...(r.results ?? []), ...held] }, notes);
-  }
-  if (stopped) notes.push(stopped);
+    sourceDown ||= r.source_unavailable === true;
+    // An address the server did not answer for is not sent again (it may have hit its own limit):
+    // it is marked not_checked below.
+    rest = rest.slice(batch.length);
+  } while (rest.length);
+  if (stopped) notes.push(stopped.message);
+  const checked = new Set(results.map((x) => x.email));
+  const notChecked = send.filter((e) => !checked.has(e)).map((email) => ({ email, verdict: 'not_checked', reason: stopped?.error === 'cap_reached' ? 'cap_reached' : stopped ? 'stopped_early' : 'no_answer', charged: false }));
+  if (calls === 1 && !stopped && !notChecked.length) return withNotes({ ...first, summary: held.length ? `${first.summary} Plus ${held.length} rejected on this machine without being sent.` : first.summary, results: [...(first.results ?? []), ...held] }, notes);
   const tally = {};
-  for (const r of [...results, ...held]) tally[r.verdict] = (tally[r.verdict] ?? 0) + 1;
+  for (const r of [...results, ...held, ...notChecked]) tally[r.verdict] = (tally[r.verdict] ?? 0) + 1;
   return withNotes(
     compact({
       request_id: requestIds[0],
-      request_ids: requestIds,
-      summary: `${plural(results.length + held.length, 'email')} checked in ${plural(requestIds.length, 'batch', 'batches')}: ${Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(', ')}. ${plural(cost.charged_credits, 'credit')} charged.`,
+      request_ids: requestIds.length > 1 ? requestIds : undefined,
+      summary: `${plural(results.length + held.length + notChecked.length, 'email')} ${stopped ? 'given' : 'checked'}${requestIds.length > 1 ? ` in ${plural(requestIds.length, 'batch', 'batches')}` : ''}: ${Object.entries(tally).map(([k, v]) => `${v} ${k}`).join(', ')}. ${plural(cost.charged_credits, 'credit')} charged.${stopped ? ` Partial: ${notChecked.length} not checked (${stopped.error === 'cap_reached' ? `the ${cap}-credit cap was reached` : stopped.message.replace(/^stopped after [^:]+: /, '')}); nothing was charged for them.` : ''}${sourceDown ? ' Some answers are missing because a data source was unavailable; only answers that came back are charged.' : ''}`,
       cost,
-      results: [...results, ...held],
+      results: [...results, ...held, ...notChecked],
       domain: domainResult,
+      partial: stopped ? true : undefined,
+      not_checked: notChecked.length || undefined,
+      stopped,
+      source_unavailable: sourceDown || undefined,
     }),
     notes,
   );
@@ -183,55 +212,203 @@ export const PERSON_FIELDS = ['work_email', 'linkedin_url', 'title', 'seniority'
 export const COMPANY_FIELDS = ['name', 'domain', 'linkedin_url', 'industry', 'employees', 'revenue_usd', 'country', 'city', 'founded', 'description'];
 // The names people and older integrations use for the same fields.
 const FIELD_ALIASES = { email: 'work_email', job_title: 'title', linkedin: 'linkedin_url', company: 'company_name', website: 'company_domain', employee_size: 'employees', employee_count: 'employees', headcount: 'employees', revenue: 'revenue_usd', job_level: 'seniority' };
+// A company enriched on its own takes its own field names; these are the person-side names for them.
+const TO_COMPANY_FIELD = { company_name: 'name', company_domain: 'domain' };
+const isPersonId = (i) => Boolean(i.email || i.linkedin_url || i.name);
+
+/** One company to enrich, from { domain, name } or a bare domain; undefined (with a reason) when unusable. */
+function cleanCompany(raw) {
+  const o = typeof raw === 'string' ? { domain: raw } : raw && typeof raw === 'object' ? raw : {};
+  const rawDomain = o.domain ?? o.website ?? o.company_domain;
+  const rawName = o.name ?? o.company_name;
+  const out = {};
+  let held;
+  if (typeof rawDomain === 'string' && rawDomain.trim()) {
+    const d = cleanDomain(rawDomain);
+    if (!d) held = 'not_a_domain';
+    else if (isPersonalDomain(d)) held = 'personal_mail_provider_is_not_a_company';
+    else out.domain = d;
+  }
+  if (typeof rawName === 'string' && rawName.trim()) {
+    const why = companyNameProblem(rawName);
+    if (why) held = why;
+    else out.name = rawName.trim().replace(/\s+/g, ' ').slice(0, 200);
+  }
+  return { company: Object.keys(out).length ? out : undefined, held };
+}
+
 export async function enrich(client, args = {}) {
   const notes = [];
   const people = [...(Array.isArray(args.contacts) ? args.contacts : []), ...(args.contact ? [args.contact] : [])].map((c) => cleanIdentifiers(c));
   const skipped = people.filter((p) => p.empty).length;
+  const heldValues = people.filter((p) => !p.empty).reduce((n, p) => n + p.dropped.filter((d) => /personal|phone|email_in_company/.test(d.reason)).length, 0);
   const seen = new Set();
   const contacts = [];
+  const companyLike = [];
   for (const p of people.filter((x) => !x.empty)) {
+    // A "contact" with only a company on it is a company: priced and enriched as one.
+    if (!isPersonId(p.identifiers)) {
+      companyLike.push({ domain: p.identifiers.company_domain, name: p.identifiers.company_name });
+      continue;
+    }
     const key = identityKey(p.identifiers) ?? JSON.stringify(p.identifiers);
     if (seen.has(key)) continue;
     seen.add(key);
     contacts.push(p.identifiers);
   }
-  const repeats = people.length - skipped - contacts.length;
+  const repeats = people.length - skipped - contacts.length - companyLike.length;
   if (skipped) notes.push(`${plural(skipped, 'contact')} had no usable work identifier and ${skipped === 1 ? 'was' : 'were'} not sent`);
+  if (heldValues) notes.push(`${plural(heldValues, 'personal value')} (a personal email, a phone number or a mail provider) held back on this machine and not sent`);
   if (repeats) notes.push(`${plural(repeats, 'repeated contact')} enriched once`);
+  if (companyLike.length) notes.push(`${plural(companyLike.length, 'entry', 'entries')} with only a company (no person) enriched as ${companyLike.length === 1 ? 'a company' : 'companies'}, 1 credit each`);
   let company;
   if (args.company) {
-    const domain = cleanDomain(args.company.domain ?? args.company.website ?? '');
-    if (domain && isPersonalDomain(domain)) notes.push(`${domain} is a mail provider, not the person's company; it was not sent`);
-    else company = compact({ domain, name: typeof args.company.name === 'string' ? args.company.name.trim() : undefined });
-    if (company && !Object.keys(company).length) company = undefined;
+    const c = cleanCompany(args.company);
+    if (c.held) notes.push(`the company's ${c.held === 'personal_mail_provider_is_not_a_company' ? 'domain is a mail provider, not a company' : `value was held back (${c.held.replace(/_/g, ' ')})`}; it was not sent`);
+    company = c.company;
   }
+  // Companies enriched one by one: `companies`, plus the contacts that turned out to be companies.
+  const companies = [];
+  const companySeen = new Set();
+  let companyHeld = 0;
+  for (const raw of [...(Array.isArray(args.companies) ? args.companies : []), ...companyLike]) {
+    const c = cleanCompany(raw);
+    if (!c.company) {
+      companyHeld += 1;
+      continue;
+    }
+    const key = c.company.domain ?? `n:${c.company.name.toLowerCase()}`;
+    if (companySeen.has(key) || (company && (company.domain ?? `n:${company.name?.toLowerCase()}`) === key)) continue;
+    companySeen.add(key);
+    companies.push(c.company);
+  }
+  if (companyHeld) notes.push(`${plural(companyHeld, 'company', 'companies')} had no usable domain or name and ${companyHeld === 1 ? 'was' : 'were'} not sent`);
+  const hasCompanies = Boolean(company) || companies.length > 0;
+
   const fields = args.fields ? cleanList(args.fields, (f) => FIELD_ALIASES[f.toLowerCase().replace(/[\s-]+/g, '_')] ?? f.toLowerCase().replace(/[\s-]+/g, '_')) : undefined;
   if (fields?.some((f) => /phone|mobile/i.test(f))) throw new LocalRefusal('phone_not_supported', 'Phone numbers are not enriched through this plugin.', 'Remove phone and mobile from fields. Agentic ID here is for work identities: title, company, work email, firmographics.');
-  const allowed = new Set([...(contacts.length || !company ? PERSON_FIELDS : []), ...(company ? COMPANY_FIELDS : [])]);
+  const companyFieldOf = (f) => TO_COMPANY_FIELD[f] ?? f;
+  const allowed = new Set([...(contacts.length || !hasCompanies ? PERSON_FIELDS : []), ...(hasCompanies ? [...COMPANY_FIELDS, ...Object.keys(TO_COMPANY_FIELD)] : [])]);
   const unknownFields = (fields ?? []).filter((f) => !allowed.has(f));
   if (unknownFields.length) throw new LocalRefusal('request.invalid', `Unknown field${unknownFields.length === 1 ? '' : 's'}: ${unknownFields.join(', ')}.`, `Allowed here: ${[...allowed].join(', ')}.`);
-  if (!contacts.length && !company) throw new LocalRefusal('nothing_to_enrich', skipped ? `None of the ${plural(skipped, 'contact')} had a usable work identifier.` : 'Nothing to enrich: send contact, contacts or company.', 'Each contact needs a work email, a LinkedIn profile URL, or a name with a company.');
-  const cap = capFor('enrich', { contacts, company, fields, max_credits: args.max_credits });
-  if (contacts.length <= 100) {
-    const r = await client.enrich(compact({ ...(contacts.length === 1 && !args.contacts ? { contact: contacts[0] } : { contacts }), company, fields, purpose: args.purpose, max_credits: cap }));
+  if (!contacts.length && !hasCompanies) throw new LocalRefusal('nothing_to_enrich', skipped || companyHeld ? `None of the ${plural(skipped + companyHeld, 'entry', 'entries')} had a usable work identifier or company.` : 'Nothing to enrich: send contact, contacts, company or companies.', 'Each contact needs a work email, a LinkedIn profile URL, or a name with a company; each company a domain or a name.');
+  const personFields = fields?.filter((f) => PERSON_FIELDS.includes(f));
+  const companyFields = fields ? [...new Set(fields.map(companyFieldOf).filter((f) => COMPANY_FIELDS.includes(f)))] : undefined;
+  if (contacts.length && fields && !personFields.length) throw new LocalRefusal('request.invalid', `None of ${fields.join(', ')} is about a person.`, `For people ask for: ${PERSON_FIELDS.join(', ')}. To enrich their companies, send the companies (domain or name) in "companies".`);
+  if (hasCompanies && fields && !companyFields.length) throw new LocalRefusal('request.invalid', `None of ${fields.join(', ')} is about a company.`, `For companies ask for: ${COMPANY_FIELDS.join(', ')}.`);
+  const cap = capFor('enrich', { contacts, company, companies, fields, max_credits: args.max_credits });
+  const est = estimate('enrich', { contacts, company, companies, fields });
+
+  // The usual case: one call, inside the cap. The answer is passed on as it came.
+  if (!companies.length && contacts.length <= 100 && cap >= est.max_credits) {
+    const r = await client.enrich(compact({ ...(contacts.length === 1 && !args.contacts ? { contact: contacts[0] } : { contacts }), company, fields: contacts.length ? (company ? fields : personFields) : companyFields, purpose: args.purpose, max_credits: cap }));
     return withNotes(r, notes);
   }
+
+  // Otherwise in steps, never sending more than the cap can pay for, keeping what each step got.
   let cost = { quoted_credits: 0, charged_credits: 0 };
   const results = [];
   const requestIds = [];
-  for (const [i, batch] of chunk(contacts, 100).entries()) {
-    const left = cap - cost.charged_credits;
-    if (left <= 0) {
-      notes.push(`stopped after ${results.length} contacts: the ${cap}-credit cap was reached`);
+  let stopped;
+  let sourceDown = false;
+  const perPerson = est.per_person ?? 2;
+  let sentCompany = false;
+  for (let i = 0; i < contacts.length; ) {
+    const left = cap - cost.charged_credits - (company && !sentCompany ? 1 : 0);
+    const size = Math.min(100, Math.floor(left / perPerson), contacts.length - i);
+    if (size < 1) {
+      stopped = { error: 'cap_reached', message: `stopped after ${i} of ${contacts.length} contacts: the ${cap}-credit cap was reached` };
       break;
     }
-    const r = await client.enrich(compact({ contacts: batch, company: i === 0 ? company : undefined, fields, purpose: args.purpose, max_credits: left }));
-    results.push(...(r.results ?? []));
+    let r;
+    try {
+      r = await client.enrich(compact({ contacts: contacts.slice(i, i + size), company: sentCompany ? undefined : company, fields: company && !sentCompany ? fields : personFields, purpose: args.purpose, max_credits: cap - cost.charged_credits }));
+    } catch (e) {
+      if (!(e instanceof AgenticIdError) || requestIds.length === 0) throw e;
+      stopped = { ...e.toJSON(), message: `stopped after ${i} of ${contacts.length} contacts: ${e.detail}` };
+      break;
+    }
+    sentCompany = true;
+    // Kept in the order sent, one entry per contact, so row i is always contact i.
+    const got = r.results ?? [];
+    for (let k = 0; k < size; k += 1) results.push(got[k] ?? { status: 'not_run', reason: 'no answer for this contact', charged: false });
     cost = sumCost(cost, r.cost);
     requestIds.push(r.request_id);
+    sourceDown ||= r.source_unavailable === true;
+    i += size;
   }
+  if (company && !sentCompany && !stopped && !contacts.length) companies.unshift(company);
+
+  // Companies, a few at a time. One credit is set aside for each before it is sent, so lookups
+  // running side by side can never take the run past its cap.
+  const companyResults = new Array(companies.length);
+  if (companies.length && !stopped) {
+    let inFlight = 0;
+    let halted;
+    let next = 0;
+    const worker = async () => {
+      while (next < companies.length && !halted) {
+        if (cap - cost.charged_credits - inFlight < 1) {
+          if (cap - cost.charged_credits < 1) {
+            halted = { error: 'cap_reached', message: `stopped after ${companyResults.filter(Boolean).length} of ${companies.length} companies: the ${cap}-credit cap was reached` };
+            return;
+          }
+          await new Promise((res) => setTimeout(res, 25));
+          continue;
+        }
+        const k = next;
+        next += 1;
+        inFlight += 1;
+        try {
+          const r = await client.enrich(compact({ company: companies[k], fields: companyFields, purpose: args.purpose, max_credits: 1 }));
+          cost = sumCost(cost, r.cost);
+          requestIds.push(r.request_id);
+          sourceDown ||= r.source_unavailable === true;
+          const one = r.results?.[0] ?? r;
+          companyResults[k] = compact({ ...companies[k], id: one.id, status: one.status ?? (one.fields?.length ? 'enriched' : 'not_found'), reason: one.reason, fields: one.fields });
+        } catch (e) {
+          if (!(e instanceof AgenticIdError)) throw e;
+          // Money, auth and outage errors end the run; a bad company only fails that company.
+          if ([401, 402, 403, 0].includes(e.status) || e.status >= 500) halted = { ...e.toJSON(), message: `stopped after ${companyResults.filter(Boolean).length} of ${companies.length} companies: ${e.detail}` };
+          else companyResults[k] = { ...companies[k], status: 'error', reason: e.detail, charged: false };
+        } finally {
+          inFlight -= 1;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, companies.length) }, worker));
+    // Nothing done at all and the first answer was an error: that error is the answer.
+    if (halted && !requestIds.length && halted.error !== 'cap_reached') {
+      const e = new AgenticIdError(halted.status, halted.error, halted.message.replace(/^stopped after [^:]+: /, ''), halted);
+      if (halted.fix) e.fix = halted.fix;
+      throw e;
+    }
+    stopped = halted;
+  }
+  for (let k = 0; k < companies.length; k += 1) companyResults[k] ??= { ...companies[k], status: 'not_run', reason: stopped?.error === 'cap_reached' ? 'the cap was reached first' : 'stopped before this company', charged: false };
+  for (let k = results.length; k < contacts.length; k += 1) results.push({ status: 'not_run', reason: stopped?.error === 'cap_reached' ? 'the cap was reached first' : 'stopped before this contact', charged: false });
+  if (stopped) notes.push(stopped.message);
+
   const enriched = results.filter((r) => r.fields?.length).length;
-  return withNotes({ request_id: requestIds[0], request_ids: requestIds, summary: `${plural(results.length, 'contact')} in ${plural(requestIds.length, 'batch', 'batches')}: ${enriched} enriched. ${plural(cost.charged_credits, 'credit')} charged.`, cost, results }, notes);
+  const companiesEnriched = companyResults.filter((r) => r.fields?.length).length;
+  const notRun = [...results, ...companyResults].filter((r) => r.status === 'not_run').length;
+  const parts = [];
+  if (contacts.length) parts.push(`${plural(contacts.length, 'contact')}: ${enriched} enriched`);
+  if (companies.length) parts.push(`${plural(companies.length, 'company', 'companies')}: ${companiesEnriched} enriched`);
+  return withNotes(
+    compact({
+      request_id: requestIds[0],
+      request_ids: requestIds.length > 1 ? requestIds : undefined,
+      summary: `${parts.join('; ')}. ${plural(cost.charged_credits, 'credit')} charged.${stopped ? ` Partial: ${notRun} not run (${stopped.error === 'cap_reached' ? `the ${cap}-credit cap was reached` : stopped.message.replace(/^stopped after [^:]+: /, '')}); nothing was charged for them.` : ''}${sourceDown ? ' Some answers are missing because a data source was unavailable; only answers that came back are charged.' : ''}`,
+      cost,
+      results: contacts.length ? results : undefined,
+      company_results: companies.length ? companyResults : undefined,
+      partial: stopped ? true : undefined,
+      stopped,
+      source_unavailable: sourceDown || undefined,
+    }),
+    notes,
+  );
 }
 
 // ------------------------------------------------------------------ find
@@ -252,10 +429,29 @@ export async function find(client, args = {}) {
 }
 
 // ------------------------------------------------------------------ discover
+// Filter names people and agents reach for, mapped to the API's. Any other name is refused, never
+// dropped: a filter that is silently left out buys a different list (all software companies,
+// instead of the UK ones).
+const ACCOUNT_FILTER_ALIASES = { industries: 'industry', countries: 'country', technology: 'technologies', tech: 'technologies', keyword: 'keywords', min_employees: 'employees_min', max_employees: 'employees_max' };
+const CONTACT_FILTER_ALIASES = { job_titles: 'job_title', titles: 'job_title', title: 'job_title', roles: 'job_title', seniority: 'job_level', job_levels: 'job_level', country: 'countries' };
+function filterNames(raw, aliases, known, what) {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw new LocalRefusal('request.invalid', `${what} must be an object.`, `Allowed keys: ${known.join(', ')}.`);
+  const out = {};
+  const unknown = [];
+  for (const [k, v] of Object.entries(raw)) {
+    const name = aliases[k] ?? k;
+    if (!known.includes(name)) unknown.push(k);
+    else out[name] = v;
+  }
+  if (unknown.length) throw new LocalRefusal('request.invalid', `Unknown ${what} key${unknown.length === 1 ? '' : 's'}: ${unknown.join(', ')}. Nothing was sent.`, `Allowed: ${known.join(', ')}.`);
+  return out;
+}
+
 export async function discover(client, args = {}) {
   const notes = [];
-  const af = args.account_filters ?? {};
-  const cf = args.contact_filters;
+  const af = filterNames(args.account_filters, ACCOUNT_FILTER_ALIASES, ['industry', 'country', 'employees_min', 'employees_max', 'technologies', 'keywords', 'keywords_required'], 'account_filters') ?? {};
+  const cf = filterNames(args.contact_filters, CONTACT_FILTER_ALIASES, ['job_title', 'job_level', 'countries', 'per_account', 'min_company_size'], 'contact_filters');
   const min = af.employees_min;
   const max = af.employees_max;
   if (min !== undefined && max !== undefined && min > max) throw new LocalRefusal('request.invalid', `employees_min (${min}) is larger than employees_max (${max}).`, 'Swap them or drop one.');
@@ -314,7 +510,12 @@ export const ledger = (client, args = {}) => client.ledger(needId(args.id));
 export async function status(client) {
   const mode = client.authMode ?? (client.apiKey ? 'key' : undefined);
   const base = { client: CLIENT, server_url: client.baseUrl, key_configured: Boolean(client.apiKey), signed_in: mode === 'signin', auth: mode ?? 'none' };
-  if (!mode) return { ...base, ok: false, summary: 'Not signed in and no API key is configured.', fix: 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link to show them). In a terminal: `agentic-id login`. Or they set an API key in the plugin options (Claude Code: /plugin, agentic-id, Configure).' };
+  if (!mode) {
+    // Check the address first: a mistyped server URL is not something signing in can fix.
+    const p = typeof client.probe === 'function' ? await client.probe() : { ok: true };
+    if (!p.ok) return { ...base, ok: false, reachable: false, error: p.code, summary: p.detail, fix: new AgenticIdError(0, p.code, p.detail).fix };
+  }
+  if (!mode) return { ...base, ok: false, reachable: true, summary: 'Not signed in and no API key is configured.', fix: 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link to show them). In a terminal: `agentic-id login`. Or they set an API key in the plugin options (Claude Code: /plugin, agentic-id, Configure).' };
   try {
     const me = await client.me();
     const how = mode === 'signin' ? 'signed in' : `key ${me.key_prefix}…`;
@@ -516,11 +717,40 @@ export async function report(client, args = {}) {
   };
 }
 
-export function estimateCall(_client, args = {}) {
+// The operation behind each paid tool, so an estimate can check its arguments the same way the call would.
+const PLANNED = { validate, resolve, resolve_many: resolveMany, enrich, find, discover, lookalike };
+class PlanStop extends Error {}
+// A client that stops the operation at its first request: everything before it (cleaning, local
+// refusals, the cap) has run, and nothing is sent.
+const planClient = new Proxy({}, { get: () => async () => { throw new PlanStop(); } });
+
+/**
+ * What a planned call could cost. The arguments are checked exactly as the call itself would check
+ * them, so an estimate never reports "0 credits" for a call that would be refused: an argument the
+ * tool does not take, or input with nothing usable in it, is refused here too.
+ */
+export async function estimateCall(_client, args = {}, catalog) {
   const tool = String(args.tool ?? '').replace(/^agentic_id_/, '');
-  const est = estimate(tool, args.arguments ?? {});
-  if (!est) throw new LocalRefusal('request.invalid', `Unknown tool "${args.tool}".`, 'Use one of: validate, resolve, resolve_many, enrich, find, discover, lookalike.');
-  const asked = Number((args.arguments ?? {}).max_accounts);
+  const planned = args.arguments ?? {};
+  const est = estimate(tool, planned);
+  if (!est || !PLANNED[tool]) throw new LocalRefusal('request.invalid', `Unknown tool "${args.tool}".`, 'Use one of: validate, resolve, resolve_many, enrich, find, discover, lookalike.');
+  if (typeof planned !== 'object' || Array.isArray(planned)) throw new LocalRefusal('request.invalid', 'arguments must be an object: the arguments you would pass to the tool.', 'Pass the same arguments you would send to the tool.');
+  const schema = catalog?.get(`agentic_id_${tool}`)?.inputSchema;
+  if (schema) {
+    const unknown = Object.keys(planned).filter((k) => !(k in schema.properties));
+    if (unknown.length) {
+      const byId = unknown.some((k) => /^(id|ids|agentic_id)$/i.test(k));
+      throw new LocalRefusal('request.invalid', `agentic_id_${tool} does not take ${unknown.join(', ')}, so this call would be refused. Nothing was estimated.`, byId && tool === 'enrich' ? 'enrich takes what you know (a work email, a LinkedIn URL, a name with a company, or a company domain), not an Agentic ID. For what Agentic ID already holds on an ID, use agentic_id_facts.' : `Allowed: ${Object.keys(schema.properties).join(', ')}.`);
+    }
+  }
+  const asked = Number(planned.max_accounts);
   if ((tool === 'discover' || tool === 'lookalike') && asked > 500) throw new LocalRefusal('request.invalid', `${asked} accounts in one call; the limit is 500.`, `Plan ${Math.ceil(asked / 500)} calls of up to 500 accounts each (${asked} credits in all for accounts). Companies already delivered are skipped, so each call returns new ones.`);
+  // Run the call's own checks with a client that sends nothing. A refusal there is the answer.
+  try {
+    await PLANNED[tool](planClient, { ...planned, max_credits: planned.max_credits ?? 100000 });
+  } catch (e) {
+    if (!(e instanceof PlanStop)) throw e;
+  }
+  if (!est.free && !(est.max_credits > 0)) throw new LocalRefusal('request.invalid', `Nothing in these arguments can be ${tool === 'enrich' ? 'enriched' : 'priced'}, so the call would be refused.`, 'Check the arguments against the tool, then estimate again.');
   return { tool, ...est, summary: est.free ? `Free: ${est.arithmetic}.` : `At most ${est.max_credits} credits: ${est.arithmetic}. Only results are charged; misses are free.`, auto_capped: !est.free && est.max_credits <= AUTO_CAP };
 }

@@ -40,7 +40,7 @@ Every agent except Claude Code loads skills from a folder. Clone this repo once 
 skill folders into the folder your agent reads:
 
 ```bash
-git clone https://github.com/<github-org>/agentic-id-plugin ~/agentic-id-plugin
+git clone https://github.com/icustomerai/agentic-id-plugin ~/agentic-id-plugin
 
 SKILLS_DIR=~/.agents/skills   # Codex, Muse Code. Hermes: ~/.hermes/skills. Pi: ~/.pi/agent/skills
 mkdir -p "$SKILLS_DIR"
@@ -55,34 +55,33 @@ one project only, link them into that project's `.agents/skills/` instead.
 ## Claude Code
 
 ```bash
-claude plugin marketplace add <github-org>/agentic-id-plugin
-claude plugin install agentic-id@icustomer
+claude plugin marketplace add icustomerai/agentic-id-plugin
+claude plugin install agentic-id@agentic-id
 ```
 
-Restart Claude Code, run `/mcp`, pick `plugin:agentic-id:agentic-id` and choose **Authenticate**.
-Claude Code stores the tokens, not the plugin. The usage hook and `/agentic-id-usage` need `node` 18
-or later.
+Restart Claude Code and ask "How many Agentic ID credits do I have?". Claude opens the iCustomer
+sign-in page (or type `/agentic-id:agentic-id-login`). The plugin runs its own small local MCP server
+(`server/mcp.mjs`, Node 18 or later, no packages) that calls the Agentic ID API; it is not the
+hosted MCP endpoint above.
 
 Try it without installing: `claude --plugin-dir /path/to/agentic-id-plugin/plugins/agentic-id`.
 
-**Plugin options.** The plugin declares two `userConfig` options. Claude Code asks for them when you
-enable the plugin; change them later with `/plugin configure agentic-id@icustomer`, or in
-`/plugin` → **Installed** → Agentic ID → **Configure options**.
+**Plugin options.** Claude Code asks for them when you enable the plugin; change them later with
+`/plugin configure agentic-id@agentic-id`, or in `/plugin` → **Installed** → Agentic ID →
+**Configure options**.
 
-- The MCP endpoint is not an option: it is fixed in the plugin's `.mcp.json`
-  (`https://mcp-onesource-development.icustomer.ai/mcp`). To test against a local server, pass your own
-  server entry with `--mcp-config`.
-- `api_key` (sensitive): empty by default, which means OAuth sign-in. Paste an `ic-live-` key for
-  API-key mode. Claude Code stores it in the system keychain and sends it as `x-api-key`.
-
-The plugin reads no credential from your environment or your files. The CLI's
-`~/.agentic-id/api-key` is not used by the plugin.
+- `api_url`: where the Agentic ID API runs. Leave the default (`https://onesource-v3.icustomer.ai`).
+  For a local V3 stack, set `http://127.0.0.1:3100`. If the address is wrong, the tools say that
+  nothing answered there (or that it is not an Agentic ID server), not that you are signed out.
+- `api_key` (sensitive): empty by default, which means sign-in with your iCustomer account. For
+  CI, paste an Agentic ID API key. Claude Code stores it in the system keychain and passes it only
+  to the local server, which sends it to the API as a Bearer token.
 
 **API-key mode (CI, headless).** A machine without a keychain prompt can set the options in a
 settings file, kept at mode 0600 and out of the repository:
 
 ```json
-{ "pluginConfigs": { "agentic-id@icustomer": {
+{ "pluginConfigs": { "agentic-id@agentic-id": {
   "options": { "api_key": "<your key>" } } } }
 ```
 
@@ -91,24 +90,8 @@ claude -p "..." --settings /secure/agentic-id-settings.json \
   --allowedTools mcp__plugin_agentic-id_agentic-id__agentic_id_validate
 ```
 
-The id is `agentic-id@icustomer` for the installed plugin and `agentic-id@inline` for one
-loaded with `--plugin-dir`. `test/e2e.sh` with `E2E_MODE=plugin` writes this file from the
-environment and deletes it on exit.
-
-For headless runs you can skip the plugin's server entry and load your own, as `test/e2e.sh` does:
-
-```json
-{ "mcpServers": { "agentic-id": { "type": "http", "url": "https://<host>/mcp",
-  "headers": { "x-api-key": "${AGENTIC_ID_API_KEY}" } } } }
-```
-
-This is your own MCP config, not part of the plugin, so reading the key from your environment is
-your choice here.
-
-```bash
-claude -p "..." --mcp-config agentic-id.mcp.json --strict-mcp-config \
-  --allowedTools mcp__agentic-id__agentic_id_validate
-```
+The id is `agentic-id@agentic-id` for the installed plugin and `agentic-id@inline` for one
+loaded with `--plugin-dir`.
 
 ## Codex
 
