@@ -14,6 +14,15 @@ Fixes from the Nov 15 retest.
   (enrich by an id, an empty list, a personal email, find without an account) are refused by the
   estimate too, with the same fix, instead of "nothing to enrich". Enrich by id points to
   `agentic_id_facts`. The estimate still makes no paid calls.
+- **The plugin can be saved to claude.ai.** Saving it failed with "Plugin contains a top-level
+  bin/ directory": plugins hosted on claude.ai may not ship one. The `agentic-id` command moved
+  from `bin/agentic-id` to `scripts/agentic-id`.
+
+### Changed
+- The command is put on PATH by a session-start hook (`hooks/add-to-path.mjs`) instead of by the
+  `bin/` folder, so `agentic-id ...` still works by name in Claude Code. Where a host does not
+  offer that, the skills give the full path.
+- From a checkout the command is now `plugins/agentic-id/scripts/agentic-id`.
 
 ## 0.5.2 - 2026-11-14
 

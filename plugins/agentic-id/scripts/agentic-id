@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+// The agentic-id command. It lives in scripts/, not bin/: plugins saved to claude.ai may not ship
+// a top-level bin/ folder. In Claude Code the SessionStart hook (hooks/add-to-path.mjs) puts this
+// folder on PATH; elsewhere, run it by its full path or link it into a folder on your PATH.
+import('../server/cli.mjs').then(async (m) => {
+  process.exitCode = await m.main();
+});

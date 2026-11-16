@@ -126,7 +126,10 @@ policy. Contact values such as emails come back masked unless your key is allowe
   does nothing. With one, it reads that log, and blocks a paid call once the session has spent
   the budget.
 - `scripts/usage-summary.mjs` runs when you type `/agentic-id:agentic-id-usage`.
-- `bin/agentic-id` runs only when you or Claude type the command.
+- `hooks/add-to-path.mjs` runs when a session starts. It adds the plugin's `scripts/` folder to
+  the PATH of the session's shell commands, so `agentic-id` can be typed by name. It writes that
+  one line to the file Claude Code provides for the purpose and nothing else.
+- `scripts/agentic-id` runs only when you or Claude type the command.
 
 The plugin does not change Claude Code's permission settings. The `evals/` folder holds test
 cases for `claude plugin eval`; Claude Code doesn't load them when you use the plugin.

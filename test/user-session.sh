@@ -38,11 +38,11 @@ SESSION_BUDGET="${SESSION_BUDGET:-}" CONFIRM_ABOVE="${CONFIRM_ABOVE:-}" node --i
   const options = { api_url: process.env.AGENTIC_ID_URL, ...(keyFromEnv() ? { api_key: keyFromEnv() } : {}), ...(process.env.SESSION_BUDGET ? { session_budget: process.env.SESSION_BUDGET } : {}), ...(process.env.CONFIRM_ABOVE ? { confirm_above: process.env.CONFIRM_ABOVE } : {}) };
   writeFileSync(process.argv[1], JSON.stringify({ pluginConfigs: { "agentic-id@inline": { options } } }), { mode: 0o600 });
 ' "$SETTINGS"
-PREFIX="mcp__plugin_agentic-id_agentic-id__agentic_id_"; allowed="Read,Glob,Grep,Skill,Task,Write,Bash(agentic-id:*)${USER_SESSION_ALLOW:+,$USER_SESSION_ALLOW}"
+PREFIX="mcp__plugin_agentic-id_agentic-id__agentic_id_"; allowed="Read,Glob,Grep,Skill,Task,Write,Bash(agentic-id:*),Bash($PLUGIN/scripts/agentic-id:*)${USER_SESSION_ALLOW:+,$USER_SESSION_ALLOW}"
 for v in validate resolve resolve_many enrich find discover lookalike facts ledger workspace report list login estimate status; do allowed+=",${PREFIX}${v}"; done
 cd "$WORK"
 set +e
-printf "%s" "$PROMPT" | env -u AGENTIC_ID_API_KEY -u AGENTIC_ID_API_KEY_FILE -u AGENTIC_ID_URL AGENTIC_ID_CONFIG_DIR="$CFG" PATH="$PLUGIN/bin:$PATH" \
+printf "%s" "$PROMPT" | env -u AGENTIC_ID_API_KEY -u AGENTIC_ID_API_KEY_FILE -u AGENTIC_ID_URL AGENTIC_ID_CONFIG_DIR="$CFG" \
   claude -p --plugin-dir "$PLUGIN" --settings "$SETTINGS" --output-format stream-json --verbose \
   --model "${USER_SESSION_MODEL:-sonnet}" ${USER_SESSION_EXTRA:---no-chrome} \
   --max-budget-usd "${USER_SESSION_MAX_USD:-1}" --allowedTools "$allowed" > "$OUT/raw.jsonl" 2> "$OUT/stderr.txt"

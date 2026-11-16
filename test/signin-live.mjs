@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const BIN = join(dirname(fileURLToPath(import.meta.url)), '../plugins/agentic-id/bin/agentic-id');
+const BIN = join(dirname(fileURLToPath(import.meta.url)), '../plugins/agentic-id/scripts/agentic-id');
 const URL_ = process.env.AGENTIC_ID_URL;
 if (!URL_) { console.error('Set AGENTIC_ID_URL.'); process.exit(2); }
 const cfg = mkdtempSync(join(tmpdir(), 'aid-live-'));
