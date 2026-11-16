@@ -1206,3 +1206,9 @@ test('docs: slash commands are written with the plugin prefix, as Claude Code sh
   const bad = walk(root).filter((f) => /\.(md|json|mjs)$/.test(f) && !f.includes('/test/') && !/_tools\.json$/.test(f)).filter((f) => short.test(readFileSync(f, 'utf8')));
   assert.deepEqual(bad, [], `short command names in: ${bad.join(', ')}`);
 });
+
+test('the sign-in helper runs a command that exists (scripts/agentic-id, not the old bin/)', async () => {
+  const { existsSync } = await import('node:fs');
+  const { CLI_SCRIPT } = await import('../plugins/agentic-id/server/lib/operations.mjs');
+  assert.ok(existsSync(CLI_SCRIPT), CLI_SCRIPT);
+});

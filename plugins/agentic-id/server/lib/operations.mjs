@@ -548,13 +548,17 @@ export async function status(client) {
 // must still be stored. The helper waits up to 5 minutes for the browser, stores the session and exits.
 let helper;
 
+// The agentic-id command the helper runs. It lives in scripts/ (plugins saved to claude.ai may not
+// ship a top-level bin/ folder), and the npm package installs the same file.
+export const CLI_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'scripts', 'agentic-id');
+
 function startLoginHelper(baseUrl, env) {
   const dir = env.AGENTIC_ID_CONFIG_DIR?.trim() || join(homedir(), '.agentic-id');
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const logFile = join(dir, 'login.log');
   writeFileSync(logFile, '', { mode: 0o600 }); // the helper's own words only: a link, then "Signed in"
   const fd = openSync(logFile, 'a', 0o600);
-  const child = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'agentic-id'), 'login'], {
+  const child = spawn(process.execPath, [CLI_SCRIPT, 'login'], {
     detached: true,
     stdio: ['ignore', fd, fd],
     env: { PATH: env.PATH ?? process.env.PATH, HOME: env.HOME ?? process.env.HOME, AGENTIC_ID_URL: baseUrl, AGENTIC_ID_CONFIG_DIR: dir, ...(env.AGENTIC_ID_NO_BROWSER ? { AGENTIC_ID_NO_BROWSER: env.AGENTIC_ID_NO_BROWSER } : {}) },
