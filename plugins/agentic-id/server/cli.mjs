@@ -18,9 +18,9 @@ export const HELP = `agentic-id <command> [flags]      Agentic ID from a termina
   validate <email...> [--domain acme.io]
   resolve  [--email e] [--linkedin url] [--name n] [--company c] [--domain d] [--spend]
   enrich   [--email e] [--linkedin url] [--name n] [--company c] [--domain d] [--fields title,work_email]
-  find     <domain> [--role "VP Marketing"]... [--seniority director+] [--country GB] [--limit 5]
+  find     <domain> [--role "VP Marketing"]... [--seniority director+] [--country GB] [--limit 5] [--confirmed-only]
   discover [--industry software]... [--country GB]... [--min 100] [--max 2000] [--tech Snowflake] [--keyword k]
-           [--title CTO]... [--seniority vp] [--per-account 1] [--max-accounts 25] [--count]
+           [--title CTO]... [--seniority vp] [--per-account 1] [--max-accounts 25] [--count] [--confirmed-only]
   lookalike <domain...> [--max-accounts 25]
   facts    <id>          every fact's level and the evidence behind it (free)
   ledger   <id>          the ID's history, hash chain re-checked (free)
@@ -54,7 +54,7 @@ const OPTIONS = {
   industry: { type: 'string', multiple: true }, country: { type: 'string', multiple: true }, min: { type: 'string' }, max: { type: 'string' },
   tech: { type: 'string', multiple: true }, keyword: { type: 'string', multiple: true }, title: { type: 'string', multiple: true },
   'per-account': { type: 'string' }, 'max-accounts': { type: 'string' }, 'max-credits': { type: 'string' }, purpose: { type: 'string' }, kind: { type: 'string' },
-  outcome: { type: 'string' }, field: { type: 'string' },
+  outcome: { type: 'string' }, field: { type: 'string' }, 'confirmed-only': { type: 'boolean' },
   file: { type: 'string', short: 'f' }, out: { type: 'string', short: 'o' }, column: { type: 'string' }, 'limit-rows': { type: 'string' },
   'email-column': { type: 'string' }, 'linkedin-column': { type: 'string' }, 'name-column': { type: 'string' }, 'company-column': { type: 'string' }, 'domain-column': { type: 'string' },
 };
@@ -86,9 +86,9 @@ export function toArgs(cmd, args, f) {
       return { ...common, ...(hasPerson ? { contact: who } : { company: clean({ domain: f.domain, name: f.company }) }), ...clean({ fields: many(f.fields) }) };
     }
     case 'find':
-      return { ...common, account: clean({ domain: args[0] ?? f.domain }), ...clean({ roles: many(f.role), seniority: f.seniority, countries: many(f.country), limit: num(f.limit, 'limit') }) };
+      return { ...common, account: clean({ domain: args[0] ?? f.domain }), ...clean({ roles: many(f.role), seniority: f.seniority, countries: many(f.country), limit: num(f.limit, 'limit'), include_unconfirmed: f['confirmed-only'] ? false : undefined }) };
     case 'discover': {
-      const contact = clean({ job_title: many(f.title), job_level: f.seniority, per_account: num(f['per-account'], 'per-account') });
+      const contact = clean({ job_title: many(f.title), job_level: f.seniority, per_account: num(f['per-account'], 'per-account'), include_unconfirmed: f['confirmed-only'] ? false : undefined });
       return {
         ...common,
         account_filters: clean({ industry: many(f.industry), country: many(f.country), employees_min: num(f.min, 'min'), employees_max: num(f.max, 'max'), technologies: many(f.tech), keywords: many(f.keyword) }),
@@ -134,7 +134,10 @@ export function render(cmd, r) {
     lines.push(`  ${x.id ?? x.domain ?? x.name ?? '-'}  ${x.status}${x.reason ? `: ${x.reason}` : ''}`);
     for (const fld of x.fields ?? []) lines.push(`    ${pad(fld.field, 16)} ${pad(typeof fld.value === 'object' ? JSON.stringify(fld.value) : fld.value, 36)} ${pad(fld.level, 13)} ${fld.source}`);
   }
-  if (cmd === 'find' || cmd === 'discover') for (const p of rows(cmd === 'find' ? 'people' : 'contacts')) lines.push(`  ${pad(p.name, 24)} ${pad(p.title, 32)} ${pad(p.email, 28)} ${p.level ?? ''}  ${p.id}`);
+  if (cmd === 'find' || cmd === 'discover') for (const p of rows(cmd === 'find' ? 'people' : 'contacts')) {
+    lines.push(`  ${pad(p.name, 24)} ${pad(p.title, 32)} ${pad(p.email, 28)} ${p.level ?? ''}  ${p.id}`);
+    if (p.employment?.status === 'unconfirmed') lines.push(`    ! ${p.employment.flag ?? 'unconfirmed: the employer is not confirmed yet'}`);
+  }
   if (cmd === 'discover' || cmd === 'lookalike') {
     if (r.profile) lines.push(`  profile: ${[...(r.profile.industries ?? []), ...(r.profile.countries ?? [])].join(', ')}${r.profile.employees ? `, ${r.profile.employees.min}+ employees` : ''} (from ${r.profile.seeds_used} seeds)`);
     for (const a of rows('accounts')) lines.push(`  ${a.similarity !== undefined ? pad(a.similarity, 5) : ''}${pad(a.domain, 28)} ${pad(a.country, 3)} ${pad(a.employees ? `${a.employees.min}${a.employees.max ? `-${a.employees.max}` : '+'}` : '', 12)}${a.why ? a.why.join(', ') : ''}${a.charged === false ? '  (not charged)' : ''}`);
