@@ -47,6 +47,8 @@ write one into a file in the repository.
 
 Always pass `--json` when you will read the answer yourself.
 
+`find` and `discover` return people whose employer is not confirmed yet flagged (`employment.status` "unconfirmed"; a `!` line in the human view) and charge for them. Add `--confirmed-only` to leave them out, free.
+
 Workspace and outcomes (both free):
 
 ```bash

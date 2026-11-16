@@ -170,7 +170,15 @@ To change an option later, run `/plugin configure agentic-id@agentic-id`. Update
 
 ## CLI
 
-`agentic-id` ships inside the plugin, in `scripts/agentic-id`. In Claude Code a session-start hook puts it on the PATH. From a checkout, run `plugins/agentic-id/scripts/agentic-id`.
+`agentic-id` ships inside the plugin, in `scripts/agentic-id`. Inside Claude Code a session-start hook puts it on the PATH. In your own terminal it is not on the PATH yet: after the two install commands in the Quickstart, link it once (`~/.local/bin` must be on your PATH):
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf ~/.claude/plugins/marketplaces/agentic-id/plugins/agentic-id/scripts/agentic-id ~/.local/bin/agentic-id
+agentic-id --version
+```
+
+The link points at the marketplace copy, so it keeps working when the plugin updates. From a checkout of this repository, run `plugins/agentic-id/scripts/agentic-id` instead.
 
 ```bash
 agentic-id login      # browser sign-in with your iCustomer account
@@ -181,11 +189,13 @@ agentic-id workspace  # credits available, what was spent, the last charges (fre
 Single lookups:
 
 ```bash
-agentic-id resolve --domain tallpinesoftware.com
-agentic-id find tallpinesoftware.com --role "VP Marketing" --limit 2 --max-credits 4
+agentic-id resolve --domain hubspot.com
+agentic-id find hubspot.com --role "VP Marketing" --limit 2 --max-credits 4
 agentic-id discover --country DE --industry software --min 100 --max 2000 --count    # a count is free
-agentic-id estimate find tallpinesoftware.com --role "VP Marketing" --limit 5        # the most it could cost
+agentic-id estimate find hubspot.com --role "VP Marketing" --limit 5        # the most it could cost
 ```
+
+People whose employer Agentic ID cannot confirm yet come back flagged (a `!` line under the person) and are charged. Add `--confirmed-only` to `find` or `discover` to leave them out, free.
 
 Lists (CSV in, CSV out):
 
@@ -209,7 +219,7 @@ agentic-id resolve  --file leads.checked.csv --max-credits 500 --out leads.clean
 curl -s https://onesource-v3.icustomer.ai/v1/resolve \
   -H "Authorization: Bearer $AGENTIC_ID_API_KEY" -H "content-type: application/json" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"identifiers":{"company_domain":"tallpinesoftware.com"},"max_credits":1}'
+  -d '{"identifiers":{"company_domain":"hubspot.com"},"max_credits":1}'
 ```
 
 | Verb | Route |

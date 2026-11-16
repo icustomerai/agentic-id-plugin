@@ -295,7 +295,7 @@ test('workspace: one answer with credits, spend and how it shares', async () => 
   const w = await ops.workspace(c, {});
   assert.equal(c.calls.find((x) => x.verb === 'credits').body, 10, 'asks for the last 10 by default');
   assert.match(w.summary, /85 credits available \(5 held by running calls\)\. Spent 4 today, counted since \d\d:\d\d (today|yesterday) on this machine's clock \(the day is the UTC day \d{4}-\d\d-\d\d, whatever the local date\), 10 in 30 days \(enrich 8, resolve 2\)\. 1 ID held\. Private/);
-  assert.equal(w.contact_values, 'masked');
+  assert.equal(w.contact_values, 'emails in full; phones and LinkedIn partly hidden');
   assert.deepEqual(w.delivered, []);
   await assert.rejects(() => ops.workspace(c, { recent: 500 }), /recent/);
 });
@@ -733,7 +733,7 @@ test('mcp: estimate and status work without touching the API', async () => {
   const e = (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool: 'agentic_id_find', arguments: { account: { domain: 'acme-synthetic.io' }, roles: ['CTO'], limit: 10 } } })).result.structuredContent;
   assert.deepEqual([e.max_credits, e.auto_capped], [20, false]);
   assert.equal(c.calls.length, 0);
-  assert.match((await rpc(s, 'tools/call', { name: 'agentic_id_status', arguments: {} })).result.structuredContent.contact_values, /masked/);
+  assert.match((await rpc(s, 'tools/call', { name: 'agentic_id_status', arguments: {} })).result.structuredContent.contact_values, /emails in full/);
 });
 
 test('estimate refuses arguments the call itself would refuse, and never says "nothing to enrich" for 0 credits', async () => {
@@ -792,6 +792,32 @@ test('cli: flags become the same arguments the tools take', async () => {
   assert.deepEqual(e.client.calls[0].body, { company: { domain: 'acme.io' }, max_credits: 1 });
   const p = await cli(['enrich', '--email', 'jane@acme.io', '--fields', 'title,work_email']);
   assert.deepEqual(p.client.calls[0].body, { contact: { email: 'jane@acme.io' }, fields: ['title', 'work_email'], max_credits: 2 });
+});
+
+test('unconfirmed people: shown flagged by default, left out with --confirmed-only or include_unconfirmed false', async () => {
+  const c = fake();
+  await ops.find(c, { account: { domain: 'acme.io' }, roles: ['CTO'], include_unconfirmed: false });
+  assert.equal(c.calls[0].body.include_unconfirmed, false);
+  await ops.find(c, { account: { domain: 'acme.io' }, roles: ['CTO'] });
+  assert.equal('include_unconfirmed' in c.calls[1].body, false, 'left to the API default when not given');
+  await ops.discover(c, { account_filters: { country: ['GB'] }, contact_filters: { job_title: ['CTO'], include_unconfirmed: false }, max_credits: 10 });
+  assert.equal(c.calls[2].body.contact_filters.include_unconfirmed, false);
+  const f = await cli(['find', 'acme.io', '--role', 'CTO', '--confirmed-only']);
+  assert.equal(f.client.calls[0].body.include_unconfirmed, false);
+  const d = await cli(['discover', '--country', 'GB', '--title', 'CTO', '--confirmed-only', '--max-credits', '10']);
+  assert.equal(d.client.calls[0].body.contact_filters.include_unconfirmed, false);
+  const people = [
+    { id: 'ic-a', account_id: 'ic-c', name: 'Ann Lee', title: 'CTO', email: 'ann@acme.io', level: 'corroborated', employment: { status: 'confirmed', level: 'corroborated' } },
+    { id: 'ic-b', account_id: 'ic-c', name: 'Bo Ray', title: 'CTO', email: 'bo@acme.io', level: 'claimed', employment: { status: 'unconfirmed', level: 'claimed', flag: 'unconfirmed: claimed by Apollo, not found on the company website' } },
+  ];
+  const shown = await cli(['find', 'acme.io', '--role', 'CTO'], fake({ find: { summary: '2 people found at acme.io. 4 credits charged.', people, excluded: {}, rejected: [] } }));
+  assert.match(shown.out, /Bo Ray[^\n]*\n\s+! unconfirmed: claimed by Apollo/);
+  assert.doesNotMatch(shown.out, /Ann Lee[^\n]*\n\s+!/);
+});
+
+test('status says emails come back in full, other contact values partly hidden', async () => {
+  const s = await ops.status(fake({ me: { workspace_id: 'ws_1', scopes: [], key_prefix: 'p' }, workspace: { credits: { available: 1 } } }));
+  assert.match(s.contact_values, /emails in full/);
 });
 
 test('cli: exit codes say what went wrong', async () => {

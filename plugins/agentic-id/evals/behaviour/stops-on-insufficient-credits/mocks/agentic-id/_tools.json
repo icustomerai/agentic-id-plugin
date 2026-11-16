@@ -412,6 +412,10 @@
             "type": "boolean",
             "description": "Skip people already delivered to this workspace. Default true."
           },
+          "include_unconfirmed": {
+            "type": "boolean",
+            "description": "Default true: people a source places at the company whose employer Agentic ID cannot confirm yet come back flagged (employment.status \"unconfirmed\", employment.flag says why) and are charged. false leaves them out, free."
+          },
           "purpose": {
             "type": "string",
             "enum": [
@@ -534,6 +538,10 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "Skip people at companies smaller than this."
+              },
+              "include_unconfirmed": {
+                "type": "boolean",
+                "description": "Default true: people a source places at the company whose employer Agentic ID cannot confirm yet come back flagged (employment.status \"unconfirmed\", employment.flag says why) and are charged. false leaves them out, free."
               }
             },
             "additionalProperties": false

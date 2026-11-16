@@ -424,7 +424,7 @@ export async function find(client, args = {}) {
   if (!roles.length && !(Array.isArray(seniority) ? seniority.length : seniority)) throw new LocalRefusal('find.persona_unreadable', 'A person search needs a job title in roles, or a seniority.', 'Ask the user which roles matter, e.g. roles ["VP Marketing"], or seniority "director+".');
   const limit = Math.min(Math.max(Number.isFinite(Number(args.limit)) ? Math.trunc(Number(args.limit)) : 5, 1), 25);
   if (args.limit > 25) notes.push('limit lowered to 25, the most one find call returns; call again for more (people already delivered are skipped)');
-  const body = compact({ account: compact({ id, domain }), roles, seniority, countries: args.countries ? cleanList(args.countries, cleanCountry) : undefined, limit, exclude_seen: args.exclude_seen, purpose: args.purpose, max_credits: capFor('find', { limit, max_credits: args.max_credits }) });
+  const body = compact({ account: compact({ id, domain }), roles, seniority, countries: args.countries ? cleanList(args.countries, cleanCountry) : undefined, limit, exclude_seen: args.exclude_seen, include_unconfirmed: typeof args.include_unconfirmed === 'boolean' ? args.include_unconfirmed : undefined, purpose: args.purpose, max_credits: capFor('find', { limit, max_credits: args.max_credits }) });
   return withNotes(await client.find(body), notes);
 }
 
@@ -451,12 +451,12 @@ function filterNames(raw, aliases, known, what) {
 export async function discover(client, args = {}) {
   const notes = [];
   const af = filterNames(args.account_filters, ACCOUNT_FILTER_ALIASES, ['industry', 'country', 'employees_min', 'employees_max', 'technologies', 'keywords', 'keywords_required'], 'account_filters') ?? {};
-  const cf = filterNames(args.contact_filters, CONTACT_FILTER_ALIASES, ['job_title', 'job_level', 'countries', 'per_account', 'min_company_size'], 'contact_filters');
+  const cf = filterNames(args.contact_filters, CONTACT_FILTER_ALIASES, ['job_title', 'job_level', 'countries', 'per_account', 'min_company_size', 'include_unconfirmed'], 'contact_filters');
   const min = af.employees_min;
   const max = af.employees_max;
   if (min !== undefined && max !== undefined && min > max) throw new LocalRefusal('request.invalid', `employees_min (${min}) is larger than employees_max (${max}).`, 'Swap them or drop one.');
   const account_filters = compact({ industry: cleanList(af.industry), country: cleanList(af.country, cleanCountry), employees_min: min, employees_max: max, technologies: cleanList(af.technologies), keywords: cleanList(af.keywords), keywords_required: af.keywords_required });
-  const contact_filters = cf ? compact({ job_title: cleanList(cf.job_title), job_level: Array.isArray(cf.job_level) ? cleanList(cf.job_level) : cf.job_level, countries: cleanList(cf.countries, cleanCountry), per_account: cf.per_account, min_company_size: cf.min_company_size }) : undefined;
+  const contact_filters = cf ? compact({ job_title: cleanList(cf.job_title), job_level: Array.isArray(cf.job_level) ? cleanList(cf.job_level) : cf.job_level, countries: cleanList(cf.countries, cleanCountry), per_account: cf.per_account, min_company_size: cf.min_company_size, include_unconfirmed: typeof cf.include_unconfirmed === 'boolean' ? cf.include_unconfirmed : undefined }) : undefined;
   const hasContact = contact_filters && Object.keys(contact_filters).length > 0;
   if (!Object.keys(account_filters).length && !hasContact) throw new LocalRefusal('request.invalid', 'discover needs at least one filter.', 'Give account_filters (industry, country, employees_min/max, technologies, keywords) and optionally contact_filters.');
   if (hasContact && !contact_filters.job_title && !contact_filters.job_level) throw new LocalRefusal('find.persona_unreadable', 'contact_filters needs a job_title or a job_level.', 'Add the titles or seniority the user is after, or leave contact_filters out to get accounts only.');
@@ -533,7 +533,7 @@ export async function status(client) {
       workspace_id: me.workspace_id,
       key_prefix: me.key_prefix,
       scopes: me.scopes,
-      contact_values: me.scopes?.includes('pii:read') ? 'readable' : 'masked (emails and phones are shown partly hidden)',
+      contact_values: me.scopes?.includes('pii:read') ? 'readable' : 'emails in full; phones and LinkedIn partly hidden',
       ...(credits ? { credits_available: credits.available, credits_held: credits.held } : {}),
       more: 'agentic_id_workspace shows spend by tool and recent charges.',
     };
@@ -648,7 +648,7 @@ export async function workspace(client, args = {}) {
     allowed_purposes: w.allowed_purposes,
     region: w.region,
     ids_held: w.ids_held,
-    contact_values: w.scopes?.includes('pii:read') ? 'readable' : 'masked',
+    contact_values: w.scopes?.includes('pii:read') ? 'readable' : 'emails in full; phones and LinkedIn partly hidden',
     summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today, counted since ${utcDayStartLocal()} on this machine's clock (the day is the UTC day ${new Date().toISOString().slice(0, 10)}, whatever the local date), ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
   };
 }
