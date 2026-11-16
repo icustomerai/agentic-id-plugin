@@ -336,7 +336,7 @@ The root `package.json` publishes the CLI to npm as `agentic-id`. It ships only 
 
 1. Bump the version in `package.json`, `plugins/agentic-id/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `CLIENT` in `server/lib/client.mjs`, and merge.
 2. Check the package: `npm pack --dry-run`.
-3. Tag the merge commit `v<version>` and push the tag. `.github/workflows/publish-npm.yml` runs the tests, installs the packed CLI, and publishes. It needs the `NPM_TOKEN` repository secret.
+3. Publish: in GitHub, open Actions, then **Publish CLI to npm**, then **Run workflow** on `main` with **Publish to npm** ticked. Or push a tag `v<version>` on the merge commit. Either way `.github/workflows/publish-npm.yml` runs the tests, installs the packed CLI and publishes. It needs the `NPM_TOKEN` repository secret. Left unticked, a run only checks and packs.
 
 ## Editions
 

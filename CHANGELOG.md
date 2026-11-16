@@ -3,9 +3,9 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.6.0 - 2026-11-16
 
-Fixes from the Nov 15 retest.
+Fixes from the Nov 15 retest, and the CLI on npm (`npm install -g agentic-id`).
 
 ### Fixed
 - **Sign-in from Claude Code.** `agentic_id_login` started its helper from the old `bin/agentic-id`
