@@ -7,9 +7,9 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { accessToken, AuthError, discover, loadSession, login, logout } from '../plugins/agentic-id/server/lib/auth.mjs';
-import { AgenticId, AgenticIdError } from '../plugins/agentic-id/server/lib/client.mjs';
-import * as ops from '../plugins/agentic-id/server/lib/operations.mjs';
+import { accessToken, AuthError, discover, loadSession, login, logout } from '../cli/lib/auth.mjs';
+import { AgenticId, AgenticIdError } from '../cli/lib/client.mjs';
+import * as ops from '../cli/lib/operations.mjs';
 
 /** A tiny authorization server + /v1/me. `state` lets a test break things on purpose. */
 async function fakeApi(state = {}) {

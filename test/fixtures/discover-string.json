@@ -1,7 +1,0 @@
-{
-  "session_id": "sess-fixture-0003",
-  "hook_event_name": "PostToolUse",
-  "tool_name": "mcp__plugin_agentic-id_agentic-id__agentic_id_discover",
-  "tool_input": { "contact_filters": { "job_title": ["FAKE-INPUT-MARKER"] }, "limit": 2 },
-  "tool_response": "{\"returned_count\":2,\"credits_charged\":2,\"cost\":{\"quoted_credits\":2,\"charged_credits\":2},\"summary\":\"FAKE-SUMMARY-MARKER\"}"
-}

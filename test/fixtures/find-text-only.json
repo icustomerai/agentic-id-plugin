@@ -1,9 +1,0 @@
-{
-  "session_id": "sess-fixture-0002",
-  "hook_event_name": "PostToolUse",
-  "tool_name": "mcp__agentic-id__agentic_id_find",
-  "tool_input": { "account": { "domain": "FAKE-INPUT-MARKER" }, "limit": 5, "max_credits": 10 },
-  "tool_response": [
-    { "type": "text", "text": "FAKE-SUMMARY-MARKER\n{\n  \"people\": [{\"name\": \"FAKE-OUTPUT-MARKER\"}],\n  \"total_found\": 3,\n  \"request_id\": \"req-fixture-0002\",\n  \"cost\": {\"quoted_credits\": 10, \"charged_credits\": 3}\n}" }
-  ]
-}

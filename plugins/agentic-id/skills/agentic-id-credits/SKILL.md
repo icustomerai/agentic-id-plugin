@@ -1,6 +1,6 @@
 ---
 name: agentic-id-credits
-description: Estimate and control Agentic ID credit spend - what each tool costs, how to get a free estimate or a free count before buying, how to size max_credits, and how to read quoted_credits versus charged_credits afterwards. Use before any paid Agentic ID call that touches more than a handful of records, and whenever the user asks "how much will this cost", "how many credits did that use", "why was I charged", "why was that free" or "set a budget".
+description: Estimate and control Agentic ID credit spend - what each tool costs, how to work out the most a call can cost and get a free count before buying, how to size max_credits, and how to read quoted_credits versus charged_credits afterwards. Use before any paid Agentic ID call that touches more than a handful of records, and whenever the user asks "how much will this cost", "how many credits do I have", "how many credits did that use", "why was I charged", "why was that free" or "set a budget".
 ---
 
 # Agentic ID credits
@@ -9,48 +9,54 @@ Agentic ID bills in credits from one workspace wallet. Only results are charged:
 refusal or a failed lookup costs nothing. Cost control is four moves: **estimate, count, cap,
 read back**.
 
+Nothing on the user's machine stops a costly call any more. These rules are the only guard, so
+follow them every time.
+
 ## Prices
 
 | Tool | Charged | Free |
 | --- | --- | --- |
-| `agentic_id_validate` | 1 per address answered `valid`, `invalid` or `catch-all` | `unknown`, `rejected`, a domain-only check, anything held back on this machine |
-| `agentic_id_resolve`, `agentic_id_resolve_many` | 1 per ID returned | an ID the workspace already holds, `unresolvable`, repeated rows |
-| `agentic_id_enrich` | 2 per person enriched, 1 per company | nothing found |
-| `agentic_id_find` | 2 per person delivered | no match, people left out by a check |
-| `agentic_id_discover` | 1 per account delivered, plus 2 per person | `count_only`, accounts whose size only one source confirmed (`charged: false`), accounts left out |
-| `agentic_id_lookalike` | 1 per account delivered | seeds, accounts left out |
-| `agentic_id_facts`, `agentic_id_ledger`, `agentic_id_estimate`, `agentic_id_status` | never | always |
+| `validate` | 1 per address answered `valid`, `invalid` or `catch-all` | `unknown`, refused (personal, disposable, malformed) |
+| `resolve` | 1 per ID returned | an ID the workspace already holds, `unresolvable` |
+| `enrich` | 2 per person enriched, 1 per company | nothing found |
+| `find` | 2 per person returned, unconfirmed ones included | no match, repeats, IDs the workspace holds |
+| `discover` | 1 per account delivered, plus 2 per person | `count_only`, accounts left out |
+| `lookalike` | 1 per account delivered | seeds, accounts left out |
+| `facts`, `ledger`, `feedback` | never | always |
 
 The `cost` block in each answer is the authority, not this table.
 
-## 1. Estimate (free)
+## 1. Estimate
 
-Call `agentic_id_estimate` with the tool and the arguments you plan to send. It answers on this
-machine with `max_credits` and the `arithmetic`. Show the arithmetic to the user before any call
-over 10 credits:
+The hosted server has no estimate tool. Work out the most a call can cost from the table and show
+the arithmetic to the user before any call over 10 credits:
 
 "Find up to 5 people at each of 4 accounts: 4 x 5 x 2 = at most 40 credits. Go ahead with a
 40-credit cap?"
 
-For a CSV, `agentic-id <command> --file <csv> --dry-run` prints the same for the whole file.
+If the `agentic-id` CLI is installed (`agentic-id --version`), `agentic-id estimate <command>
+[flags]` prints the same arithmetic for free, and `agentic-id <command> --file <csv> --dry-run`
+does it for a whole file.
 
 ## 2. Count before you buy (free)
 
-`agentic_id_discover` with `count_only: true` says how many companies match and which source
-would be asked. Always run it before a paid discover. A count far above what the user wants means
+`discover` with `count_only: true` says how many companies match. Always run it before a paid
+discover, even when the user already gave a budget. A count far above what the user wants means
 tighten the filters, not raise the budget.
 
 ## 3. Cap every paid call
 
-- Calls that could cost 10 credits or less are capped at their own estimate automatically.
-- Anything larger is refused without `max_credits` (`cap_required`; the answer carries the
-  estimate). Set it to the agreed number, never to a large one "just in case".
+- Set `max_credits` on **every** paid call (validate, resolve with `spend`, enrich, find, discover,
+  lookalike) to the smallest number that covers it. The server never charges past it.
+- Above 10 credits, the cap must be a number the user gave in their own words. "Go ahead", "I
+  don't care what it costs" or "50 companies" is not a budget: show the arithmetic and ask for a
+  number. Never choose a cap above what the user said, and never set a large one "just in case".
+- If the user gave a budget, use it without asking again. If several calls share one budget, make
+  their caps add up to it or less.
 - Size is the second cap: `limit` on find (default 5, max 25), `max_accounts` and
   `contact_filters.per_account` on discover, `max_accounts` on lookalike.
-- Long lists are sent in batches inside one cap; the run stops when the cap is reached and says
-  how far it got.
-- For a large job, run a sample first (one account, `limit: 3`, or `--limit-rows 20` on a file),
-  read the real price, then scale with the user's yes.
+- For a large job, run a sample first (one account, `limit: 3`, or `--limit-rows 20` on a file
+  with the CLI), read the real price, then scale with the user's yes.
 - `credits.insufficient`: the wallet cannot cover it. Stop; do not retry.
 
 ## 4. Read back: quoted vs charged
@@ -61,22 +67,23 @@ tighten the filters, not raise the budget.
 Always state the charged figure, and why it differs from the quote when it does:
 "Charged 6 credits (quoted 10: two people were already delivered to you and were skipped)."
 
-`excluded`, `input_notes` and `charged: false` on a row explain most differences.
+`excluded` and the per-row notes in the answer explain most differences.
 
-## Budgets for a whole session
+## Keeping a running total
 
-The plugin's optional session budget (plugin option "Session credit budget") blocks further paid
-calls once the calls logged in this session have charged that many credits. When a call is
-blocked for that reason, tell the user the total spent and ask before they raise it. Do not
-suggest ways around it.
+Over a session, keep your own running total of `charged_credits` and say it when the user asks or
+when a multi-step job ends. Before each call in a budgeted job, check what is left of the budget
+and cap the call at no more than that. When the budget is spent, stop and ask.
 
 ## Balance and history
 
-- `agentic_id_workspace` (free) is the billing record: credits `available` and `held`, what was
-  spent today and in the last 30 days by tool, and the latest grants and charges. Use it for "how
-  many credits do I have", "what did that cost" and "why was I charged", and before any job over
-  about 50 credits. If `available` is below the estimate, say so and stop before calling.
-- `held` credits are reserved by calls still running; they come back if not used.
-- `/agentic-id:agentic-id-usage` (or `agentic-id usage`) shows this machine's own log
-  (`~/.agentic-id/usage.jsonl`): calls made through this plugin here only, with no inputs. When
-  the two disagree, the workspace answer is right.
+- Call the `credits` tool (free). It is the billing record: credits available and held by calls
+  still running, spend today (UTC) and in the last 30 days by tool, and the latest grants and
+  charges with the IDs they were for. `limit` (0-200, default 20) sets how many recent items.
+  Use it for "how many credits do I have", "what did I spend" and "what was that charge for".
+- Lead with its first line (what is available), then what the user asked about. Report
+  `available`, not `balance`: held credits belong to calls still running.
+- Only if the `credits` tool is not there (an older server): `agentic-id workspace` if the CLI is
+  installed, or the user's iCustomer account.
+- Never guess a balance, and never conclude "nothing was spent" from your own memory of the
+  session. Before a job over about 50 credits, check the balance if you can.

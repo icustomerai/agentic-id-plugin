@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "agentic-id": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/mcp.mjs"],
-      "env": {
-        "AGENTIC_ID_API_KEY": "${user_config.api_key}",
-        "AGENTIC_ID_URL": "${user_config.api_url}"
-      }
+      "type": "http",
+      "url": "https://onesource-v3.icustomer.ai/mcp"
     }
   }
 }

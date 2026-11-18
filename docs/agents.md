@@ -1,9 +1,9 @@
 # Connect Agentic ID to your agent
 
-> **Branch `v3/plugin-on-v3`.** This page still describes the hosted v2 endpoint. On V3 the tools
-> come from the plugin's own stdio server. Any MCP client can start it:
-> `{ "command": "node", "args": ["<repo>/plugins/agentic-id/server/mcp.mjs"], "env": { "AGENTIC_ID_API_KEY_FILE": "<file that holds the key>", "AGENTIC_ID_URL": "<V3 API URL>" } }`.
-> Agents without MCP can use `plugins/agentic-id/scripts/agentic-id`. See [v3.md](v3.md).
+> **Hosted server.** The tools come from the hosted MCP server at `https://onesource-v3.icustomer.ai/mcp`
+> (Streamable HTTP, sign-in with your iCustomer account). Some sections below still name the older
+> development endpoint; use the hosted URL. Agents without MCP can use the `agentic-id` CLI from npm.
+> See [v3.md](v3.md).
 
 Agentic ID has two parts that work in any agent:
 - **the MCP server** (the five tools)
@@ -59,39 +59,23 @@ claude plugin marketplace add icustomerai/agentic-id-plugin
 claude plugin install agentic-id@agentic-id
 ```
 
-Restart Claude Code and ask "How many Agentic ID credits do I have?". Claude opens the iCustomer
-sign-in page (or type `/agentic-id:agentic-id-login`). The plugin runs its own small local MCP server
-(`server/mcp.mjs`, Node 18 or later, no packages) that calls the Agentic ID API; it is not the
-hosted MCP endpoint above.
+Restart Claude Code, type `/mcp`, pick `plugin:agentic-id:agentic-id` and choose **Authenticate**:
+the iCustomer sign-in page opens in your browser. The plugin connects to the hosted MCP server
+(`https://onesource-v3.icustomer.ai/mcp`) and runs nothing on your computer: no local server, no
+hooks, no scripts. There are no plugin options.
 
 Try it without installing: `claude --plugin-dir /path/to/agentic-id-plugin/plugins/agentic-id`.
 
-**Plugin options.** Claude Code asks for them when you enable the plugin; change them later with
-`/plugin configure agentic-id@agentic-id`, or in `/plugin` → **Installed** → Agentic ID →
-**Configure options**.
+**CSV files, credits and estimates** need the `agentic-id` CLI from npm; the skills use it when it
+is installed, and Claude Code asks before each command.
 
-- `api_url`: where the Agentic ID API runs. Leave the default (`https://onesource-v3.icustomer.ai`).
-  For a local V3 stack, set `http://127.0.0.1:3100`. If the address is wrong, the tools say that
-  nothing answered there (or that it is not an Agentic ID server), not that you are signed out.
-- `api_key` (sensitive): empty by default, which means sign-in with your iCustomer account. For
-  CI, paste an Agentic ID API key. Claude Code stores it in the system keychain and passes it only
-  to the local server, which sends it to the API as a Bearer token.
-
-**API-key mode (CI, headless).** A machine without a keychain prompt can set the options in a
-settings file, kept at mode 0600 and out of the repository:
-
-```json
-{ "pluginConfigs": { "agentic-id@agentic-id": {
-  "options": { "api_key": "<your key>" } } } }
-```
+**Headless runs (CI).** Sign in once in an interactive session; `claude -p` reuses that sign-in:
 
 ```bash
-claude -p "..." --settings /secure/agentic-id-settings.json \
-  --allowedTools mcp__plugin_agentic-id_agentic-id__agentic_id_validate
+claude -p "..." --allowedTools mcp__plugin_agentic-id_agentic-id__validate
 ```
 
-The id is `agentic-id@agentic-id` for the installed plugin and `agentic-id@inline` for one
-loaded with `--plugin-dir`.
+For a machine with no browser, use the CLI with an API key in `AGENTIC_ID_API_KEY_FILE` instead.
 
 ## Codex
 
