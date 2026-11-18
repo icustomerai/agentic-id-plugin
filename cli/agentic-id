@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+// The agentic-id command. Published to npm as the `agentic-id` package; from a checkout of this
+// repository, run cli/agentic-id. The Claude Code plugin no longer bundles it.
+import('./cli.mjs').then(async (m) => {
+  process.exitCode = await m.main();
+});

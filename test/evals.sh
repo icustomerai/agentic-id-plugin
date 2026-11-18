@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the plugin's skill evals (plugins/agentic-id/evals) with `claude plugin eval`.
 #
-# The five Agentic ID tools answer from the mocks in evals/mocks/agentic-id/, so no API key, no
+# The Agentic ID tools (the hosted server's: validate, resolve, enrich, find, discover, lookalike,
+# facts, ledger, feedback) answer from the mocks in evals/mocks/agentic-id/, so no sign-in, no
 # credits and no real data are involved. Model and judge calls still cost money: the run stops at
 # EVAL_MAX_COST_USD (list price).
 #

@@ -69,7 +69,7 @@ An Agentic ID is `ic-` followed by 22 letters and digits, for example `ic-7Qm2xN
 - **Entity types:** `person` and `company` today.
 - **Identifiers accepted:** work email, LinkedIn URL, a name with a company, a company domain. Personal emails and phone numbers are held back before any call is made.
 - **Every value has a level:** `verified` (proved by a direct check or something the person did), `corroborated` (independent sources agree), `claimed` (one source said so) or `contradicted` (newer evidence disagrees).
-- **Every ID has a history:** `agentic_id_ledger` replays it with the hash chain re-checked; `agentic_id_facts` shows the evidence behind each value.
+- **Every ID has a history:** `ledger` replays it with the hash chain re-checked; `facts` shows the evidence behind each value.
 
 This repository holds the Claude Code plugin, its skills, evals and CLI (MIT). The written spec and the reference ledger node are not in this repository yet.
 
@@ -82,24 +82,19 @@ claude plugin marketplace add icustomerai/agentic-id-plugin
 claude plugin install agentic-id@agentic-id
 ```
 
-Restart Claude Code, then ask:
+Restart Claude Code, type `/mcp`, pick `plugin:agentic-id:agentic-id` and choose **Authenticate**. The iCustomer sign-in page opens in your browser; sign in and go back to Claude Code. There is nothing to configure: the plugin connects to the hosted Agentic ID server at `https://onesource-v3.icustomer.ai/mcp` and runs nothing on your computer.
 
-> How many Agentic ID credits do I have?
+Then ask:
 
-Claude opens the iCustomer sign-in page in your browser (or type `/agentic-id:agentic-id-login`). Sign in, go back to Claude Code, and it answers with your workspace's balance. There is nothing to configure: the plugin talks to the hosted service at `https://onesource-v3.icustomer.ai`.
-
-Then try:
-
-> Resolve tallpinesoftware.com with Agentic ID, then tell me what I have spent.
+> Resolve tallpinesoftware.com with Agentic ID.
 
 ```
 tallpinesoftware.com   ic-7Qm2xN4vD6hWt0rK9bFc3Z   outcome: new   1 credit charged
-Workspace: 99 credits available. Spent 1 today (resolve 1).
 ```
 
 The domain, ID and numbers above are an illustration. Every real answer carries its own `cost` block.
 
-The plugin needs Node.js 18 or later and installs no packages. Until this repository is public, installing needs git access to the iCustomer GitHub organisation (`gh auth login`, then `gh auth setup-git`); without it, `marketplace add` fails with a git error. The marketplace is named `agentic-id`, so it never clashes with another iCustomer marketplace such as Growth Brain's.
+The plugin is Markdown and a pointer to the hosted server: it needs no Node.js and installs nothing. Until this repository is public, installing needs git access to the iCustomer GitHub organisation (`gh auth login`, then `gh auth setup-git`); without it, `marketplace add` fails with a git error. The marketplace is named `agentic-id`, so it never clashes with another iCustomer marketplace such as Growth Brain's.
 
 Using Codex, Cursor, Hermes, Pi or another agent? See [docs/agents.md](docs/agents.md).
 
@@ -119,28 +114,27 @@ Every surface calls the same API, with the same inputs, outputs, error codes and
 
 Resolve is the core. Enrich, find, discover and lookalike build on resolved identities. Validate checks a mailbox before you send.
 
+The hosted MCP server, which the Claude Code plugin connects to:
+
 | Tool | What it answers | Credits |
 |---|---|---|
-| `agentic_id_validate` | Is this work mailbox real? | 1 per `valid`, `invalid` or `catch-all` answer; `unknown` and `rejected` are free |
-| `agentic_id_resolve` | Who is this? A work email, LinkedIn URL, name with a company, or a domain, resolved to one stable ID | 1 per ID; 0 for one your workspace already holds |
-| `agentic_id_resolve_many` | Which rows in this list are the same person or company? Up to 500 rows | 1 per distinct ID |
-| `agentic_id_enrich` | Title, company and work email for a person; industry, size and country for a company | 2 per person, 1 per company; nothing found, nothing charged |
-| `agentic_id_find` | Who holds a role at a known company | 2 per person |
-| `agentic_id_discover` | Which companies and people match your ideal customer profile | 1 per company plus 2 per person; a count is free |
-| `agentic_id_lookalike` | Which companies look like these seed companies | 1 per company |
-| `agentic_id_facts` | How sure is Agentic ID about each value of this ID, and why | Free |
-| `agentic_id_ledger` | What happened to this ID, with its hash chain re-checked | Free |
-| `agentic_id_workspace` | Credits left, what was spent and on what | Free |
-| `agentic_id_report` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, confirmed | Free |
-| `agentic_id_list` | Work a whole CSV file: check emails, find duplicates, fill fields, report outcomes | As the action; a dry run is free |
-| `agentic_id_estimate` | What would this call cost at most | Free |
-| `agentic_id_login`, `agentic_id_status` | Sign in or out; check the connection | Free |
+| `validate` | Is this work mailbox real? | 1 per `valid`, `invalid` or `catch-all` answer; `unknown` and refused addresses are free |
+| `resolve` | Who is this? A work email, LinkedIn URL, name with a company, or a domain, resolved to one stable ID | 1 per ID; 0 for one your workspace already holds |
+| `enrich` | Title, company and work email for a person; industry, size, revenue and more for a company | 2 per person, 1 per company; nothing found, nothing charged |
+| `find` | Who holds a role at a known company | 2 per person |
+| `discover` | Which companies and people match your ideal customer profile | 1 per company plus 2 per person; a count is free |
+| `lookalike` | Which companies look like these seed companies | 1 per company |
+| `facts` | How sure is Agentic ID about each value of this ID, and why | Free |
+| `ledger` | What happened to this ID, with its hash chain re-checked | Free |
+| `feedback` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, left the company, confirmed | Free |
+
+The CLI adds what a remote server cannot do on your computer: whole CSV files in and out (`--file`), your credit balance and spend (`agentic-id workspace`), free worst-case estimates (`agentic-id estimate`) and many-row de-duplication.
 
 The `cost` block in every answer is authoritative. Exact arguments for every tool: [references/tools.md](plugins/agentic-id/skills/agentic-id/references/tools.md).
 
 ## Claude Code plugin
 
-`plugins/agentic-id/` bundles the MCP server, the skills, the CLI and a few Claude Code extras. Its own page, [plugins/agentic-id/README.md](plugins/agentic-id/README.md), says exactly what it sends, runs and stores.
+`plugins/agentic-id/` holds the connection to the hosted MCP server, the skills, the slash commands and a subagent. It is Markdown and JSON only and runs nothing on your computer, so it can be listed in Claude's plugin directory. Its own page, [plugins/agentic-id/README.md](plugins/agentic-id/README.md), says exactly what it sends, runs and stores.
 
 | Component | What it does |
 |---|---|
@@ -152,9 +146,8 @@ The `cost` block in every answer is authoritative. Exact arguments for every too
 | Skill `trust-check` | Whether a record is safe to act on, and why two records are the same ID |
 | Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a list grouped by account |
 | Commands | `/agentic-id:agentic-id-login`, `/agentic-id:agentic-id-status`, `/agentic-id:agentic-id-clean-list <csv>`, `/agentic-id:agentic-id-usage` |
-| Hooks | A spend guard before each paid call, and a usage log after each call that never holds inputs or results |
 
-To change an option later, run `/plugin configure agentic-id@agentic-id`. Updates are keyed on the version in `plugin.json`; every release bumps it. Get one with `claude plugin marketplace update agentic-id`.
+Updates are keyed on the version in `plugin.json`; every release bumps it. Get one with `claude plugin marketplace update agentic-id`.
 
 ## Hosted MCP server
 
@@ -179,14 +172,7 @@ agentic-id --version
 
 Update with `npm install -g agentic-id@latest`. Remove with `npm uninstall -g agentic-id`. To run it once without installing: `npx agentic-id doctor`.
 
-The same command also ships inside the Claude Code plugin, in `scripts/agentic-id`, and a session-start hook puts it on the PATH there. If you have the plugin and not the npm package, you can link the plugin's copy instead (`~/.local/bin` must be on your PATH):
-
-```bash
-mkdir -p ~/.local/bin
-ln -sf ~/.claude/plugins/marketplaces/agentic-id/plugins/agentic-id/scripts/agentic-id ~/.local/bin/agentic-id
-```
-
-From a checkout of this repository, run `plugins/agentic-id/scripts/agentic-id`.
+The Claude Code plugin does not bundle the command. With both installed, the plugin's skills use the CLI for CSV files, credits and estimates, and Claude Code asks you before each command it runs. From a checkout of this repository, run `cli/agentic-id`.
 
 ```bash
 agentic-id login      # browser sign-in with your iCustomer account
@@ -261,9 +247,8 @@ Never put an API key in a URL, prompt, chat message or committed file. The skill
 You pay only for results delivered. Rejected input, misses and errors on our side are free.
 
 - `max_credits` is a hard budget a call never exceeds. A call that could cost more than 10 credits is not sent without one (`cap_required`).
-- Claude Code asks you to approve any single call that could spend more than 10 credits, and again each time a session's total passes another multiple of that. Change the threshold in the plugin options.
-- An optional session budget blocks further paid calls once a session has spent it.
-- Every answer shows `cost.quoted_credits` (the most it could cost) and `cost.charged_credits` (what it did cost). `agentic_id_estimate` and a `discover` count are free.
+- The skills set `max_credits` on every paid call, never above a number you gave, and ask for one before anything over 10 credits.
+- Every answer shows `cost.quoted_credits` (the most it could cost) and `cost.charged_credits` (what it did cost). A `discover` count and `agentic-id estimate` are free.
 - The skills make the agent report credits after each call, total them for multi-step work, and ask before raising a budget.
 
 ## Errors
@@ -288,7 +273,7 @@ Full list: [references/errors.md](plugins/agentic-id/skills/agentic-id/reference
 
 - **Work identifiers only.** Work emails, LinkedIn profile URLs, names with a company, company domains. Personal email addresses, phone numbers and malformed input are held back on your machine before any call is made, and the answer says how many were held back.
 - **Requests go only to the server you configured.** Results come back into your agent's conversation. Handle them under your organisation's data policy. Contact values come back masked unless your key is allowed to read them.
-- **The local usage log holds no personal data.** Time, session, tool, outcome, error code, request ID and credits. Mode 0600, delete it any time.
+- **The plugin keeps nothing on your computer.** Your credit history is the server's record: `agentic-id workspace` or your iCustomer account.
 
 ## Skills and evals
 
@@ -303,38 +288,37 @@ EVAL_QUICK=1 ./test/evals.sh       # 1 run per case, no baseline
 ## Development
 
 ```bash
-node --test test/v3-unit.test.mjs test/log-usage.test.mjs test/signin.test.mjs   # unit tests, no network
-node test/directory-check.mjs                                                    # plugin directory checks
-./test/evals.sh                                                                  # skill evals against mocks (model cost only)
+bash test/validate.sh                                      # everything below that needs no network
+node --test test/v3-unit.test.mjs test/signin.test.mjs     # CLI unit tests, no network
+node test/directory-check.mjs                              # plugin directory checks (rules for a non-Verified organization)
+./test/evals.sh                                            # skill evals against mocks (model cost only)
 
-# Against a live server (free calls only by default):
-AGENTIC_ID_URL=<url> AGENTIC_ID_API_KEY_FILE=<file with the key> node test/protocol.test.mjs
-# A real sign-in, with you at the browser:
+# The plugin against the hosted server, after /mcp sign-in (one free call):
+./test/e2e.sh
+# A real CLI sign-in, with you at the browser:
 AGENTIC_ID_URL=<url> test/real-signin.sh
 ```
 
 ```
-plugins/agentic-id/
-  .claude-plugin/plugin.json        plugin manifest and options
-  .mcp.json                         starts the bundled MCP server
-  server/                           MCP server, CLI and API client (plain Node.js, no packages)
+plugins/agentic-id/                 the Claude Code plugin: Markdown and JSON only
+  .claude-plugin/plugin.json        plugin manifest
+  .mcp.json                         the hosted MCP server (https://onesource-v3.icustomer.ai/mcp)
   skills/                           portable Agent Skills
   agents/lead-qualification.md      subagent
   commands/                         slash commands
-  hooks/                            spend guard, PII-free usage log, PATH for the CLI
-  scripts/agentic-id                the CLI
   evals/                            skill evals and tool mocks
+cli/                                the agentic-id CLI and its API client (plain Node.js, no packages), published to npm
 docs/agents.md                      setup for Codex, Hermes, Pi and other agents
 docs/v3.md                          running against a local V3 stack
 docs/assets/                        README graphics and their generator
-test/                               unit tests, protocol test, evals, sign-in checks
+test/                               unit tests, directory checks, evals, sign-in checks
 ```
 
 This repository is its own marketplace, named `agentic-id` (`.claude-plugin/marketplace.json`).
 
-The root `package.json` publishes the CLI to npm as `agentic-id`. It ships only `scripts/` and the CLI's part of `server/`, and its version always matches `plugin.json` (a unit test checks both). To release:
+The root `package.json` publishes the CLI to npm as `agentic-id`. It ships only `cli/`, and its version always matches `plugin.json` (a unit test checks both). To release:
 
-1. Bump the version in `package.json`, `plugins/agentic-id/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `CLIENT` in `server/lib/client.mjs`, and merge.
+1. Bump the version in `package.json`, `plugins/agentic-id/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `CLIENT` in `cli/lib/client.mjs`, and merge.
 2. Check the package: `npm pack --dry-run`.
 3. Publish: in GitHub, open Actions, then **Publish CLI to npm**, then **Run workflow** on `main` with **Publish to npm** ticked. Or push a tag `v<version>` on the merge commit. Either way `.github/workflows/publish-npm.yml` runs the tests, installs the packed CLI and publishes. It needs the `NPM_TOKEN` repository secret. Left unticked, a run only checks and packs.
 

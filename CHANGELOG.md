@@ -3,6 +3,46 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.0 - 2026-11-18
+
+The plugin runs nothing on your computer, so it can be listed in Claude's plugin directory. It now
+connects to the hosted Agentic ID MCP server. **Breaking for plugin users:** the local server, the
+hooks and the bundled CLI are gone from the plugin.
+
+### Why
+Claude's plugin directory accepts nothing that runs on the user's computer from an organization
+that is not Verified. The 0.6.0 submission was refused on five counts:
+- `LOCAL_CODE_HOOK_COMMAND`: the hooks in `hooks/hooks.json`.
+- `LOCAL_CODE_MCP_SERVER`: the local MCP server started from `.mcp.json`.
+- `LOCAL_CODE_INLINE_SHELL`: the `!`-line in `/agentic-id:agentic-id-usage`.
+- `LOCAL_CODE_TOOL_GRANT`: that command's `allowed-tools: Bash(...)`.
+- `LOCAL_CODE_FILE_TYPE`: the `.mjs` files and the `agentic-id` script in the plugin folder.
+
+### Changed
+- **`.mcp.json` points at the hosted server**, `https://onesource-v3.icustomer.ai/mcp` (Streamable
+  HTTP). Sign in from `/mcp` → `plugin:agentic-id:agentic-id` → Authenticate. The plugin options
+  (`api_key`, `api_url`, `session_budget`, `confirm_above`) are gone.
+- **Tool names are the hosted server's**: `validate`, `resolve`, `enrich`, `find`, `discover`,
+  `lookalike`, `facts`, `ledger`, `feedback` (was `agentic_id_report`). The skills, commands, agent
+  and evals use them.
+- **CSV files, credits and spend, estimates and batch de-duplication** have no hosted tool; the
+  skills use the `agentic-id` CLI for them when it is installed (Claude Code asks before each
+  command), or say how to get it.
+- **Commands are plain instructions**: no inline shell and no pre-approved tools.
+- **The CLI moved to `cli/`** at the repository root (was `plugins/agentic-id/server/` and
+  `scripts/`). The npm package `agentic-id` ships it from there. `agentic-id usage` is gone with the
+  local usage log; use `agentic-id workspace`.
+- `test/directory-check.mjs` applies the rules for an organization that is not Verified by default
+  (`--verified` for the old rules), so `test/validate.sh` catches these five findings before the
+  portal does.
+
+### Removed
+- The local MCP server (`server/mcp.mjs`, `server/lib/tools.mjs`, `server/lib/list.mjs`) and its
+  `agentic_id_list`, `agentic_id_resolve_many`, `agentic_id_workspace`, `agentic_id_estimate`,
+  `agentic_id_login` and `agentic_id_status` tools.
+- The hooks: budget guard, usage log, prompt hint and PATH setup; and `scripts/usage-summary.mjs`.
+- `test/protocol.test.mjs` and `test/log-usage.test.mjs` (they tested the local server and hooks).
+
 ## 0.6.0 - 2026-11-16
 
 Fixes from the Nov 15 retest, and the CLI on npm (`npm install -g agentic-id`).

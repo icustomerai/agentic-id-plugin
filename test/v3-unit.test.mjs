@@ -1,5 +1,5 @@
 // Unit tests for the V3 layer the plugin ships: input guards, estimates, CSV, the operations
-// (against a fake API client), the MCP server's protocol handling and the CLI. No network.
+// (against a fake API client) and the CLI. No network.
 //   node --test test/v3-unit.test.mjs
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -7,14 +7,12 @@ import { createServer as createHttp } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { main } from '../plugins/agentic-id/server/cli.mjs';
-import { AgenticId, AgenticIdError, keyFromEnv, urlFromEnv } from '../plugins/agentic-id/server/lib/client.mjs';
-import { mapColumns, parseCsv, toCsv } from '../plugins/agentic-id/server/lib/csv.mjs';
-import { estimate } from '../plugins/agentic-id/server/lib/estimate.mjs';
-import { cleanCountry, cleanDomain, cleanEmail, cleanEmails, cleanIdentifiers, cleanLinkedin, cleanList, looksLikePhone } from '../plugins/agentic-id/server/lib/guards.mjs';
-import * as ops from '../plugins/agentic-id/server/lib/operations.mjs';
-import { TOOLS } from '../plugins/agentic-id/server/lib/tools.mjs';
-import { createServer } from '../plugins/agentic-id/server/mcp.mjs';
+import { main } from '../cli/cli.mjs';
+import { AgenticId, AgenticIdError, keyFromEnv, urlFromEnv } from '../cli/lib/client.mjs';
+import { mapColumns, parseCsv, toCsv } from '../cli/lib/csv.mjs';
+import { estimate } from '../cli/lib/estimate.mjs';
+import { cleanCountry, cleanDomain, cleanEmail, cleanEmails, cleanIdentifiers, cleanLinkedin, cleanList, looksLikePhone } from '../cli/lib/guards.mjs';
+import * as ops from '../cli/lib/operations.mjs';
 
 /** A stand-in for the API client: records every call, answers from `replies` (a function per verb). */
 function fake(replies = {}) {
@@ -330,7 +328,7 @@ test('the server address is remembered for the command-line tool, and only the a
   const { mkdtempSync, readFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const { rememberUrl, urlFromEnv, DEFAULT_URL } = await import('../plugins/agentic-id/server/lib/client.mjs');
+  const { rememberUrl, urlFromEnv, DEFAULT_URL } = await import('../cli/lib/client.mjs');
   const dir = mkdtempSync(join(tmpdir(), 'aid-url-'));
   assert.equal(urlFromEnv({ AGENTIC_ID_CONFIG_DIR: dir }), DEFAULT_URL);
   assert.equal(rememberUrl({ AGENTIC_ID_CONFIG_DIR: dir, AGENTIC_ID_URL: 'https://api.example.test/', AGENTIC_ID_API_KEY: 'ic-dev-secret' }), true);
@@ -338,64 +336,6 @@ test('the server address is remembered for the command-line tool, and only the a
   assert.doesNotMatch(readFileSync(join(dir, 'server.json'), 'utf8'), /secret/);
   assert.equal(urlFromEnv({ AGENTIC_ID_CONFIG_DIR: dir, AGENTIC_ID_URL: 'http://other.test' }), 'http://other.test', 'the environment wins');
   assert.equal(rememberUrl({ AGENTIC_ID_CONFIG_DIR: dir, AGENTIC_ID_URL: '${user_config.api_url}' }), false, 'an unfilled option is not remembered');
-});
-
-test('list tool: a dry run is free, a paid run needs a cap, the result is a new file and rows never come back', async () => {
-  const { mkdtempSync, readFileSync, writeFileSync, existsSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
-  const dir = mkdtempSync(join(tmpdir(), 'aid-list-'));
-  const file = join(dir, 'leads.csv');
-  writeFileSync(file, 'email,company\njane@acme.io,Acme\nJANE@acme.io,Acme\nsomeone@gmail.com,Home\n');
-  const c = fake({ validate: (b) => ({ request_id: 'r', summary: 'ok', cost: { quoted_credits: 1, charged_credits: 1 }, results: b.emails.map((email) => ({ email, verdict: 'valid' })) }) });
-  const dry = await list(c, { action: 'validate', file, dry_run: true });
-  assert.equal(dry.dry_run, true);
-  assert.match(dry.summary, /3 rows/);
-  assert.equal(c.calls.length, 0, 'a dry run sends nothing');
-  await assert.rejects(() => list(c, { action: 'validate', file }), (e) => e.code === 'cap_required' && /dry_run/.test(e.fix));
-  const done = await list(c, { action: 'validate', file, max_credits: 5 });
-  assert.equal(done.out_file, join(dir, 'leads.agentic-id.csv'));
-  assert.equal(done.cost.charged_credits, 1);
-  assert.deepEqual(c.calls[0].body.emails, ['jane@acme.io'], 'the repeat is sent once and the personal address not at all');
-  assert.ok(!JSON.stringify(done).includes('jane@'), 'rows are not returned to the conversation');
-  const out = readFileSync(done.out_file, 'utf8');
-  assert.match(out, /email_verdict/);
-  assert.match(out, /someone@gmail\.com,Home,rejected/);
-  assert.equal(readFileSync(file, 'utf8').split('\n')[0], 'email,company', 'the input is untouched');
-  await assert.rejects(() => list(c, { action: 'validate', file, out: file, max_credits: 5 }), /must not be the input/);
-  await assert.rejects(() => list(c, { action: 'validate', file: join(dir, 'nope.csv') }), (e) => e.code === 'file_not_found');
-  await assert.rejects(() => list(c, { action: 'delete', file }), /action must be/);
-  assert.ok(existsSync(done.out_file));
-});
-
-test('budget hook: a call with no cap is priced at its estimate, and larger spends need the user to approve', async () => {
-  const { decide, needsConfirmation, confirmAboveFrom, worstCase } = await import('../plugins/agentic-id/hooks/budget-guard.mjs');
-  const t = (verb) => `mcp__plugin_agentic-id_agentic-id__agentic_id_${verb}`;
-  const five = { tool_name: t('resolve_many'), tool_input: { records: [{ email: 'a@acme.io' }, { email: 'b@acme.io' }, { email: 'c@acme.io' }, { email: 'd@acme.io' }, { email: 'e@acme.io' }] } };
-  assert.equal(worstCase(five), 5);
-  assert.match(decide(five, 2, 0), /could spend up to 5 credits/, 'no max_credits is not a way round the session budget');
-  assert.equal(decide(five, 10, 0), null);
-  assert.equal(worstCase({ tool_name: t('list'), tool_input: { action: 'resolve', file: '/x.csv', dry_run: true } }), 0);
-  assert.equal(worstCase({ tool_name: t('list'), tool_input: { action: 'resolve', file: '/x.csv' } }), Infinity);
-  assert.equal(confirmAboveFrom({}), 10);
-  assert.equal(confirmAboveFrom({ CLAUDE_PLUGIN_OPTION_CONFIRM_ABOVE: '${user_config.confirm_above}' }), 10);
-  assert.equal(confirmAboveFrom({ CLAUDE_PLUGIN_OPTION_CONFIRM_ABOVE: '250' }), 250);
-  assert.equal(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 5, max_credits: 5 } }, 10), null);
-  assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 300, max_credits: 300 } }, 10), /may spend up to 300 credits/);
-  assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 50 } }, 10), /up to 50 credits/, 'priced even without max_credits');
-  assert.equal(needsConfirmation({ tool_name: t('discover'), tool_input: { count_only: true, max_accounts: 300 } }, 10), null);
-  assert.equal(needsConfirmation({ tool_name: t('workspace'), tool_input: {} }, 0), null, 'free calls never ask');
-  // Many small calls: approval again when the session's spend would cross another 10.
-  const one = { tool_name: t('resolve'), tool_input: { email: 'a@acme.io', max_credits: 1 } };
-  assert.equal(needsConfirmation(one, 10, 0), null);
-  assert.equal(needsConfirmation(one, 10, 8), null);
-  assert.equal(needsConfirmation(one, 10, 9), null, 'the tenth credit goes through');
-  assert.match(needsConfirmation(one, 10, 10), /has spent 10 credits .* go past 10 credits/, 'the eleventh asks');
-  assert.equal(needsConfirmation(one, 10, 11), null);
-  assert.match(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 5, max_credits: 5 } }, 10, 17), /go past 20 credits/);
-  assert.equal(needsConfirmation({ tool_name: t('discover'), tool_input: { max_accounts: 3, max_credits: 3 } }, 10, 17), null, '17 + 3 reaches 20 but does not pass it');
-  assert.match(needsConfirmation({ tool_name: t('resolve'), tool_input: { email: 'a@acme.io' } }, 0), /up to 1 credits/, '0 asks before every paid call');
 });
 
 test('resolve_many never goes past its cap, even with lookups running side by side', async () => {
@@ -497,35 +437,6 @@ test('cli files: two email columns are both read, and skipped rows say why', asy
   // (the summary names the rows without an ID, so nobody has to guess which)
   assert.ok(rows[3].resolve_note.length > 0, 'a skipped row always says why');
   assert.doesNotMatch(rows[2].resolve_note, /gmail|cy@/, 'the note never repeats the held-back value');
-});
-
-test('prompt hint: company, people, list and credit questions get the reminder; other work does not', async () => {
-  const { hintFor } = await import('../plugins/agentic-id/hooks/prompt-hint.mjs');
-  for (const p of ['How many fintech companies are there in Germany?', 'Identify notion.so for me.', 'What did I spend today, and on which companies?', 'find 50 leads like these', 'is jane@acme.io a real email? check it', 'sign me in']) assert.match(hintFor(p), /agentic_id/, p);
-  for (const p of ['write me a haiku about spreadsheets', 'fix the failing unit test in src/app.ts', 'refactor this function', 'what is identity resolution?']) assert.equal(hintFor(p), null, p);
-  assert.match(hintFor('what did I spend'), /agentic_id_workspace .*never the local log/);
-  assert.equal(hintFor(undefined), null);
-});
-
-test('list tool: replace_original saves the original first, and never replaces it after a partial run', async () => {
-  const { mkdtempSync, readFileSync, writeFileSync, existsSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
-  const dir = mkdtempSync(join(tmpdir(), 'aid-replace-'));
-  const file = join(dir, 'leads.csv');
-  const original = 'email\na@alpha-synthetic.com\nb@beta-synthetic.com\nc@gamma-synthetic.com\n';
-  writeFileSync(file, original);
-  const c = fake({ resolve: () => ({ cost: { quoted_credits: 1, charged_credits: 1 }, id: `ic-id${Math.random().toString(36).slice(2, 8)}0`, outcome: 'new' }) });
-  const partial = await list(c, { action: 'resolve', file, max_credits: 2, replace_original: true });
-  assert.equal(readFileSync(file, 'utf8'), original, 'a run stopped by its cap leaves the original alone');
-  assert.equal(partial.partial, true);
-  assert.ok(existsSync(join(dir, 'leads.agentic-id.csv')));
-  const done = await list(c, { action: 'resolve', file, max_credits: 5, replace_original: true });
-  assert.equal(done.original_saved_as, join(dir, 'leads.original.csv'));
-  assert.equal(readFileSync(done.original_saved_as, 'utf8'), original, 'the original is saved byte for byte');
-  assert.match(readFileSync(file, 'utf8'), /agentic_id/, 'and the result is now in the file');
-  await assert.rejects(() => list(c, { action: 'resolve', file, out: join(dir, 'x.csv'), replace_original: true, max_credits: 5 }), /either out or replace_original/);
 });
 
 test('cli files: a refused key stops the run with exit 2 and writes nothing', async () => {
@@ -670,104 +581,6 @@ test('client: an unset plugin option is not mistaken for a key or a URL', () => 
   assert.equal(keyFromEnv({ AGENTIC_ID_API_KEY_FILE: join(dir, 'key') }), 'from-a-file');
 });
 
-// ------------------------------------------------------------------ MCP protocol
-const rpc = (server, method, params, id = 1) => server.handle({ jsonrpc: '2.0', id, method, params });
-
-test('mcp: initialize, ping, tools/list and unknown methods', async () => {
-  const s = createServer({ client: fake() });
-  const init = await rpc(s, 'initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '0' } });
-  assert.equal(init.result.protocolVersion, '2025-03-26');
-  assert.equal((await rpc(s, 'initialize', { protocolVersion: '1999-01-01' })).result.protocolVersion, '2025-06-18');
-  assert.equal(init.result.serverInfo.name, 'agentic-id');
-  assert.deepEqual((await rpc(s, 'ping')).result, {});
-  assert.equal(await s.handle({ jsonrpc: '2.0', method: 'notifications/initialized' }), undefined, 'notifications get no answer');
-  assert.equal((await rpc(s, 'nope/nope')).error.code, -32601);
-  assert.equal((await s.handle({ id: 1, method: 'ping' })).error.code, -32600);
-  const { tools } = (await rpc(s, 'tools/list')).result;
-  assert.deepEqual(tools.map((t) => t.name), TOOLS.map((t) => t.name));
-  for (const t of tools) {
-    assert.match(t.name, /^agentic_id_[a-z_]+$/);
-    assert.equal(t.inputSchema.type, 'object');
-    assert.equal(t.inputSchema.additionalProperties, false, `${t.name} accepts no unknown keys`);
-    assert.ok(t.description.length > 60 && t.description.length < 1024, `${t.name} description length`);
-    assert.equal(t.run, undefined, 'the handler is not part of the listing');
-    assert.equal(typeof t.annotations.readOnlyHint, 'boolean');
-  }
-});
-
-test('mcp: a tool answer is a summary line plus JSON, and the same as structured content', async () => {
-  const s = createServer({ client: fake({ discover: { request_id: 'req_9', summary: 'About 1,637 match. Nothing charged.', cost: { quoted_credits: 0, charged_credits: 0 }, accounts: [] } }) });
-  const r = (await rpc(s, 'tools/call', { name: 'agentic_id_discover', arguments: { account_filters: { country: ['GB'] }, count_only: true } })).result;
-  assert.equal(r.isError, undefined);
-  const [summary, body] = r.content[0].text.split('\n');
-  assert.equal(summary, 'About 1,637 match. Nothing charged.');
-  assert.deepEqual(JSON.parse(body), r.structuredContent);
-  assert.equal(r.structuredContent.request_id, 'req_9');
-});
-
-test('mcp: refusals are tool errors with error, message and fix; unknown arguments are caught', async () => {
-  const s = createServer({ client: fake({ enrich: () => { throw new AgenticIdError(402, 'credits.insufficient', 'Not enough credits.', { available: 0 }); } }) });
-  const local = (await rpc(s, 'tools/call', { name: 'agentic_id_resolve', arguments: { identifiers: { email: 'x@gmail.com' } } })).result;
-  assert.equal(local.isError, true);
-  assert.equal(local.structuredContent.sent, false);
-  assert.match(local.content[0].text, /^Not sent: /);
-  const remote = (await rpc(s, 'tools/call', { name: 'agentic_id_enrich', arguments: { contact: { email: 'a@acme.io' } } })).result;
-  assert.equal(remote.structuredContent.error, 'credits.insufficient');
-  assert.match(remote.content[0].text, /^Agentic ID refused \(402\)/);
-  const typo = (await rpc(s, 'tools/call', { name: 'agentic_id_find', arguments: { account: { domain: 'acme.io' }, role: ['CTO'] } })).result;
-  assert.match(typo.structuredContent.message, /Unknown argument: role/);
-  assert.match(typo.structuredContent.fix, /roles/);
-  assert.equal((await rpc(s, 'tools/call', { name: 'agentic_id_nope' })).result.isError, true);
-});
-
-test('mcp: a crash inside a tool is contained and leaks nothing', async () => {
-  const s = createServer({ client: fake({ resolve: () => { throw new TypeError('secret detail jane@acme.io'); } }) });
-  const r = (await rpc(s, 'tools/call', { name: 'agentic_id_resolve', arguments: { identifiers: { email: 'jane@acme.io' } } })).result;
-  assert.equal(r.structuredContent.error, 'plugin_error');
-  assert.doesNotMatch(r.content[0].text, /jane@acme\.io|secret detail/);
-});
-
-test('mcp: estimate and status work without touching the API', async () => {
-  const c = fake({ me: { workspace_id: 'ws_1', scopes: [], key_prefix: 'ic-dev-x' } });
-  const s = createServer({ client: c });
-  const e = (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool: 'agentic_id_find', arguments: { account: { domain: 'acme-synthetic.io' }, roles: ['CTO'], limit: 10 } } })).result.structuredContent;
-  assert.deepEqual([e.max_credits, e.auto_capped], [20, false]);
-  assert.equal(c.calls.length, 0);
-  assert.match((await rpc(s, 'tools/call', { name: 'agentic_id_status', arguments: {} })).result.structuredContent.contact_values, /emails in full/);
-});
-
-test('estimate refuses arguments the call itself would refuse, and never says "nothing to enrich" for 0 credits', async () => {
-  const c = fake();
-  const s = createServer({ client: c });
-  const est = async (tool, args) => (await rpc(s, 'tools/call', { name: 'agentic_id_estimate', arguments: { tool, arguments: args } })).result;
-  // Vicky's case: enrich "by ID". enrich takes identifiers, not an Agentic ID.
-  const byId = await est('enrich', { id: 'ic-abc123def' });
-  assert.equal(byId.isError, true);
-  assert.match(byId.structuredContent.message, /does not take id/);
-  assert.match(byId.structuredContent.fix, /agentic_id_facts/);
-  const nestedId = await est('enrich', { contact: { id: 'ic-abc123def' } });
-  assert.equal(nestedId.isError, true);
-  assert.equal(nestedId.structuredContent.error, 'nothing_to_enrich');
-  const empty = await est('enrich', {});
-  assert.equal(empty.isError, true);
-  assert.doesNotMatch(JSON.stringify(empty.structuredContent), /"max_credits":0/);
-  const personal = await est('enrich', { contacts: [{ email: 'someone@gmail.com' }] });
-  assert.equal(personal.isError, true);
-  // The other paid tools: their own refusals come back from the estimate too.
-  assert.equal((await est('find', { limit: 5 })).structuredContent.error, 'account_required');
-  assert.equal((await est('discover', {})).structuredContent.error, 'request.invalid');
-  assert.equal((await est('discover', { account_filters: { colour: 'red' } })).structuredContent.error, 'request.invalid');
-  assert.equal((await est('resolve', { identifiers: { name: 'Jane Doe' } })).structuredContent.error, 'name_alone');
-  assert.equal((await est('lookalike', { seeds: ['gmail.com'] })).structuredContent.error, 'request.invalid');
-  assert.equal((await est('validate', {})).structuredContent.error, 'request.invalid');
-  // Good arguments still give the arithmetic, and nothing is ever sent.
-  const ok = (await est('enrich', { contact: { email: 'jane@acme-synthetic.io' } })).structuredContent;
-  assert.deepEqual([ok.max_credits, ok.auto_capped], [2, true]);
-  const big = (await est('discover', { account_filters: { industry: ['software'] }, max_accounts: 100 })).structuredContent;
-  assert.equal(big.max_credits, 100);
-  assert.equal(c.calls.length, 0, 'an estimate never calls the API');
-});
-
 // ------------------------------------------------------------------ CLI
 async function cli(argv, client = fake()) {
   const out = [];
@@ -874,46 +687,6 @@ test('cli: a CSV is resolved with duplicates marked, and enriched with level col
 });
 
 // ------------------------------------------------------------------ session budget hook
-test('budget hook: off by default, lets free calls through, blocks paid calls past the budget', async () => {
-  const { budgetFrom, decide, spentInSession } = await import('../plugins/agentic-id/hooks/budget-guard.mjs');
-  assert.equal(budgetFrom({}), null);
-  assert.equal(budgetFrom({ CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '' }), null);
-  assert.equal(budgetFrom({ CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: 'lots' }), null);
-  assert.equal(budgetFrom({ CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '100' }), 100);
-  assert.equal(budgetFrom({ AGENTIC_ID_SESSION_BUDGET: '25', CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '100' }), 25);
-  const t = (verb) => `mcp__plugin_agentic-id_agentic-id__agentic_id_${verb}`;
-  assert.equal(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, null, 999), null, 'no budget, no opinion');
-  assert.equal(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 20), null);
-  assert.match(decide({ tool_name: t('find'), tool_input: { max_credits: 10 } }, 100, 100), /budget of 100 credits is spent/);
-  assert.match(decide({ tool_name: t('enrich'), tool_input: { max_credits: 30 } }, 100, 80), /Set max_credits to 20 or less/);
-  for (const free of ['facts', 'ledger', 'estimate', 'status', 'workspace', 'report']) assert.equal(decide({ tool_name: t(free), tool_input: {} }, 100, 500), null, free);
-  assert.equal(decide({ tool_name: t('discover'), tool_input: { count_only: true } }, 100, 500), null);
-  assert.match(decide({ tool_name: t('discover'), tool_input: {} }, 100, 500), /spent/);
-  assert.equal(decide({ tool_name: 'mcp__github__create_issue', tool_input: {} }, 100, 500), null, 'other servers are never touched');
-
-  const dir = mkdtempSync(join(tmpdir(), 'aid-budget-'));
-  writeFileSync(join(dir, 'usage.jsonl'), [{ session_id: 's1', credits_charged: 4 }, { session_id: 's2', credits_charged: 50 }, { session_id: 's1', credits_charged: 6 }, { session_id: 's1', credits_charged: null }].map((r) => JSON.stringify(r)).join('\n') + '\nnot json\n');
-  assert.equal(spentInSession('s1', dir), 10);
-  assert.equal(spentInSession('s1', join(dir, 'missing')), 0);
-});
-
-test('budget hook: as Claude Code runs it, a denial is one JSON line and silence otherwise', async () => {
-  const { spawnSync } = await import('node:child_process');
-  const hook = new URL('../plugins/agentic-id/hooks/budget-guard.mjs', import.meta.url).pathname;
-  const dir = mkdtempSync(join(tmpdir(), 'aid-budget-'));
-  writeFileSync(join(dir, 'usage.jsonl'), `${JSON.stringify({ session_id: 's1', credits_charged: 12 })}\n`);
-  const run = (payload, env) => spawnSync(process.execPath, [hook], { input: typeof payload === 'string' ? payload : JSON.stringify(payload), env: { PATH: process.env.PATH, AGENTIC_ID_CONFIG_DIR: dir, ...env }, encoding: 'utf8' });
-  const paid = { session_id: 's1', tool_name: 'mcp__plugin_agentic-id_agentic-id__agentic_id_find', tool_input: { account: { domain: 'acme.io' }, max_credits: 4 } };
-  const denied = run(paid, { CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '10' });
-  assert.equal(denied.status, 0);
-  const out = JSON.parse(denied.stdout);
-  assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
-  assert.doesNotMatch(denied.stdout, /acme\.io/, 'the reason never repeats the input');
-  assert.equal(run(paid, {}).stdout, '', 'no budget set: silent');
-  assert.equal(run(paid, { CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '100' }).stdout, '', 'inside the budget: silent');
-  assert.equal(run('not json', { CLAUDE_PLUGIN_OPTION_SESSION_BUDGET: '10' }).status, 0, 'a broken payload never blocks a call');
-});
-
 test('enrich: field names are checked and old names are mapped', async () => {
   const c = fake();
   await ops.enrich(c, { contact: { email: 'a@acme.io' }, fields: ['Job Title', 'email', 'company'] });
@@ -926,60 +699,11 @@ test('enrich: field names are checked and old names are mapped', async () => {
   assert.deepEqual(c.calls.at(-1).body.fields, ['employees', 'industry']);
 });
 
-test('review: a server error in a file run reaches the tool as the server sent it, not rebuilt from the exit code', async () => {
-  const { mkdtempSync, writeFileSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
-  const { AgenticIdError } = await import('../plugins/agentic-id/server/lib/client.mjs');
-  const dir = mkdtempSync(join(tmpdir(), 'aid-list-err-'));
-  const file = join(dir, 'leads.csv');
-  writeFileSync(file, 'email,company\njane@acme.io,Acme\njoe@acme.io,Acme\n');
-  // Out of credits part way: before, this came back as cap_required, "Not sent", "call again with max_credits".
-  const broke = fake({ validate: () => { throw new AgenticIdError(402, 'credits.insufficient', 'Not enough credits.', { available: 0, request_id: 'req_42' }); } });
-  await assert.rejects(() => list(broke, { action: 'validate', file, max_credits: 5 }), (e) => {
-    assert.equal(e.status, 402);
-    assert.equal(e.code, 'credits.insufficient');
-    assert.notEqual(e.local, true, 'it was sent: earlier batches may have been charged');
-    assert.equal(e.toJSON().available_credits, 0);
-    assert.doesNotMatch(e.fix ?? '', /max_credits/, 'the advice is not "call again with a cap"');
-    return true;
-  });
-  // A refused key: before, status 0, read as "Agentic ID did not answer".
-  const refused = fake({ validate: () => { throw new AgenticIdError(401, 'auth.invalid_key', 'The key was refused.'); } });
-  await assert.rejects(() => list(refused, { action: 'validate', file, max_credits: 5 }), (e) => e.status === 401 && e.code === 'auth.invalid_key');
-  // A refusal made on this machine keeps its tool-worded message.
-  await assert.rejects(() => list(fake({}), { action: 'validate', file }), (e) => e.code === 'cap_required' && e.local === true && /dry_run/.test(e.fix));
-});
-
-test('the CLI is put on PATH by a session-start hook, since claude.ai-hosted plugins may not ship bin/', async () => {
-  const { existsSync, mkdtempSync, readFileSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join, dirname } = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
-  const { execFileSync } = await import('node:child_process');
-  const { addToPath, pathLine } = await import('../plugins/agentic-id/hooks/add-to-path.mjs');
-  const plugin = join(dirname(fileURLToPath(import.meta.url)), '../plugins/agentic-id');
-  assert.equal(existsSync(join(plugin, 'bin')), false, 'no top-level bin/ folder');
-  assert.ok(existsSync(join(plugin, 'scripts/agentic-id')));
-  const hooks = JSON.parse(readFileSync(join(plugin, 'hooks/hooks.json'), 'utf8')).hooks;
-  assert.match(JSON.stringify(hooks.SessionStart), /add-to-path\.mjs/);
-  const envFile = join(mkdtempSync(join(tmpdir(), 'aid-env-')), 'env.sh');
-  assert.equal(addToPath(undefined, join(plugin, 'scripts')), false, 'no env file offered: nothing written');
-  assert.equal(addToPath(envFile, join(plugin, 'scripts')), true);
-  assert.equal(addToPath(envFile, join(plugin, 'scripts')), false, 'a resumed session does not add it twice');
-  assert.equal(readFileSync(envFile, 'utf8'), pathLine(join(plugin, 'scripts')) + '\n');
-  // A shell that sources that file finds the command by name.
-  const out = execFileSync('bash', ['-c', `source "${envFile}" && agentic-id --help`], { encoding: 'utf8' });
-  assert.match(out, /agentic-id <command>/);
-  assert.match(pathLine("/a b/it's"), /^export PATH='\/a b\/it'\\''s':"\$PATH"$/, 'a folder with spaces or a quote stays one word');
-});
-
 // ------------------------------------------------------------------ Vicky's test report (0.5.2)
 // One test per item that is code. Synthetic data only.
-const { shieldReply, shieldProblem, isSourceFailure, leaksSource } = await import('../plugins/agentic-id/server/lib/shield.mjs');
-const { companyNameProblem } = await import('../plugins/agentic-id/server/lib/guards.mjs');
-const { decodeText, sniffDelimiter, FORMULA_START } = await import('../plugins/agentic-id/server/lib/csv.mjs');
+const { shieldReply, shieldProblem, isSourceFailure, leaksSource } = await import('../cli/lib/shield.mjs');
+const { companyNameProblem } = await import('../cli/lib/guards.mjs');
+const { decodeText, sniffDelimiter, FORMULA_START } = await import('../cli/lib/csv.mjs');
 
 test('shield (#4 #7 #8): vendor names, plans, provider counts and a source\'s bill never reach the user', () => {
   const r = shieldReply({
@@ -1026,10 +750,6 @@ test('shield (#4 #5 #6): a source\'s 402 is "a data source was unavailable"; our
       assert.match(e.detail, /Nothing was charged/);
       const own = await refused(() => c.enrich({ contact: { email: 'ada@acme-synthetic.com' }, max_credits: 2 }));
       assert.equal(own.code, 'credits.insufficient', 'the user\'s own wallet is still reported as such');
-      const tool = await createServer({ client: c }).callTool({ name: 'agentic_id_validate', arguments: { emails: ['ada@acme-synthetic.com'], max_credits: 1 } });
-      assert.equal(tool.isError, true);
-      assert.match(tool.content[0].text, /^Agentic ID could not answer: A data source/);
-      assert.doesNotMatch(tool.content[0].text, /treg|refused \(402\)/i);
     },
   );
 });
@@ -1184,33 +904,6 @@ test('resolve file run (#10): a source that is down writes no vendor text into t
   assert.equal(leaksSource(text + r.err + r.out), false);
 });
 
-test('list tool (#15): upload a CSV and enrich the people in it, with the result in a new file', async () => {
-  const { list } = await import('../plugins/agentic-id/server/lib/list.mjs');
-  const dir = mkdtempSync(join(tmpdir(), 'aid-list-enrich-'));
-  const file = join(dir, 'people.csv');
-  writeFileSync(file, 'First Name,Last Name,Company,Email\nAda,Lovelace,Acme Synthetic,ada@acme-synthetic.com\nBo,Smith,bo@gmail.com,bo@beta-synthetic.com\n,,,\n');
-  const c = fake({ enrich: (b) => ({ request_id: 'r', summary: 'ok', cost: { quoted_credits: 4, charged_credits: 4 }, results: (b.contacts ?? [b.contact]).map(() => ({ status: 'enriched', fields: [{ field: 'title', value: 'CTO', level: 'corroborated' }] })) }) });
-  const dry = await list(c, { action: 'enrich', file, dry_run: true });
-  assert.equal(dry.dry_run, true);
-  assert.equal(c.calls.length, 0);
-  const done = await list(c, { action: 'enrich', file, max_credits: 4 });
-  assert.equal(done.cost.charged_credits, 4);
-  assert.doesNotMatch(JSON.stringify(c.calls), /gmail/, 'the personal email typed as a company was not sent');
-  const rows = parseCsv(readFileSync(done.out_file, 'utf8')).rows;
-  assert.equal(rows.length, 3);
-  assert.ok(Object.keys(rows[0]).some((k) => /title/.test(k)), Object.keys(rows[0]).join(','));
-});
-
-test('evals: the mock tool list is the server\'s tool list', async () => {
-  const { readdirSync } = await import('node:fs');
-  const root = new URL('../plugins/agentic-id/evals/', import.meta.url).pathname;
-  const want = JSON.stringify({ tools: TOOLS.map(({ run: _r, ...t }) => t) }, null, 2) + '\n';
-  const dirs = [join(root, 'mocks/agentic-id'), ...readdirSync(join(root, 'behaviour')).map((d) => join(root, 'behaviour', d, 'mocks/agentic-id'))].filter((d) => (() => { try { return readdirSync(d).includes('_tools.json'); } catch { return false; } })());
-  assert.ok(dirs.length >= 1);
-  for (const d of dirs) assert.equal(readFileSync(join(d, '_tools.json'), 'utf8'), want, d);
-  for (const d of dirs) for (const f of readdirSync(d).filter((n) => n.endsWith('.md'))) assert.equal(leaksSource(readFileSync(join(d, f), 'utf8').replace(/"source": "provider"/g, '')), false, `${d}/${f}`);
-});
-
 test('discover: a filter under another name is mapped, an unknown one is refused, never silently dropped', async () => {
   const c = fake({ discover: { request_id: 'r', summary: 'About 812 match.', cost: { quoted_credits: 0, charged_credits: 0 }, total_matching: 812, accounts: [] } });
   await ops.discover(c, { account_filters: { industries: ['software'], countries: ['gb'] }, count_only: true });
@@ -1236,7 +929,7 @@ test('docs: slash commands are written with the plugin prefix, as Claude Code sh
 test('npm package: one version everywhere, and it ships every file the agentic-id command loads', async () => {
   const { existsSync, statSync } = await import('node:fs');
   const { dirname, relative, resolve } = await import('node:path');
-  const { CLIENT } = await import('../plugins/agentic-id/server/lib/client.mjs');
+  const { CLIENT } = await import('../cli/lib/client.mjs');
   const root = new URL('../', import.meta.url).pathname;
   const read = (p) => JSON.parse(readFileSync(join(root, p), 'utf8'));
   const pkg = read('package.json');
@@ -1259,13 +952,12 @@ test('npm package: one version everywhere, and it ships every file the agentic-i
     for (const [, spec] of readFileSync(file, 'utf8').matchAll(/(?:from\s+|import\()\s*['"](\.{1,2}\/[^'"]+)['"]/g)) walk(resolve(dirname(file), spec));
   };
   walk(bin);
-  walk(join(root, 'plugins/agentic-id/scripts/usage-summary.mjs')); // `agentic-id usage` runs it
   const missing = [...seen].filter((f) => !shipped(f));
   assert.deepEqual(missing, [], `not in package.json "files": ${missing.join(', ')}`);
 });
 
-test('the sign-in helper runs a command that exists (scripts/agentic-id, not the old bin/)', async () => {
+test('the sign-in helper runs a command that exists (cli/agentic-id)', async () => {
   const { existsSync } = await import('node:fs');
-  const { CLI_SCRIPT } = await import('../plugins/agentic-id/server/lib/operations.mjs');
+  const { CLI_SCRIPT } = await import('../cli/lib/operations.mjs');
   assert.ok(existsSync(CLI_SCRIPT), CLI_SCRIPT);
 });

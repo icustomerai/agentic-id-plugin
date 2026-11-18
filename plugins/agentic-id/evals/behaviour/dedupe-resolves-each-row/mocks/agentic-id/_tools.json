@@ -1,0 +1,742 @@
+{
+  "tools": [
+    {
+      "name": "validate",
+      "description": "Is this mailbox real? Answers valid, invalid, catch-all (the server accepts everything, so not proven) or unknown (no answer; free). Malformed, disposable and personal addresses are refused before any check and never charged. B2B only: work identities and companies, no personal emails or phone numbers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "maxLength": 253,
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 320,
+            "type": "string"
+          },
+          "emails": {
+            "items": {
+              "maxLength": 320,
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "max_credits": {
+            "description": "The most this call may charge. Never charged past it.",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "Why you are asking. Defaults to b2b_outbound.",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "resolve",
+      "description": "Turn a work email, LinkedIn URL, phone, name plus company, an old platform ID, or a company domain into one stable Agentic ID. Says whether it was already known, is new, or needs review. Use the ID with enrich and the ledger.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "identifiers": {
+            "type": "object",
+            "properties": {
+              "company_domain": {
+                "maxLength": 253,
+                "type": "string"
+              },
+              "company_name": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "crm_id": {
+                "description": "Your CRM's ID for the person. Finds a person you linked before; never creates one. Kept for your workspace only.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "customer_id": {
+                "description": "Your customer ID for the person. Same rules as crm_id.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "email": {
+                "maxLength": 320,
+                "type": "string"
+              },
+              "id": {
+                "description": "An Agentic ID (ic-...) your workspace already holds, or a legacy ID from the old platform.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "linkedin_url": {
+                "maxLength": 500,
+                "type": "string"
+              },
+              "loyalty_id": {
+                "description": "Your loyalty programme ID for the person. Same rules as crm_id.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "phone": {
+                "description": "A phone number. Used to match, never to link on its own: phones get reassigned and shared.",
+                "maxLength": 40,
+                "type": "string"
+              }
+            }
+          },
+          "kind": {
+            "description": "Inferred when omitted: a person if any person field is given.",
+            "enum": [
+              "person",
+              "company"
+            ],
+            "type": "string"
+          },
+          "max_credits": {
+            "description": "The most this call may charge. Never charged past it.",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "Why you are asking. Defaults to b2b_outbound.",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "type": "string"
+          },
+          "spend": {
+            "default": false,
+            "description": "Ask paid sources when the ledger cannot resolve it.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "identifiers"
+        ]
+      }
+    },
+    {
+      "name": "enrich",
+      "description": "Fill in missing facts (title, company, work email; for a company: industry, size, revenue, founded year, NAICS/SIC codes, head-office address and phone, funding, keywords, technologies; ask for fields by name or [\"all\"]). A contact can be sent by email, LinkedIn, name plus company, phone, or an Agentic ID your workspace holds. Each value comes with its level: verified (proved by a direct check or something the person did), corroborated (independent sources agree), claimed (one source). Nothing found, nothing charged. B2B only: work identities and companies, no personal emails or phone numbers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "company": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "contact": {
+            "type": "object",
+            "properties": {
+              "company_domain": {
+                "maxLength": 253,
+                "type": "string"
+              },
+              "company_name": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "crm_id": {
+                "description": "Your CRM's ID for the person. Finds a person you linked before; never creates one. Kept for your workspace only.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "customer_id": {
+                "description": "Your customer ID for the person. Same rules as crm_id.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "email": {
+                "maxLength": 320,
+                "type": "string"
+              },
+              "id": {
+                "description": "An Agentic ID (ic-...) your workspace already holds, or a legacy ID from the old platform.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "linkedin_url": {
+                "maxLength": 500,
+                "type": "string"
+              },
+              "loyalty_id": {
+                "description": "Your loyalty programme ID for the person. Same rules as crm_id.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "phone": {
+                "description": "A phone number. Used to match, never to link on its own: phones get reassigned and shared.",
+                "maxLength": 40,
+                "type": "string"
+              }
+            }
+          },
+          "contacts": {
+            "description": "Up to 250 contacts in one call; they are looked up side by side.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "company_domain": {
+                  "maxLength": 253,
+                  "type": "string"
+                },
+                "company_name": {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "crm_id": {
+                  "description": "Your CRM's ID for the person. Finds a person you linked before; never creates one. Kept for your workspace only.",
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "customer_id": {
+                  "description": "Your customer ID for the person. Same rules as crm_id.",
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "email": {
+                  "maxLength": 320,
+                  "type": "string"
+                },
+                "id": {
+                  "description": "An Agentic ID (ic-...) your workspace already holds, or a legacy ID from the old platform.",
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "linkedin_url": {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                "loyalty_id": {
+                  "description": "Your loyalty programme ID for the person. Same rules as crm_id.",
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "phone": {
+                  "description": "A phone number. Used to match, never to link on its own: phones get reassigned and shared.",
+                  "maxLength": 40,
+                  "type": "string"
+                }
+              }
+            },
+            "maxItems": 250,
+            "type": "array"
+          },
+          "fields": {
+            "description": "Only these fields (e.g. title, work_email, company_domain, founded, revenue_range, naics_codes), or [\"all\"]. A company's extra fields cost nothing more.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "max_credits": {
+            "description": "The most this call may charge. Never charged past it.",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "Why you are asking. Defaults to b2b_outbound.",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "max_credits"
+        ]
+      }
+    },
+    {
+      "name": "find",
+      "description": "People at one known company (account.domain or account.id): by title (title [\"VP Marketing\"]), by seniority (\"director+\", [\"vp\", \"c_suite\"], \"all\"), by job_function (\"marketing\", [\"sales\", \"information_technology\"]), or leave them all out for everyone at the company (up to 25 per call; call again with exclude_seen true for the next people). Former roles and advisors never count. Every person returned costs 2 credits (repeats and IDs you already hold are free). People a source places there but we cannot confirm are also returned and charged, but flagged: employment.status \"unconfirmed\" and employment.flag says why. include_unconfirmed: false leaves them out. status says found, none_found, not_checked (a source was down: unknown, not \"nobody\") or partly_checked. Set max_credits.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "object",
+            "properties": {
+              "domain": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "countries": {
+            "description": "Old name for country, kept until 2.0.0. country wins when both are sent.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "country": {
+            "description": "Where the person is (not the company's HQ).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "exclude_seen": {
+            "default": true,
+            "type": "boolean"
+          },
+          "include_unconfirmed": {
+            "default": true,
+            "description": "People a source says work here but whose employer we can not confirm yet are returned and charged, but flagged (employment.status \"unconfirmed\", employment.flag says why). false leaves them out.",
+            "type": "boolean"
+          },
+          "job_function": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "description": "e.g. \"marketing\" or [\"sales\", \"information_technology\"]. Read into our 17 functions and checked from each title."
+          },
+          "limit": {
+            "default": 5,
+            "maximum": 25,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_credits": {
+            "description": "The most this call may charge. Never charged past it.",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "Why you are asking. Defaults to b2b_outbound.",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "type": "string"
+          },
+          "roles": {
+            "description": "Old name for title, kept until 2.0.0. title wins when both are sent.",
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "seniority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "description": "e.g. \"director+\", [\"vp\", \"c_suite\"], or \"all\". Leave out roles and seniority to ask for everyone at the company."
+          },
+          "title": {
+            "description": "Titles to look for, e.g. [\"VP Marketing\", \"Head of Growth\"].",
+            "items": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "account",
+          "max_credits"
+        ]
+      }
+    },
+    {
+      "name": "discover",
+      "description": "Companies that match account_filters (industry, country, employees_min/max, revenue_min/max in USD, technologies, keywords), and optionally the people in them (contact_filters). Use count_only: true first: it is free and says how many match and which source would be asked. Values we cannot read come back in \"rejected\", never silently dropped. contact_filters.seniority takes \"director+\", a list, or \"all\"; contact_filters.job_function takes \"marketing\" or a list; contacts follow the same rules as find (unconfirmed contacts come back flagged and charged unless include_unconfirmed is false).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account_filters": {
+            "type": "object",
+            "properties": {
+              "country": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "employees_max": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "employees_min": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "founded_from": {
+                "maximum": 9007199254740991,
+                "minimum": 1700,
+                "type": "integer",
+                "description": "Founded in this year or later."
+              },
+              "founded_to": {
+                "maximum": 9007199254740991,
+                "minimum": 1700,
+                "type": "integer",
+                "description": "Founded in this year or earlier."
+              },
+              "funding_stage": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ],
+                "description": "Latest funding stage: pre_seed, seed, series_a, series_b, series_c, series_d_plus, private_equity, ipo, acquired, bootstrapped. Labels like \"Series C\" are read too."
+              },
+              "industry": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "keywords": {
+                "description": "Rank results by these words in the company description. They filter only with keywords_required, or when they are the only filter.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "keywords_required": {
+                "type": "boolean"
+              },
+              "revenue_max": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+                "description": "Annual revenue in USD, at most."
+              },
+              "revenue_min": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+                "description": "Annual revenue in USD, at least. Bands we use: <1M, 1M-10M, 10M-50M, 50M-100M, 100M-500M, 500M-1B, 1B+. A company whose revenue no source gives is left out, not guessed."
+              },
+              "revenue_range": {
+                "description": "Our revenue bands, e.g. [\"10M-50M\", \"50M-100M\"]. Ignored when revenue_min or revenue_max is set.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "technologies": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "contact_filters": {
+            "type": "object",
+            "properties": {
+              "countries": {
+                "description": "Old name for country, kept until 2.0.0. country wins when both are sent.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "country": {
+                "description": "Where the person is (not the company's HQ).",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "include_unconfirmed": {
+                "description": "Default true: people whose employer we can not confirm yet come back flagged and charged (employment.status \"unconfirmed\"). false leaves them out.",
+                "type": "boolean"
+              },
+              "job_function": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ],
+                "description": "e.g. \"marketing\" or [\"sales\", \"information_technology\"]. Read into our 17 functions and checked from each title."
+              },
+              "job_level": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ],
+                "description": "Old name for seniority, kept until 2.0.0. seniority wins when both are sent."
+              },
+              "job_title": {
+                "description": "Old name for title, kept until 2.0.0. title wins when both are sent.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "min_company_size": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+                "description": "Skip people at companies smaller than this: a \"C-suite\" at 3 people is not one at 3,000."
+              },
+              "per_account": {
+                "maximum": 10,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "seniority": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ],
+                "description": "e.g. \"director+\", [\"vp\", \"c_suite\"], or \"all\"."
+              },
+              "title": {
+                "description": "Titles to look for, e.g. [\"CTO\"].",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "count_only": {
+            "default": false,
+            "description": "Free: how many match, and what the data source can filter. Nothing is delivered.",
+            "type": "boolean"
+          },
+          "exclude_seen": {
+            "default": true,
+            "type": "boolean"
+          },
+          "max_accounts": {
+            "default": 25,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_credits": {
+            "description": "The most this call may charge. Never charged past it.",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "Why you are asking. Defaults to b2b_outbound.",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_filters"
+        ]
+      }
+    },
+    {
+      "name": "lookalike",
+      "description": "Give seed domains (e.g. your best customers); Agentic ID works out what they share (industry, size, country, technology), searches for more like them with the same checks as discover, never returns the seeds, and ranks results by how alike they are with the reasons. bigger_than_seeds warns when results lean to famous companies.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "exclude_seen": {
+            "default": true,
+            "type": "boolean"
+          },
+          "max_accounts": {
+            "default": 25,
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_credits": {
+            "description": "The most this call may charge. Never charged past it.",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "Why you are asking. Defaults to b2b_outbound.",
+            "enum": [
+              "b2b_outbound",
+              "ad_audience",
+              "own_customer_enrichment",
+              "fraud_check"
+            ],
+            "type": "string"
+          },
+          "seeds": {
+            "description": "Domains of companies you want more of, e.g. your best customers.",
+            "items": {
+              "maxLength": 253,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "seeds"
+        ]
+      }
+    },
+    {
+      "name": "facts",
+      "description": "For one Agentic ID: each fact's level (verified = a direct check or something the person did; corroborated = independent sources agree; claimed = one source; contradicted = newer evidence says otherwise), why, and whether it is a Verified ID. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "An Agentic ID from resolve",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "ledger",
+      "description": "Everything that ever happened to one Agentic ID (created, linked, merged), each entry hash-linked to the one before, with the whole chain re-checked. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "An Agentic ID from resolve",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "feedback",
+      "description": "Tell Agentic ID what you saw after using a delivered value: bounced, replied, wrong_person, left_company (the person does not, or no longer, work there; use field company_domain) or confirmed. It changes only your workspace's view: a value you report as wrong is no longer delivered to you, and the fact shows as contradicted in facts. Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "description": "Which value you used.",
+            "enum": [
+              "work_email",
+              "personal_email",
+              "mobile_phone",
+              "phone",
+              "title",
+              "company_domain"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "The Agentic ID the value belongs to. Your workspace must hold it.",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "What happened: the email bounced, the person replied, it reached the wrong person, the person does not (or no longer) work at that company, or your CRM confirms it.",
+            "enum": [
+              "bounced",
+              "replied",
+              "wrong_person",
+              "left_company",
+              "confirmed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "field",
+          "outcome"
+        ]
+      }
+    }
+  ]
+}

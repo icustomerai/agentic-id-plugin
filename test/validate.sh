@@ -3,9 +3,10 @@
 #   1. `claude plugin validate` on the marketplace and the plugin (skipped if unavailable)
 #   2. every *.json file parses
 #   3. skills, agents and commands carry frontmatter with a description
-#   4. .mcp.json headers come only from userConfig options, and the repo has no secret-looking values
-#   5. the Claude plugin directory's pre-submission checks (test/directory-check.mjs)
-#   6. unit tests for the usage hook, the usage summary and the bundled V3 server and CLI
+#   4. .mcp.json points only at the hosted https server, and the repo has no secret-looking values
+#   5. the Claude plugin directory's pre-submission checks (test/directory-check.mjs), with the rules
+#      for an organization that is not Verified: nothing in the plugin runs on the user's computer
+#   6. unit tests for the agentic-id CLI (cli/), which is published to npm and not bundled in the plugin
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -56,18 +57,15 @@ echo "== no static secrets"
 if node -e '
   const fs = require("fs");
   const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  const m = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-  for (const s of Object.values(c.mcpServers)) {
-    if (s.headersHelper) process.exit(1);
-    for (const [h, v] of Object.entries(s.headers ?? {})) {
-      const ref = /^\$\{user_config\.(\w+)\}$/.exec(v);
-      if (/key|token|secret|auth/i.test(h) && !(ref && m.userConfig?.[ref[1]]?.sensitive === true)) process.exit(1);
-    }
+  const servers = Object.values(c.mcpServers ?? {});
+  if (!servers.length) process.exit(1);
+  for (const s of servers) {
+    if (s.command || s.type !== "http" || !/^https:\/\//.test(s.url ?? "") || s.headersHelper || s.headers) process.exit(1);
   }
-' "$PLUGIN/.mcp.json" "$PLUGIN/.claude-plugin/plugin.json"; then
-  pass ".mcp.json: credential headers come only from sensitive userConfig options"
+' "$PLUGIN/.mcp.json"; then
+  pass ".mcp.json: only the hosted https server, no local command, no headers"
 else
-  fail ".mcp.json: a credential header must be \${user_config.<sensitive option>}, and no headersHelper"
+  fail ".mcp.json must name only a remote https server (type http), with no command, headers or headersHelper"
 fi
 # A value that is only an UPPER_SNAKE env var name (Codex env_http_headers) is a reference, not a key.
 if grep -RInE --exclude-dir=.git '(x-api-key"?\s*[:=]\s*"[A-Za-z0-9_-]{16,})|(sk-[A-Za-z0-9]{20,})|(ic-(live|test|dev)-[A-Za-z0-9_-]{8,})|(os_(live|test)_[A-Za-z0-9]{8,})' "$ROOT" \
@@ -92,8 +90,8 @@ else
 fi
 
 echo "== unit tests (node --test)"
-if node --test "$ROOT/test/log-usage.test.mjs" "$ROOT/test/v3-unit.test.mjs" "$ROOT/test/signin.test.mjs" 2>&1 | grep -E '^(not ok|# (tests|pass|fail))' | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
-  pass "usage hook and summary; V3 client, guards, operations, MCP server, CLI"
+if node --test "$ROOT/test/v3-unit.test.mjs" "$ROOT/test/signin.test.mjs" 2>&1 | grep -E '^(not ok|# (tests|pass|fail))' | sed 's/^/        /'; [ "${PIPESTATUS[0]}" -eq 0 ]; then
+  pass "CLI: client, guards, operations, CSV, sign-in"
 else
   fail "unit tests"
 fi

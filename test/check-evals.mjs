@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Static check of the eval suite (no model calls): every case has a prompt.md with a body and at
 // least one grader; every grader has a known type and the fields that type needs; every mock is
-// valid JSON for an MCP tool the plugin's server actually exposes; nothing looks like real PII.
+// for a tool the hosted Agentic ID MCP server actually exposes, shaped like its answers (a one-line
+// summary, then JSON); every _tools.json lists exactly those tools with an input schema; nothing
+// looks like real PII.
 //   node test/check-evals.mjs [plugins/agentic-id/evals]
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
@@ -9,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const EVALS = process.argv[2] ?? join(ROOT, 'plugins/agentic-id/evals');
-const TOOLS = ['validate', 'resolve', 'resolve_many', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'workspace', 'report', 'list', 'login', 'estimate', 'status'].map((v) => `agentic_id_${v}`);
+// The hosted server's tools (MCP ids mcp__plugin_agentic-id_agentic-id__<name>).
+const TOOLS = ['validate', 'resolve', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'feedback'];
 const GRADERS = {
   tool_used: ['tool'],
   tool_order: ['before', 'after'],
@@ -72,13 +75,31 @@ for (const c of cases) {
 }
 
 for (const d of mockDirs) {
+  const toolsFile = join(d, '_tools.json');
+  if (existsSync(toolsFile)) {
+    try {
+      const listed = JSON.parse(readFileSync(toolsFile, 'utf8')).tools ?? [];
+      const names = listed.map((t) => t.name);
+      for (const t of TOOLS) if (!names.includes(t)) fail(toolsFile, `missing tool ${t}`);
+      for (const t of listed) {
+        if (!TOOLS.includes(t.name)) fail(toolsFile, `tool the server does not expose: ${t.name}`);
+        if (t.inputSchema?.type !== 'object') fail(toolsFile, `${t.name} needs an object inputSchema`);
+      }
+    } catch (e) { fail(toolsFile, `not JSON: ${e.message}`); }
+  }
   for (const f of readdirSync(d).filter((n) => n.endsWith('.md'))) {
     const file = join(d, f);
     if (!TOOLS.includes(f.replace(/\.md$/, ''))) fail(file, 'mock for a tool the server does not expose');
     const { fields, body } = frontmatter(file);
     // type: agent mocks hold instructions for the judge model that plays the server, not a JSON answer.
+    // fixed mocks answer like the hosted server: one summary line, then JSON. error: true mocks may be bare JSON.
     if (fields.type === 'agent') { if (body.length < 40) fail(file, 'agent mock needs instructions'); }
-    else try { JSON.parse(body); } catch (e) { fail(file, `mock body is not JSON: ${e.message}`); }
+    else {
+      const nl = body.indexOf('\n');
+      const hasSummary = !body.startsWith('{') && nl > 0;
+      if (!hasSummary && fields.error !== 'true') fail(file, 'mock answer needs a one-line summary before the JSON');
+      try { JSON.parse(hasSummary ? body.slice(nl + 1) : body); } catch (e) { fail(file, `mock body is not JSON: ${e.message}`); }
+    }
     for (const [, domain] of body.matchAll(/[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/g)) {
       if (!domain.endsWith('-synthetic.com')) fail(file, `mock email on a real-looking domain (${domain}); use a -synthetic.com domain`);
     }

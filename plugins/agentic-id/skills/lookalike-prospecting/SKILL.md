@@ -17,31 +17,32 @@ from a CRM export: take the domain column, not names.
 
 ## 2. Run small first
 
-`agentic_id_lookalike` with `seeds`, `max_accounts: 10`, `max_credits: 10`.
+`lookalike` with `seeds`, `max_accounts: 10`, `max_credits: 10`.
 
-Before showing any company, show `profile`: the industries, countries, size range and
+Before showing any company, show the profile: the industries, countries, size range and
 technologies the seeds share. That is the search that was run. Ask: "Is this what your best
 customers have in common?" If not, change the seeds; do not buy a bigger list.
 
 Then check:
-- `seeds_rejected`: seeds that could not be used and why (does not resolve, no data).
+- seeds that could not be used, and why (does not resolve, no data).
 - `bigger_than_seeds`: above 0.5 means the list leans to companies larger than any seed, usually
-  well-known names. Tell the user, and offer a size ceiling with `agentic_id_discover` instead.
-- each account's `similarity` and `why`: report the reasons, not only the score.
+  well-known names. Tell the user, and offer a size ceiling with `discover` instead.
+- each account's similarity and the reasons: report the reasons, not only the score.
 
 ## 3. Scale with a budget
 
-With the user's yes, run again with the agreed `max_accounts` and a matching `max_credits`
-(1 credit per account). Companies already delivered to this workspace are skipped, so the same
-call again returns new ones.
+With the user's yes and a number of credits from them, run again with the agreed `max_accounts`
+and a matching `max_credits` (1 credit per account). Companies already delivered to this
+workspace are skipped, so the same call again returns new ones.
 
 For tighter control (a hard size range, one country), use the profile as the starting filters
-for `agentic_id_discover`: count first with `count_only: true`, then buy.
+for `discover`: count first with `count_only: true`, then buy.
 
 ## 4. People, only when asked
 
-For the accounts the user picks, `agentic_id_find` with `account.id` from the lookalike result,
-the agreed roles and a small `limit`. 2 credits per person: show the arithmetic first.
+For the accounts the user picks, `find` with `account: { "id": ... }` from the lookalike result
+(or its domain), the agreed `title` or `seniority`, a small `limit`, and `max_credits` of
+`limit x 2`. 2 credits per person: show the arithmetic first.
 
 ## 5. Deliver
 

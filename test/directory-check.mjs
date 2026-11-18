@@ -7,6 +7,14 @@
 //
 //   node test/directory-check.mjs [plugin-folder]     default: plugins/agentic-id
 //   node test/directory-check.mjs --strict            also fail on "held for a reviewer"
+//   node test/directory-check.mjs --verified          the organization is Verified: allow what runs on
+//                                                     the user's computer (hooks, local MCP, scripts, ...)
+//
+// By default the check applies the rules for an organization that is not Verified (iCustomer today):
+// nothing in the plugin may run on the user's computer. No command hooks (of any type), no MCP server
+// started as a local command, no inline shell (!`cmd` or a ```! block) in commands or skills, no
+// allowed-tools beyond plain Read, Grep, Glob and LS, and no file that is not Markdown, text, JSON,
+// YAML or a PNG, JPEG, GIF, WebP or ICO image.
 //
 // Results use the portal's words:
 //   BLOCK  the portal won't accept the submission until it's fixed
@@ -25,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const strict = args.includes('--strict');
+const verified = args.includes('--verified');
 const PLUGIN = resolve(ROOT, args.find((a) => !a.startsWith('--')) ?? 'plugins/agentic-id');
 const rel = (p) => relative(PLUGIN, p) || '.';
 
@@ -349,6 +358,64 @@ for (const file of componentFiles) {
   else if (/^[[{]/.test(value)) add('BLOCK', 'description is not text', rel(file));
   else if (!/^["'|>]/.test(value) && (/:\s/.test(value) || /\s#/.test(value) || /^[&*!%@`]/.test(value))) {
     add('BLOCK', "Front matter doesn't parse: quote the description (it contains ': ', ' #' or starts with a YAML indicator)", rel(file));
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rules for an organization that is not Verified: nothing may run on the user's computer.
+
+if (!verified) {
+  const UNVERIFIED = 'not accepted from an organization that is not Verified';
+
+  // LOCAL_CODE_HOOK_COMMAND: any hook, whatever its type.
+  if (existsSync(hooksPath)) add('BLOCK', `Hooks are ${UNVERIFIED} (LOCAL_CODE_HOOK_COMMAND)`, 'hooks/hooks.json');
+  if (manifest.hooks) add('BLOCK', `Hooks are ${UNVERIFIED} (LOCAL_CODE_HOOK_COMMAND)`, 'plugin.json "hooks"');
+
+  // LOCAL_CODE_MCP_SERVER: an MCP server that starts as a command. A remote https URL can stay.
+  const servers = { ...(existsSync(mcpPath) ? (readJson(mcpPath, '.mcp.json')?.mcpServers ?? {}) : {}), ...(typeof manifest.mcpServers === 'object' && !Array.isArray(manifest.mcpServers) ? manifest.mcpServers : {}) };
+  for (const [server, cfg] of Object.entries(servers)) {
+    if (cfg?.command || !['http', 'sse', 'ws'].includes(cfg?.type)) add('BLOCK', `An MCP server that runs on the user's computer is ${UNVERIFIED} (LOCAL_CODE_MCP_SERVER)`, `mcpServers.${server}`);
+    if (cfg?.headersHelper) add('BLOCK', `headersHelper runs a command; ${UNVERIFIED}`, `mcpServers.${server}`);
+  }
+
+  for (const file of files.filter((f) => /\/(commands|skills|agents)\//.test(f) && f.endsWith('.md'))) {
+    const text = read(file);
+    // LOCAL_CODE_INLINE_SHELL: !`cmd`, or a fenced block opened with ```!
+    if (/!`[^`]*`/.test(text) || /^\s*(```|~~~)\s*!/m.test(text)) add('BLOCK', `Inline shell is ${UNVERIFIED} (LOCAL_CODE_INLINE_SHELL)`, rel(file));
+    // LOCAL_CODE_TOOL_GRANT: allowed-tools beyond plain Read, Grep, Glob, LS.
+    const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (fm && /\/(commands|skills)\//.test(file)) {
+      const m = fm[1].match(/^(allowed-tools|allowedTools)\s*:\s*(.*(?:\r?\n\s+-.*)*)/m);
+      if (m) {
+        const tools = m[2].replace(/^\s*-\s*/gm, ',').replace(/[[\]"']/g, '').split(/[,\n]/).map((t) => t.trim()).filter(Boolean);
+        const bad = tools.filter((t) => !['Read', 'Grep', 'Glob', 'LS'].includes(t));
+        if (bad.length || /\$\{/.test(m[2])) add('BLOCK', `allowed-tools beyond Read, Grep, Glob and LS is ${UNVERIFIED} (LOCAL_CODE_TOOL_GRANT)`, `${rel(file)}: ${bad.join(', ') || m[2].trim()}`);
+      }
+    }
+  }
+
+  // LOCAL_CODE_FILE_TYPE: only Markdown, text, JSON, YAML and PNG/JPEG/GIF/WebP/ICO images.
+  const OK_TEXT = new Set(['.md', '.markdown', '.txt', '.json', '.yaml', '.yml', '']);
+  const OK_IMAGE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico']);
+  const TEXT_NAMES = new Set(['license', 'licence', 'readme', '.gitignore', 'notice', 'changelog']);
+  for (const file of files) {
+    const r = rel(file);
+    const st = lstatSync(file);
+    if (!st.isFile()) continue;
+    const ext = extname(file).toLowerCase();
+    const buf = readFileSync(file);
+    const isImage = OK_IMAGE.has(ext);
+    const head = buf.subarray(0, 2).toString('latin1');
+    let why = '';
+    if (!isImage && !OK_TEXT.has(ext)) why = `type ${ext || 'unknown'}`;
+    else if (!isImage && ext === '' && !TEXT_NAMES.has(basename(file).toLowerCase())) why = 'no extension (named like a program)';
+    else if (head === '#!') why = 'starts with #!';
+    else if (!isImage && buf.includes(0)) why = 'holds a NUL byte';
+    else if (st.mode & 0o111) why = 'marked executable';
+    if (PKG_CONFIG.has(basename(file)) || /^(pnpm-workspace\.ya?ml|package\.json)$/.test(basename(file))) why = 'package manager configuration';
+    if (/(^|\/)\.claude\/skills\//.test(r)) why = 'in a .claude/skills folder';
+    if (why) add('BLOCK', `File type ${UNVERIFIED} (LOCAL_CODE_FILE_TYPE): ${why}`, r);
+    if (!isImage && !buf.includes(0) && /\b(npm|pnpm|yarn)\s+config\s+set\s+registry\b|registry\s*=\s*https?:/.test(buf.toString('utf8'))) add('BLOCK', 'A line that changes where a package manager gets packages', r);
   }
 }
 
