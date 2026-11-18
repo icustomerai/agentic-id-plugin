@@ -186,11 +186,32 @@ Free. What happened after a value was used. One value per call.
 - It changes only this workspace's view: a value reported as wrong is no longer delivered to it
   and shows as `contradicted` in facts.
 
+## credits
+
+Free. No arguments are needed.
+
+- `limit` (0-200, default 20): how many recent grants, charges and delivered IDs to list.
+
+The answer starts with one line, for example "100 credits available (12 credits held by calls
+still running). Spent 3 credits today and 41 credits in the last 30 days.", then the whole record:
+
+| Field | What it holds |
+| --- | --- |
+| `credits.available` | What a new call can spend now. Report this as the balance |
+| `credits.held` | Reserved by calls still running |
+| `credits.balance` | `available` plus `held` |
+| `spent.today`, `spent.last_30_days` | Credits spent (the day is UTC) |
+| `spent.by_tool` | `tool`, `credits`, `calls` for each tool |
+| `recent` | The latest grants and charges: `at`, `kind` (`grant` or `charge`), `credits`, `tool`, `note` |
+| `recent_ids` | The latest IDs delivered and what each cost; a company carries its name or domain, a person only the ID |
+
+It is the billing record. Use it for "how many credits do I have", "what did I spend" and "what was
+that charge for". Never answer those from memory or from the `cost` blocks of this conversation.
+
 ## Not on the hosted server
 
 | Need | Use |
 | --- | --- |
-| Credits available, spend by tool, recent charges | `agentic-id workspace` (CLI), or the user's iCustomer account |
 | A cost estimate before calling | The prices in the `agentic-id-credits` skill; `discover` with `count_only`; `agentic-id estimate` (CLI) |
 | A whole CSV file (validate, resolve, enrich, report) | `agentic-id <command> --file ... --dry-run`, then with `--max-credits` (CLI) |
 | Sign in, check the connection | `/mcp` in Claude Code; for the CLI, `agentic-id login` and `agentic-id doctor` |

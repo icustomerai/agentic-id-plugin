@@ -32,7 +32,7 @@ to do. In MCP the result is marked as an error; the CLI prints the same JSON and
 | --- | --- | --- | --- |
 | `rate_limited` | 429 | Too many requests | Wait `retry_after_seconds`, then once more |
 | `service.unavailable` | 503 | Agentic ID is not taking requests for a moment | Nothing was charged. Wait, then try once more |
-| `service.timeout` | - | The call may have completed | Do not repeat a paid call blindly: ask the user, and check the spend with `agentic-id workspace` (CLI) or their iCustomer account if they can |
+| `service.timeout` | - | The call may have completed | Do not repeat a paid call blindly: ask the user, and check the spend with the `credits` tool |
 | `idempotency.in_progress` | - | The same request is still running | Wait; ask again later. It is charged once |
 | `source.unavailable` | 503 | A data source behind Agentic ID was down | Say so in one line. Nothing was charged for it. Not the user's account or credits. Try again later; do not loop |
 

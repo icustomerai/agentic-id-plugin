@@ -127,8 +127,9 @@ The hosted MCP server, which the Claude Code plugin connects to:
 | `facts` | How sure is Agentic ID about each value of this ID, and why | Free |
 | `ledger` | What happened to this ID, with its hash chain re-checked | Free |
 | `feedback` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, left the company, confirmed | Free |
+| `credits` | How many credits you have, what you spent and on what | Free |
 
-The CLI adds what a remote server cannot do on your computer: whole CSV files in and out (`--file`), your credit balance and spend (`agentic-id workspace`), free worst-case estimates (`agentic-id estimate`) and many-row de-duplication.
+The CLI adds what a remote server cannot do on your computer: whole CSV files in and out (`--file`), free worst-case estimates (`agentic-id estimate`) and many-row de-duplication.
 
 The `cost` block in every answer is authoritative. Exact arguments for every tool: [references/tools.md](plugins/agentic-id/skills/agentic-id/references/tools.md).
 

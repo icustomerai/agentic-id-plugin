@@ -737,6 +737,21 @@
           "outcome"
         ]
       }
+    },
+    {
+      "name": "credits",
+      "description": "Your workspace's credits: how many are available to spend now and how many are held by calls still running, what was spent today (UTC) and in the last 30 days by tool, and the latest grants and charges with the IDs they were for. The billing record: use it for \"how many credits do I have\", \"what did I spend\" and \"what was that charge for\". Free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200,
+            "description": "How many recent grants, charges and delivered IDs to list. Default 20."
+          }
+        }
+      }
     }
   ]
 }

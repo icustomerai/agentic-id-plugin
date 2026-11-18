@@ -77,11 +77,13 @@ and cap the call at no more than that. When the budget is spent, stop and ask.
 
 ## Balance and history
 
-- The hosted tools do not report the balance or past charges. Use `agentic-id workspace` if the
-  CLI is installed (check with `agentic-id --version`; Claude Code asks the user before running
-  it): credits available and held, spend today and in the last 30 days by tool, and the latest
-  grants and charges. `agentic-id workspace 50 --json` lists more.
-- If the CLI is not installed, tell the user they can see their balance and spend in their
-  iCustomer account, or install the CLI from npm: https://www.npmjs.com/package/agentic-id.
+- Call the `credits` tool (free). It is the billing record: credits available and held by calls
+  still running, spend today (UTC) and in the last 30 days by tool, and the latest grants and
+  charges with the IDs they were for. `limit` (0-200, default 20) sets how many recent items.
+  Use it for "how many credits do I have", "what did I spend" and "what was that charge for".
+- Lead with its first line (what is available), then what the user asked about. Report
+  `available`, not `balance`: held credits belong to calls still running.
+- Only if the `credits` tool is not there (an older server): `agentic-id workspace` if the CLI is
+  installed, or the user's iCustomer account.
 - Never guess a balance, and never conclude "nothing was spent" from your own memory of the
   session. Before a job over about 50 credits, check the balance if you can.

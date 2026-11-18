@@ -8,7 +8,6 @@ API as the hosted tools, with the same caps and answers.
 
 Use it for what the hosted tools do not do:
 - a **CSV file**, or more than about 50 rows;
-- the credit balance, spend by tool and recent charges (`agentic-id workspace`);
 - a free worst-case estimate before a call (`agentic-id estimate`);
 - recording a file of outcomes (`agentic-id report --file`).
 
@@ -66,7 +65,7 @@ agentic-id report ic-... --outcome confirmed --field title
 agentic-id report --file outcomes.csv --out reported.csv   # columns agentic_id, outcome[, field]; adds report_status
 ```
 
-`agentic-id workspace` is the billing record: use it for "how many credits do I have", "what did
+`agentic-id workspace` shows the same billing record as the hosted `credits` tool; in Claude Code prefer the tool. Use it for "how many credits do I have", "what did
 I spend" and "what was that charge for".
 
 ## Files and budgets

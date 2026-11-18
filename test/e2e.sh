@@ -22,7 +22,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 PREFIX="mcp__plugin_agentic-id_agentic-id__"
 allowed=""
-for v in validate resolve enrich find discover lookalike facts ledger feedback; do allowed+="${allowed:+,}${PREFIX}${v}"; done
+for v in validate resolve enrich find discover lookalike facts ledger feedback credits; do allowed+="${allowed:+,}${PREFIX}${v}"; done
 args=(-p --plugin-dir "$PLUGIN" --output-format text --max-budget-usd "${E2E_MAX_BUDGET_USD:-1}" --allowedTools "$allowed")
 
 PROMPT="Do exactly one Agentic ID tool call and nothing else: the discover tool with count_only true \

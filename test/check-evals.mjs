@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const EVALS = process.argv[2] ?? join(ROOT, 'plugins/agentic-id/evals');
 // The hosted server's tools (MCP ids mcp__plugin_agentic-id_agentic-id__<name>).
-const TOOLS = ['validate', 'resolve', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'feedback'];
+const TOOLS = ['validate', 'resolve', 'enrich', 'find', 'discover', 'lookalike', 'facts', 'ledger', 'feedback', 'credits'];
 const GRADERS = {
   tool_used: ['tool'],
   tool_order: ['before', 'after'],

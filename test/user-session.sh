@@ -25,7 +25,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; PLUGIN="$ROOT/plugins/a
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 WORK="${USER_SESSION_CWD:-$OUT/work}"; mkdir -p "$WORK"
 PREFIX="mcp__plugin_agentic-id_agentic-id__"; allowed="Read,Glob,Grep,Skill,Task,Write${USER_SESSION_ALLOW:+,$USER_SESSION_ALLOW}"
-for v in validate resolve enrich find discover lookalike facts ledger feedback; do allowed+=",${PREFIX}${v}"; done
+for v in validate resolve enrich find discover lookalike facts ledger feedback credits; do allowed+=",${PREFIX}${v}"; done
 cd "$WORK"
 set +e
 printf "%s" "$PROMPT" | \

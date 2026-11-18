@@ -28,6 +28,7 @@ local server, no hooks, no scripts and no bundled command-line tool.
 | `lookalike` | Which companies look like these seed companies | 1 per company |
 | `facts` | How sure is Agentic ID about each value of this ID, and why | Free |
 | `ledger` | What happened to this ID, with its hash chain re-checked | Free |
+| `credits` | How many credits you have, what you spent and on what | Free |
 | `feedback` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, left the company, confirmed | Free |
 
 Every value comes with a level: **verified** (proved by a direct check or something the person
@@ -69,20 +70,18 @@ Each signed-in account has a workspace and a credit wallet of its own.
 Never paste a password, code or API key into the chat. The skills tell Claude never to ask you
 for one.
 
-## The optional CLI: files, balance and estimates
+## The optional CLI: files and estimates
 
-The hosted server answers one lookup or one batch at a time. It does not read CSV files, show
-your credit balance and spend history, or give a cost estimate before a call. For those there is
+The hosted server answers one lookup or one batch at a time. It does not read CSV files or give a
+cost estimate before a call. For those there is
 a separate, optional command-line tool, `agentic-id`, published on npm:
 https://www.npmjs.com/package/agentic-id (Node.js 18 or later). The plugin does not install it.
 Its documentation is in the CLI section of this repository's README:
 https://github.com/icustomerai/agentic-id-plugin#cli.
 
 If it is installed, Claude can use it for whole files (dry run first, then a run with a credit
-cap, writing a new file next to yours), for `agentic-id workspace` (credits available and recent
-charges) and for `agentic-id estimate`. Claude Code asks you before each command. The CLI has its
-own sign-in, `agentic-id login`. Without it, you can see your balance and spend in your iCustomer
-account.
+cap, writing a new file next to yours), and for `agentic-id estimate`. Claude Code asks you before each command. The CLI has its
+own sign-in, `agentic-id login`.
 
 ## What the plugin sends and stores
 

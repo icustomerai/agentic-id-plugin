@@ -3,19 +3,17 @@ description: What this workspace spent - credits available, spend by tool and re
 argument-hint: "[number of recent items, default 20]"
 ---
 
-The user wants to know what their Agentic ID workspace has spent. The hosted Agentic ID tools do
-not report the balance or past charges, so:
+The user wants to know how many Agentic ID credits they have and what was spent.
 
-1. Check whether the optional `agentic-id` command-line tool is installed by running
-   `agentic-id --version`.
-2. If it is, run `agentic-id workspace $ARGUMENTS --json` (20 if no number was given). That is the
-   billing record: credits available and held, what was spent today (the UTC day) and in the last
-   30 days by tool, and the latest grants and charges. Present it plainly. It is the answer to
-   "what did I spend" and "what was that charge for". If it says it is not signed in, the user
-   runs `agentic-id login`.
-3. If it is not installed, say so in one line, and tell the user they can see their balance and
-   spend in their iCustomer account, or install the CLI from npm
-   (https://www.npmjs.com/package/agentic-id) and ask again.
+1. Call the `credits` tool with `limit` set to $ARGUMENTS (20 if no number was given). It is free.
+2. Lead with its first line: credits available, any held by calls still running, and what was
+   spent today (UTC) and in the last 30 days. Then show spend by tool and the latest charges and
+   the IDs they were for (companies by name or domain; people by ID only).
+3. If the tool answers that the user is not signed in, tell them to type `/mcp`, select
+   `plugin:agentic-id:agentic-id` and choose **Authenticate**.
+4. Only if there is no `credits` tool (an older server): run `agentic-id workspace` if the CLI is
+   installed (check with `agentic-id --version`), or tell the user they can see their balance in
+   their iCustomer account.
 
-You may add the credits charged by calls made in this conversation, from their `cost` blocks, as a
-footnote. Never conclude "nothing was spent" from that alone, and never guess a balance.
+That answer is the billing record. Never guess a balance, and never conclude "nothing was spent"
+from the `cost` blocks of this conversation.

@@ -23,9 +23,11 @@ that is not Verified. The 0.6.0 submission was refused on five counts:
   HTTP). Sign in from `/mcp` → `plugin:agentic-id:agentic-id` → Authenticate. The plugin options
   (`api_key`, `api_url`, `session_budget`, `confirm_above`) are gone.
 - **Tool names are the hosted server's**: `validate`, `resolve`, `enrich`, `find`, `discover`,
-  `lookalike`, `facts`, `ledger`, `feedback` (was `agentic_id_report`). The skills, commands, agent
+  `lookalike`, `facts`, `ledger`, `feedback` (was `agentic_id_report`) and `credits` (was
+  `agentic_id_workspace`: credits available, spend by tool, recent charges; free). `credits` needs
+  the hosted server release that adds it (agentic-id-v3, branch `claude/mcp-credits-tool`). The skills, commands, agent
   and evals use them.
-- **CSV files, credits and spend, estimates and batch de-duplication** have no hosted tool; the
+- **CSV files, estimates and batch de-duplication** have no hosted tool; the
   skills use the `agentic-id` CLI for them when it is installed (Claude Code asks before each
   command), or say how to get it.
 - **Commands are plain instructions**: no inline shell and no pre-approved tools.

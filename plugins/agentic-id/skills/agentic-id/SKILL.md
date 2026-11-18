@@ -23,7 +23,7 @@ and every value comes with a **level** that says how far to trust it.
 | How sure are we about this ID's values? | `facts` | free |
 | Why are these two records the same ID? | `ledger` | free |
 | This email bounced / they replied / wrong person / left the company / our CRM confirms it | `feedback` | free |
-| How many credits are left? What did I spend, and on what? | the CLI: `agentic-id workspace` | free |
+| How many credits are left? What did I spend, and on what? | `credits` | free |
 | What would this cost? | the prices in `agentic-id-credits`, or `discover` with `count_only`; the CLI: `agentic-id estimate` | free |
 | Work a whole CSV file | the CLI with `--file` | as the action; `--dry-run` is free |
 | Is it connected? Sign in | `/mcp` (see below) | free |
@@ -40,13 +40,11 @@ arguments. Unknown arguments are refused, not ignored.
 - If the tools are missing or answer that the user is not signed in: tell the user to type
   `/mcp`, select `plugin:agentic-id:agentic-id` and choose **Authenticate**. Sign-in happens in
   the browser with their iCustomer account. You cannot start it yourself.
-- The hosted server has no tool for the credit balance or spend history, for cost estimates, or
-  for whole CSV files. For those, use the `agentic-id` command if it is installed: check with
+- The hosted server has no tool for cost estimates or for whole CSV files. For those, use the `agentic-id` command if it is installed: check with
   `agentic-id --version` (Claude Code asks the user before each command). Its commands are in
   [references/cli.md](references/cli.md). The CLI signs in on its own with `agentic-id login`.
 - If the CLI is not installed, say so and tell the user they can install it from npm
-  (https://www.npmjs.com/package/agentic-id) or see their balance and spend in their iCustomer
-  account. Do not install it for them unless they ask.
+  (https://www.npmjs.com/package/agentic-id). Do not install it for them unless they ask.
 - If neither the tools nor the CLI are available, tell the user how to connect Agentic ID. Never
   answer from memory.
 
