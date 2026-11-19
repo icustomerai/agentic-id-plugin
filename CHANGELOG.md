@@ -3,6 +3,14 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.7.1 - 2026-11-19
+
+### Changed
+- **The hosted Agentic ID service moved to `https://agenticid.icustomer.ai`** (was
+  `https://onesource-v3.icustomer.ai`). `.mcp.json` now points at `https://agenticid.icustomer.ai/mcp`,
+  and the CLI's default server, the REST examples and the docs use the new address. After updating
+  the plugin, sign in again from `/mcp` → `plugin:agentic-id:agentic-id` → Authenticate.
+
 ## 0.7.0 - 2026-11-18
 
 The plugin runs nothing on your computer, so it can be listed in Claude's plugin directory. It now

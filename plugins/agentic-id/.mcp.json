@@ -2,7 +2,7 @@
   "mcpServers": {
     "agentic-id": {
       "type": "http",
-      "url": "https://onesource-v3.icustomer.ai/mcp"
+      "url": "https://agenticid.icustomer.ai/mcp"
     }
   }
 }

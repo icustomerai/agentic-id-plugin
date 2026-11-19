@@ -14,8 +14,8 @@ import { isSourceFailure, shieldProblem, shieldReply, SOURCE_DOWN, SOURCE_FIX } 
 
 // The hosted Agentic ID service. A local V3 stack is http://127.0.0.1:3100: set it in the plugin
 // options or as AGENTIC_ID_URL.
-export const DEFAULT_URL = 'https://onesource-v3.icustomer.ai';
-export const CLIENT = 'agentic-id-plugin/0.7.0';
+export const DEFAULT_URL = 'https://agenticid.icustomer.ai';
+export const CLIENT = 'agentic-id-plugin/0.7.1';
 
 const FIXES = {
   'auth.invalid_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set a valid API key in the plugin options. Never ask for a key in the chat.',
@@ -41,7 +41,7 @@ const FIXES = {
   'idempotency.key_reused': 'Internal: a retry key was reused for a different request. Send the call again.',
   unreachable: 'Nothing answered at this server address, so this is not a sign-in problem. Check the server URL in the plugin options (api_url) or AGENTIC_ID_URL for a typo, or clear it to use the hosted service; then run `agentic-id doctor`.',
   not_agentic_id: 'Something answered at this address, but it is not an Agentic ID server. Check the server URL in the plugin options (api_url) or AGENTIC_ID_URL, or clear it to use the hosted service.',
-  bad_url: 'The server address must be a full web address such as https://onesource-v3.icustomer.ai. Fix it in the plugin options (api_url) or AGENTIC_ID_URL, or clear it to use the hosted service.',
+  bad_url: 'The server address must be a full web address such as https://agenticid.icustomer.ai. Fix it in the plugin options (api_url) or AGENTIC_ID_URL, or clear it to use the hosted service.',
   'source.unavailable': SOURCE_FIX,
   timeout: 'The call took too long. Discover and lookalike can take minutes: narrow the filters or lower max_accounts, then retry once.',
 };
