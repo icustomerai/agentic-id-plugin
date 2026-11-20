@@ -573,7 +573,7 @@ test('client: an unset plugin option is not mistaken for a key or a URL', () => 
   assert.equal(keyFromEnv({ AGENTIC_ID_API_KEY: '${user_config.api_key}' }), undefined);
   assert.equal(keyFromEnv({ AGENTIC_ID_API_KEY: '  ' }), undefined);
   const empty = mkdtempSync(join(tmpdir(), 'aid-nourl-'));
-  assert.equal(urlFromEnv({ AGENTIC_ID_URL: '${user_config.api_url}', AGENTIC_ID_CONFIG_DIR: empty }), 'https://onesource-v3.icustomer.ai', 'with nothing set, the hosted service');
+  assert.equal(urlFromEnv({ AGENTIC_ID_URL: '${user_config.api_url}', AGENTIC_ID_CONFIG_DIR: empty }), 'https://agenticid.icustomer.ai', 'with nothing set, the hosted service');
   assert.equal(urlFromEnv({ AGENTIC_ID_URL: 'http://127.0.0.1:3100' }), 'http://127.0.0.1:3100', 'a local stack is still one setting away');
   assert.equal(urlFromEnv({ AGENTIC_ID_URL: 'https://api.example.test/' }), 'https://api.example.test');
   const dir = mkdtempSync(join(tmpdir(), 'aid-key-'));
@@ -760,7 +760,7 @@ test('server address (#3): a typo, a non-Agentic server and a bad URL are not "n
   assert.deepEqual([typo.ok, typo.reachable, typo.error], [false, false, 'unreachable']);
   assert.doesNotMatch(`${typo.summary} ${typo.fix}`, /Not signed in|agentic_id_login/);
   assert.match(typo.fix, /server URL/);
-  const bad = await ops.status(new AgenticId({ apiKey: '', baseUrl: 'onesource-v3.icustomer', env }));
+  const bad = await ops.status(new AgenticId({ apiKey: '', baseUrl: 'agenticid.icustomer', env }));
   assert.equal(bad.error, 'bad_url');
   await withApi(
     (_req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end('<html>parked domain</html>'),

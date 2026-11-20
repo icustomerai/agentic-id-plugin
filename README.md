@@ -82,7 +82,7 @@ claude plugin marketplace add icustomerai/agentic-id-plugin
 claude plugin install agentic-id@agentic-id
 ```
 
-Restart Claude Code, type `/mcp`, pick `plugin:agentic-id:agentic-id` and choose **Authenticate**. The iCustomer sign-in page opens in your browser; sign in and go back to Claude Code. There is nothing to configure: the plugin connects to the hosted Agentic ID server at `https://onesource-v3.icustomer.ai/mcp` and runs nothing on your computer.
+Restart Claude Code, type `/mcp`, pick `plugin:agentic-id:agentic-id` and choose **Authenticate**. The iCustomer sign-in page opens in your browser; sign in and go back to Claude Code. There is nothing to configure: the plugin connects to the hosted Agentic ID server at `https://agenticid.icustomer.ai/mcp` and runs nothing on your computer.
 
 Then ask:
 
@@ -105,10 +105,10 @@ Every surface calls the same API, with the same inputs, outputs, error codes and
 | Surface | Use it when | Get it |
 |---|---|---|
 | Claude Code plugin | You work in Claude Code | `claude plugin install agentic-id@agentic-id` |
-| Hosted MCP server | Your agent speaks MCP over HTTP | `https://onesource-v3.icustomer.ai/mcp` |
+| Hosted MCP server | Your agent speaks MCP over HTTP | `https://agenticid.icustomer.ai/mcp` |
 | Agent Skills | Your agent reads SKILL.md | Link `plugins/agentic-id/skills/*` ([how](docs/agents.md)) |
 | CLI | CSV files, scripts, CI, agents without MCP | `npm install -g agentic-id` |
-| REST API | Any other language | `POST https://onesource-v3.icustomer.ai/v1/<verb>` |
+| REST API | Any other language | `POST https://agenticid.icustomer.ai/v1/<verb>` |
 
 ## The tools
 
@@ -155,11 +155,11 @@ Updates are keyed on the version in `plugin.json`; every release bumps it. Get o
 | Setting | Value |
 |---|---|
 | Transport | Streamable HTTP |
-| URL | `https://onesource-v3.icustomer.ai/mcp` |
+| URL | `https://agenticid.icustomer.ai/mcp` |
 | Auth | Sign-in with your iCustomer account (OAuth 2.1 with PKCE; your agent opens a browser) |
 
 ```json
-{ "mcpServers": { "agentic-id": { "type": "http", "url": "https://onesource-v3.icustomer.ai/mcp" } } }
+{ "mcpServers": { "agentic-id": { "type": "http", "url": "https://agenticid.icustomer.ai/mcp" } } }
 ```
 
 ## CLI
@@ -211,7 +211,7 @@ agentic-id resolve  --file leads.checked.csv --max-credits 500 --out leads.clean
 ## REST API
 
 ```bash
-curl -s https://onesource-v3.icustomer.ai/v1/resolve \
+curl -s https://agenticid.icustomer.ai/v1/resolve \
   -H "Authorization: Bearer $AGENTIC_ID_API_KEY" -H "content-type: application/json" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{"identifiers":{"company_domain":"hubspot.com"},"max_credits":1}'
@@ -229,7 +229,7 @@ curl -s https://onesource-v3.icustomer.ai/v1/resolve \
 | facts, history | `GET /v1/facts/{id}`, `GET /v1/ledger/{id}` |
 | workspace, credits | `GET /v1/workspace`, `GET /v1/credits` |
 
-The full description is served at `https://onesource-v3.icustomer.ai/v1/openapi.json`. Reusing an `Idempotency-Key` with a different body is refused (`idempotency.key_reused`); reusing it with the same body returns the first answer and charges once.
+The full description is served at `https://agenticid.icustomer.ai/v1/openapi.json`. Reusing an `Idempotency-Key` with a different body is refused (`idempotency.key_reused`); reusing it with the same body returns the first answer and charges once.
 
 ## Authentication
 
@@ -303,7 +303,7 @@ AGENTIC_ID_URL=<url> test/real-signin.sh
 ```
 plugins/agentic-id/                 the Claude Code plugin: Markdown and JSON only
   .claude-plugin/plugin.json        plugin manifest
-  .mcp.json                         the hosted MCP server (https://onesource-v3.icustomer.ai/mcp)
+  .mcp.json                         the hosted MCP server (https://agenticid.icustomer.ai/mcp)
   skills/                           portable Agent Skills
   agents/lead-qualification.md      subagent
   commands/                         slash commands

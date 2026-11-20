@@ -1,6 +1,6 @@
 # Connect Agentic ID to your agent
 
-> **Hosted server.** The tools come from the hosted MCP server at `https://onesource-v3.icustomer.ai/mcp`
+> **Hosted server.** The tools come from the hosted MCP server at `https://agenticid.icustomer.ai/mcp`
 > (Streamable HTTP, sign-in with your iCustomer account). Some sections below still name the older
 > development endpoint; use the hosted URL. Agents without MCP can use the `agentic-id` CLI from npm.
 > See [v3.md](v3.md).
@@ -61,7 +61,7 @@ claude plugin install agentic-id@agentic-id
 
 Restart Claude Code, type `/mcp`, pick `plugin:agentic-id:agentic-id` and choose **Authenticate**:
 the iCustomer sign-in page opens in your browser. The plugin connects to the hosted MCP server
-(`https://onesource-v3.icustomer.ai/mcp`) and runs nothing on your computer: no local server, no
+(`https://agenticid.icustomer.ai/mcp`) and runs nothing on your computer: no local server, no
 hooks, no scripts. There are no plugin options.
 
 Try it without installing: `claude --plugin-dir /path/to/agentic-id-plugin/plugins/agentic-id`.

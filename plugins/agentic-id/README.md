@@ -12,7 +12,7 @@ your computer: it is made only of instructions for Claude and the address of the
 
 ## What it connects to
 
-One remote MCP server, run by iCustomer: `https://onesource-v3.icustomer.ai/mcp` (Streamable
+One remote MCP server, run by iCustomer: `https://agenticid.icustomer.ai/mcp` (Streamable
 HTTP). You sign in to it with your iCustomer account (OAuth, in your browser). The plugin has no
 local server, no hooks, no scripts and no bundled command-line tool.
 
