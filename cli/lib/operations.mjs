@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logout } from './auth.mjs';
-import { AgenticIdError, CLIENT } from './client.mjs';
+import { AgenticIdError, CLIENT, isRun, KEY_PREFIX_RE } from './client.mjs';
 import { AUTO_CAP, estimate } from './estimate.mjs';
 import { cleanCountry, cleanDomain, cleanEmails, cleanIdentifiers, cleanList, companyNameProblem, identityKey, isPersonalDomain } from './guards.mjs';
 
@@ -27,9 +27,33 @@ export class LocalRefusal extends AgenticIdError {
 const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && !(Array.isArray(v) && v.length === 0) && !(v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)));
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const ID_RE = /^ic-[A-Za-z0-9]{6,40}$/;
+const PLAN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RUN_ID_RE = PLAN_RE;
+/** The most results one search may aim for, and the most rows one call may send, when the call carries on as a run. */
+export const RUN_MAX_TARGET = 50_000;
+export const RUN_MAX_ROWS = 10_000;
+const GRADES = ['A', 'B', 'C', 'D'];
+
+/** min_trust: a grade A to D, or nothing. */
+function minTrust(v) {
+  if (v === undefined || v === null || v === '') return undefined;
+  const g = String(v).trim().toUpperCase();
+  if (!GRADES.includes(g)) throw new LocalRefusal('request.invalid', `min_trust must be A, B, C or D, got "${String(v).slice(0, 10)}".`, 'A is the best (identity verified, key fields corroborated), D the worst. Records below it are left out and not charged.');
+  return g;
+}
+
+/**
+ * A part of a list that carried on as a run (it was slow): followed to its end, so the part's own
+ * answer can be merged like any other. Searches are not followed here: the caller shows the run.
+ */
+const settle = async (client, r) => (isRun(r) && typeof client.followRun === 'function' ? client.followRun(r.run_id) : r);
+/** A followed run that paused (credits ran out, or a cap) is a stop, not a finished part. */
+const pausedStop = (r, done, total, what) => (r?.run_status === 'paused' ? { error: 'run_paused', message: `stopped after ${done} of ${total} ${what}: the run paused (credits ran out, or a limit was reached)` } : undefined);
 
 /** The cap to send. Small calls are capped at their own estimate; larger ones need the caller to say a number. */
 function capFor(tool, args) {
+  // A preview delivers nothing and charges nothing: no cap is needed (one given is passed on).
+  if (args.preview === true) return args.max_credits;
   const est = estimate(tool, args);
   if (!est || est.free) return args.max_credits;
   if (args.max_credits !== undefined) {
@@ -56,6 +80,10 @@ export async function validate(client, args = {}) {
     if (!held.length) throw new LocalRefusal('request.invalid', 'Nothing to validate: send email, emails or domain.', 'Pass at least one work email or a company domain.');
     return withNotes({ request_id: null, summary: `${plural(held.length, 'email')} checked on this machine: ${held.length} rejected. Nothing was sent; 0 credits charged.`, cost: { quoted_credits: 0, charged_credits: 0 }, results: held }, notes);
   }
+  if (args.preview === true) {
+    if (send.length > RUN_MAX_ROWS) throw new LocalRefusal('request.invalid', `${send.length} addresses in one preview; the most is ${RUN_MAX_ROWS}.`, 'Preview a part of the list.');
+    return withNotes(await client.validate(compact({ emails: send, domain, preview: true, purpose: args.purpose, max_credits: args.max_credits })), notes);
+  }
   const cap = capFor('validate', { emails: send, max_credits: args.max_credits });
   let cost = { quoted_credits: 0, charged_credits: 0 };
   const results = [];
@@ -78,7 +106,7 @@ export async function validate(client, args = {}) {
     const batch = rest.slice(0, Math.min(1000, left === undefined ? 1000 : left));
     let r;
     try {
-      r = await client.validate(compact({ emails: batch, domain: calls === 0 ? domain : undefined, purpose: args.purpose, max_credits: left }));
+      r = await settle(client, await client.validate(compact({ emails: batch, domain: calls === 0 ? domain : undefined, purpose: args.purpose, max_credits: left })));
     } catch (e) {
       // The first call failing means nothing was done: the error is the answer. A later one keeps
       // what earlier batches already paid for, and says why it stopped.
@@ -97,6 +125,8 @@ export async function validate(client, args = {}) {
     // An address the server did not answer for is not sent again (it may have hit its own limit):
     // it is marked not_checked below.
     rest = rest.slice(batch.length);
+    stopped = pausedStop(r, results.length, send.length, 'addresses');
+    if (stopped) break;
   } while (rest.length);
   if (stopped) notes.push(stopped.message);
   const checked = new Set(results.map((x) => x.email));
@@ -127,8 +157,8 @@ export async function resolve(client, args = {}) {
   const all = [...notes, ...dropped.map((d) => `${d.field} was not sent (${d.reason})`)];
   if (empty) throw new LocalRefusal('nothing_to_resolve', dropped.length ? `Nothing usable to resolve: ${dropped.map((d) => `${d.field} (${d.reason})`).join(', ')}.` : 'Nothing to resolve: give a work email, a LinkedIn profile URL, a name with a company, or a company domain.', 'Agentic ID is B2B only. Send a work identifier, not a personal email or a phone number.', { dropped });
   if (identifiers.name && !identifiers.email && !identifiers.linkedin_url && !identifiers.company_domain && !identifiers.company_name) throw new LocalRefusal('name_alone', 'A name on its own cannot be resolved: many people share it.', 'Add the company (name or domain), a work email or a LinkedIn profile URL.');
-  const body = compact({ identifiers, kind: args.kind, spend: args.spend === true ? true : undefined, purpose: args.purpose, max_credits: capFor('resolve', args) });
-  return withNotes(await client.resolve(body), all);
+  const body = compact({ identifiers, kind: args.kind, spend: args.spend === true ? true : undefined, preview: args.preview === true ? true : undefined, purpose: args.purpose, max_credits: capFor('resolve', args) });
+  return withNotes(await settle(client, await client.resolve(body)), all);
 }
 
 /** A list resolved row by row, repeats paid once, with the rows that turned out to be the same ID grouped. */
@@ -168,7 +198,7 @@ export async function resolveMany(client, args = {}, { concurrency = 4 } = {}) {
       }
       inFlight += 1;
       try {
-        const a = await client.resolve(compact({ identifiers: r.identifiers, kind: args.kind, spend: args.spend === true ? true : undefined, purpose: args.purpose, max_credits: 1 }));
+        const a = await settle(client, await client.resolve(compact({ identifiers: r.identifiers, kind: args.kind, spend: args.spend === true ? true : undefined, purpose: args.purpose, max_credits: 1 })));
         cost = sumCost(cost, a.cost);
         answers.set(r.key, compact({ id: a.id, outcome: a.outcome, matched_on: a.matched_on, confidence: a.confidence, reason: a.reason }));
       } catch (e) {
@@ -296,12 +326,17 @@ export async function enrich(client, args = {}) {
   const companyFields = fields ? [...new Set(fields.map(companyFieldOf).filter((f) => COMPANY_FIELDS.includes(f)))] : undefined;
   if (contacts.length && fields && !personFields.length) throw new LocalRefusal('request.invalid', `None of ${fields.join(', ')} is about a person.`, `For people ask for: ${PERSON_FIELDS.join(', ')}. To enrich their companies, send the companies (domain or name) in "companies".`);
   if (hasCompanies && fields && !companyFields.length) throw new LocalRefusal('request.invalid', `None of ${fields.join(', ')} is about a company.`, `For companies ask for: ${COMPANY_FIELDS.join(', ')}.`);
+  if (args.preview === true) {
+    if (companies.length) throw new LocalRefusal('request.invalid', 'A preview takes one contact, a list of contacts, or one company.', 'For a file, use --dry-run: it prices every row on this machine.');
+    if (contacts.length > RUN_MAX_ROWS) throw new LocalRefusal('request.invalid', `${contacts.length} contacts in one preview; the most is ${RUN_MAX_ROWS}.`, 'Preview a part of the list.');
+    return withNotes(await client.enrich(compact({ ...(contacts.length === 1 && !args.contacts ? { contact: contacts[0] } : { contacts }), company, fields: contacts.length ? (company ? fields : personFields) : companyFields, preview: true, purpose: args.purpose, max_credits: args.max_credits })), notes);
+  }
   const cap = capFor('enrich', { contacts, company, companies, fields, max_credits: args.max_credits });
   const est = estimate('enrich', { contacts, company, companies, fields });
 
   // The usual case: one call, inside the cap. The answer is passed on as it came.
   if (!companies.length && contacts.length <= 100 && cap >= est.max_credits) {
-    const r = await client.enrich(compact({ ...(contacts.length === 1 && !args.contacts ? { contact: contacts[0] } : { contacts }), company, fields: contacts.length ? (company ? fields : personFields) : companyFields, purpose: args.purpose, max_credits: cap }));
+    const r = await settle(client, await client.enrich(compact({ ...(contacts.length === 1 && !args.contacts ? { contact: contacts[0] } : { contacts }), company, fields: contacts.length ? (company ? fields : personFields) : companyFields, purpose: args.purpose, max_credits: cap })));
     return withNotes(r, notes);
   }
 
@@ -322,7 +357,7 @@ export async function enrich(client, args = {}) {
     }
     let r;
     try {
-      r = await client.enrich(compact({ contacts: contacts.slice(i, i + size), company: sentCompany ? undefined : company, fields: company && !sentCompany ? fields : personFields, purpose: args.purpose, max_credits: cap - cost.charged_credits }));
+      r = await settle(client, await client.enrich(compact({ contacts: contacts.slice(i, i + size), company: sentCompany ? undefined : company, fields: company && !sentCompany ? fields : personFields, purpose: args.purpose, max_credits: cap - cost.charged_credits })));
     } catch (e) {
       if (!(e instanceof AgenticIdError) || requestIds.length === 0) throw e;
       stopped = { ...e.toJSON(), message: `stopped after ${i} of ${contacts.length} contacts: ${e.detail}` };
@@ -336,6 +371,8 @@ export async function enrich(client, args = {}) {
     requestIds.push(r.request_id);
     sourceDown ||= r.source_unavailable === true;
     i += size;
+    stopped = pausedStop(r, i, contacts.length, 'contacts');
+    if (stopped) break;
   }
   if (company && !sentCompany && !stopped && !contacts.length) companies.unshift(company);
 
@@ -360,7 +397,7 @@ export async function enrich(client, args = {}) {
         next += 1;
         inFlight += 1;
         try {
-          const r = await client.enrich(compact({ company: companies[k], fields: companyFields, purpose: args.purpose, max_credits: 1 }));
+          const r = await settle(client, await client.enrich(compact({ company: companies[k], fields: companyFields, purpose: args.purpose, max_credits: 1 })));
           cost = sumCost(cost, r.cost);
           requestIds.push(r.request_id);
           sourceDown ||= r.source_unavailable === true;
@@ -422,9 +459,11 @@ export async function find(client, args = {}) {
   const roles = cleanList(args.roles);
   const seniority = Array.isArray(args.seniority) ? cleanList(args.seniority) : typeof args.seniority === 'string' && args.seniority.trim() ? args.seniority.trim() : undefined;
   if (!roles.length && !(Array.isArray(seniority) ? seniority.length : seniority)) throw new LocalRefusal('find.persona_unreadable', 'A person search needs a job title in roles, or a seniority.', 'Ask the user which roles matter, e.g. roles ["VP Marketing"], or seniority "director+".');
-  const limit = Math.min(Math.max(Number.isFinite(Number(args.limit)) ? Math.trunc(Number(args.limit)) : 5, 1), 25);
-  if (args.limit > 25) notes.push('limit lowered to 25, the most one find call returns; call again for more (people already delivered are skipped)');
-  const body = compact({ account: compact({ id, domain }), roles, seniority, countries: args.countries ? cleanList(args.countries, cleanCountry) : undefined, limit, exclude_seen: args.exclude_seen, include_unconfirmed: typeof args.include_unconfirmed === 'boolean' ? args.include_unconfirmed : undefined, purpose: args.purpose, max_credits: capFor('find', { limit, max_credits: args.max_credits }) });
+  // Up to 25 people answer in one call; more (up to 50,000) carry on as a run.
+  const limit = Math.min(Math.max(Number.isFinite(Number(args.limit)) ? Math.trunc(Number(args.limit)) : 5, 1), RUN_MAX_TARGET);
+  if (args.limit > RUN_MAX_TARGET) notes.push(`limit lowered to ${RUN_MAX_TARGET.toLocaleString('en-US')}, the most one search aims for`);
+  const preview = args.preview === true;
+  const body = compact({ account: compact({ id, domain }), roles, seniority, countries: args.countries ? cleanList(args.countries, cleanCountry) : undefined, limit, exclude_seen: args.exclude_seen, include_unconfirmed: typeof args.include_unconfirmed === 'boolean' ? args.include_unconfirmed : undefined, preview: preview || undefined, purpose: args.purpose, max_credits: capFor('find', { limit, max_credits: args.max_credits, preview }) });
   return withNotes(await client.find(body), notes);
 }
 
@@ -432,8 +471,17 @@ export async function find(client, args = {}) {
 // Filter names people and agents reach for, mapped to the API's. Any other name is refused, never
 // dropped: a filter that is silently left out buys a different list (all software companies,
 // instead of the UK ones).
-const ACCOUNT_FILTER_ALIASES = { industries: 'industry', countries: 'country', technology: 'technologies', tech: 'technologies', keyword: 'keywords', min_employees: 'employees_min', max_employees: 'employees_max' };
-const CONTACT_FILTER_ALIASES = { job_titles: 'job_title', titles: 'job_title', title: 'job_title', roles: 'job_title', seniority: 'job_level', job_levels: 'job_level', country: 'countries' };
+const ACCOUNT_FILTER_ALIASES = { industries: 'industry', countries: 'country', technology: 'technologies', tech: 'technologies', keyword: 'keywords', min_employees: 'employees_min', max_employees: 'employees_max', naics_codes: 'naics', sic_codes: 'sic' };
+const ACCOUNT_FILTERS = ['industry', 'naics', 'sic', 'country', 'employees_min', 'employees_max', 'revenue_min', 'revenue_max', 'founded_from', 'founded_to', 'funding_stage', 'revenue_range', 'technologies', 'keywords', 'keywords_required'];
+const CONTACT_FILTER_ALIASES = { job_titles: 'job_title', titles: 'job_title', title: 'job_title', roles: 'job_title', seniority: 'job_level', job_levels: 'job_level', country: 'countries', functions: 'job_function', job_functions: 'job_function' };
+/** Industry codes: digits only, as strings (NAICS 2 to 6, SIC 2 to 4). Anything else is refused, never dropped. */
+function codes(raw, what, min, max) {
+  if (raw === undefined || raw === null) return undefined;
+  const list = (Array.isArray(raw) ? raw : String(raw).split(',')).map((x) => String(x).trim()).filter(Boolean);
+  const bad = list.filter((x) => !new RegExp(`^\\d{${min},${max}}$`).test(x));
+  if (bad.length) throw new LocalRefusal('request.invalid', `${what} codes are ${min} to ${max} digits; not understood: ${bad.slice(0, 5).join(', ')}. Nothing was sent.`, `Give ${what} codes such as ${what === 'NAICS' ? '"621512", or "6215" for the whole group' : '"8071"'}.`);
+  return [...new Set(list)];
+}
 function filterNames(raw, aliases, known, what) {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== 'object' || Array.isArray(raw)) throw new LocalRefusal('request.invalid', `${what} must be an object.`, `Allowed keys: ${known.join(', ')}.`);
@@ -450,27 +498,33 @@ function filterNames(raw, aliases, known, what) {
 
 export async function discover(client, args = {}) {
   const notes = [];
-  const af = filterNames(args.account_filters, ACCOUNT_FILTER_ALIASES, ['industry', 'country', 'employees_min', 'employees_max', 'technologies', 'keywords', 'keywords_required'], 'account_filters') ?? {};
-  const cf = filterNames(args.contact_filters, CONTACT_FILTER_ALIASES, ['job_title', 'job_level', 'countries', 'per_account', 'min_company_size', 'include_unconfirmed'], 'contact_filters');
+  const af = filterNames(args.account_filters, ACCOUNT_FILTER_ALIASES, ACCOUNT_FILTERS, 'account_filters') ?? {};
+  const cf = filterNames(args.contact_filters, CONTACT_FILTER_ALIASES, ['job_title', 'job_level', 'job_function', 'countries', 'per_account', 'min_company_size', 'include_unconfirmed'], 'contact_filters');
+  // A plain-language request, read into filters by the server (free). Filters given as well win.
+  const ask = typeof args.ask === 'string' ? args.ask.trim().replace(/\s+/g, ' ') : undefined;
+  if (args.ask !== undefined && (!ask || ask.length < 3 || ask.length > 500)) throw new LocalRefusal('request.invalid', 'ask must be a sentence of 3 to 500 characters.', 'Say what companies you want in plain words, for example "mid-size diagnostic imaging centres in Texas".');
   const min = af.employees_min;
   const max = af.employees_max;
   if (min !== undefined && max !== undefined && min > max) throw new LocalRefusal('request.invalid', `employees_min (${min}) is larger than employees_max (${max}).`, 'Swap them or drop one.');
-  const account_filters = compact({ industry: cleanList(af.industry), country: cleanList(af.country, cleanCountry), employees_min: min, employees_max: max, technologies: cleanList(af.technologies), keywords: cleanList(af.keywords), keywords_required: af.keywords_required });
-  const contact_filters = cf ? compact({ job_title: cleanList(cf.job_title), job_level: Array.isArray(cf.job_level) ? cleanList(cf.job_level) : cf.job_level, countries: cleanList(cf.countries, cleanCountry), per_account: cf.per_account, min_company_size: cf.min_company_size, include_unconfirmed: typeof cf.include_unconfirmed === 'boolean' ? cf.include_unconfirmed : undefined }) : undefined;
+  const account_filters = compact({ industry: cleanList(af.industry), naics: codes(af.naics, 'NAICS', 2, 6), sic: codes(af.sic, 'SIC', 2, 4), country: cleanList(af.country, cleanCountry), employees_min: min, employees_max: max, revenue_min: af.revenue_min, revenue_max: af.revenue_max, founded_from: af.founded_from, founded_to: af.founded_to, funding_stage: af.funding_stage, revenue_range: af.revenue_range, technologies: cleanList(af.technologies), keywords: cleanList(af.keywords), keywords_required: af.keywords_required });
+  const contact_filters = cf ? compact({ job_title: cleanList(cf.job_title), job_level: Array.isArray(cf.job_level) ? cleanList(cf.job_level) : cf.job_level, job_function: Array.isArray(cf.job_function) ? cleanList(cf.job_function) : cf.job_function, countries: cleanList(cf.countries, cleanCountry), per_account: cf.per_account, min_company_size: cf.min_company_size, include_unconfirmed: typeof cf.include_unconfirmed === 'boolean' ? cf.include_unconfirmed : undefined }) : undefined;
   const hasContact = contact_filters && Object.keys(contact_filters).length > 0;
-  if (!Object.keys(account_filters).length && !hasContact) throw new LocalRefusal('request.invalid', 'discover needs at least one filter.', 'Give account_filters (industry, country, employees_min/max, technologies, keywords) and optionally contact_filters.');
+  if (!Object.keys(account_filters).length && !hasContact && !ask) throw new LocalRefusal('request.invalid', 'discover needs at least one filter, or a plain-language ask.', 'Give account_filters (industry, naics, country, employees_min/max, technologies, keywords) and optionally contact_filters, or ask in plain words.');
   if (hasContact && !contact_filters.job_title && !contact_filters.job_level) throw new LocalRefusal('find.persona_unreadable', 'contact_filters needs a job_title or a job_level.', 'Add the titles or seniority the user is after, or leave contact_filters out to get accounts only.');
-  if (Object.keys(account_filters).length === 1 && account_filters.country) notes.push('a country on its own matches a very large number of companies; add an industry or a size range');
+  if (!ask && Object.keys(account_filters).length === 1 && account_filters.country) notes.push('a country on its own matches a very large number of companies; add an industry or a size range');
+  // count_only is the old name for preview: both are free, and both are sent as given.
   const count_only = args.count_only === true;
+  const preview = args.preview === true;
+  const free = count_only || preview;
   let cap;
   try {
-    cap = capFor('discover', { ...args, contact_filters: hasContact ? contact_filters : undefined, count_only });
+    cap = capFor('discover', { ...args, contact_filters: hasContact ? contact_filters : undefined, count_only, preview });
   } catch (e) {
-    if (e instanceof LocalRefusal && e.code === 'cap_required') e.fix = 'Run it once with count_only: true (free) to see how many match, agree a budget with the user, then call again with max_credits.';
+    if (e instanceof LocalRefusal && e.code === 'cap_required') e.fix = 'Run it once with preview: true (free; count_only is the old name; in the CLI --preview) to see how many match and what it could cost, agree a budget with the user, then call again with max_credits.';
     throw e;
   }
-  const body = compact({ account_filters, contact_filters: hasContact ? contact_filters : undefined, max_accounts: args.max_accounts, exclude_seen: args.exclude_seen, count_only: count_only || undefined, purpose: args.purpose, max_credits: count_only ? undefined : cap });
-  if (!body.account_filters) body.account_filters = {};
+  const body = compact({ ask, account_filters, contact_filters: hasContact ? contact_filters : undefined, max_accounts: args.max_accounts, exclude_seen: args.exclude_seen, min_trust: minTrust(args.min_trust), count_only: count_only || undefined, preview: preview || undefined, purpose: args.purpose, max_credits: free ? args.max_credits : cap });
+  if (!body.account_filters && !ask) body.account_filters = {};
   return withNotes(await client.discover(body), notes);
 }
 
@@ -493,8 +547,170 @@ export async function lookalike(client, args = {}) {
     seeds.length = 50;
   }
   if (seeds.length < 3) notes.push('fewer than 3 seeds: the shared profile is thin, so check `profile` before trusting the list');
-  const body = compact({ seeds, max_accounts: args.max_accounts, exclude_seen: args.exclude_seen, purpose: args.purpose, max_credits: capFor('lookalike', args) });
+  const body = compact({ seeds, max_accounts: args.max_accounts, exclude_seen: args.exclude_seen, min_trust: minTrust(args.min_trust), preview: args.preview === true ? true : undefined, purpose: args.purpose, max_credits: capFor('lookalike', args) });
   return withNotes(await client.lookalike(body), notes);
+}
+
+// ------------------------------------------------------------------ plans
+const PAID_VERBS = ['validate', 'resolve', 'enrich', 'find', 'discover', 'lookalike'];
+
+/**
+ * Runs exactly what a preview quoted (its plan_id, good for 30 minutes). The plan holds the
+ * request; only the cap is sent with it, and a cap is always needed: the preview said what it could cost.
+ */
+export async function runPlan(client, args = {}) {
+  const verb = String(args.verb ?? '');
+  if (!PAID_VERBS.includes(verb)) throw new LocalRefusal('request.invalid', `A plan runs one of ${PAID_VERBS.join(', ')}.`, 'Run the plan with the same command that previewed it.');
+  const planId = typeof args.plan_id === 'string' ? args.plan_id.trim() : '';
+  if (!PLAN_RE.test(planId)) throw new LocalRefusal('plan.not_found', `"${planId.slice(0, 40)}" is not a plan ID.`, 'A plan ID comes from a preview (--preview, or preview: true). Preview again for a new one.');
+  if (!Number.isInteger(args.max_credits) || args.max_credits < 0) throw new LocalRefusal('cap_required', 'Running a plan needs max_credits: the preview said the most it could cost (credits_max).', 'Agree a budget with the user, then run the plan again with max_credits set to it.');
+  const r = await client[verb]({ plan_id: planId, max_credits: args.max_credits });
+  // Lists are followed to their end like any other call; a search's run is shown as a run.
+  return ['validate', 'resolve', 'enrich'].includes(verb) ? settle(client, r) : r;
+}
+
+// ------------------------------------------------------------------ runs (all free)
+const needRunId = (id) => {
+  const s = typeof id === 'string' ? id.trim() : '';
+  if (!RUN_ID_RE.test(s)) throw new LocalRefusal('run.not_found', `"${s.slice(0, 40)}" is not a run ID.`, 'A run ID comes from a call that carried on as a run; `agentic-id runs` lists them.');
+  return s;
+};
+
+/** What a run's status means, in plain words, with what to do next. */
+export function runStatusWords(r) {
+  const id = r.run_id;
+  const p = r.progress ?? {};
+  const got = p.asked !== undefined ? `${p.delivered ?? 0} of ${p.asked} delivered` : p.parts ? `${p.parts.done} of ${p.parts.total} parts done` : '';
+  switch (r.status) {
+    case 'completed':
+      return `Completed: everything asked for was delivered${got ? ` (${got})` : ''}.`;
+    case 'exhausted': {
+      const w = r.why_fewer;
+      const left = w ? Object.entries(w.excluded ?? {}).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(', ') : '';
+      return `Finished with fewer than asked (${w ? `${w.delivered} of ${w.asked} delivered` : got}).${w?.detail ? ` ${w.detail}` : ' Fewer exist that pass the checks.'}${left ? ` Left out: ${left}.` : ''}`;
+    }
+    case 'running':
+      return `Running: more results are on the way${got ? ` (${got} so far)` : ''}.${r.waiting?.detail ? ` ${r.waiting.detail}` : ''}`;
+    case 'paused':
+      return r.reason === 'credits'
+        ? `Paused: this workspace ran out of credits${got ? ` (${got})` : ''}. Buy more (agentic-id topup <credits>), then carry on: agentic-id runs resume ${id}`
+        : r.reason === 'max_credits'
+          ? `Paused: it reached its own credit cap${got ? ` (${got})` : ''}. To carry on, raise it: agentic-id runs resume ${id} --max-credits <a higher number>`
+          : r.reason === 'source_cap'
+            ? `Paused: it reached its budget for paid data${got ? ` (${got})` : ''}. To carry on with the same budget again: agentic-id runs resume ${id}`
+            : `Paused${r.reason ? ` (${r.reason})` : ''}${got ? `, ${got}` : ''}. Carry on with: agentic-id runs resume ${id}`;
+    case 'cancelled':
+      return `Cancelled: it was stopped${got ? ` (${got})` : ''}. What was delivered stays delivered and charged; nothing more is spent.`;
+    case 'failed':
+      return `Failed: it could not run${r.error?.code ? ` (${r.error.code})` : ''}. Nothing more will come.`;
+    default:
+      return `Status: ${r.status}.`;
+  }
+}
+
+const RUN_STATUSES = ['running', 'paused', 'finished'];
+/** This workspace's runs, newest first. */
+export async function runs(client, args = {}) {
+  if (args.status !== undefined && !RUN_STATUSES.includes(args.status)) throw new LocalRefusal('request.invalid', `status is ${RUN_STATUSES.join(', ')}.`, 'Leave it out for every run.');
+  const limit = args.limit === undefined ? undefined : Number(args.limit);
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100)) throw new LocalRefusal('request.invalid', 'limit must be a whole number from 1 to 100.', 'Leave it out for the latest 20.');
+  const r = await client.runs(compact({ status: args.status, limit }));
+  const list = r.runs ?? [];
+  return { summary: list.length ? `${plural(list.length, 'run')}${args.status ? ` ${args.status}` : ''}, newest first.` : `No runs${args.status ? ` ${args.status}` : ''} in this workspace.`, runs: list.map((x) => ({ ...x, in_words: runStatusWords(x) })) };
+}
+
+export async function runShow(client, args = {}) {
+  const r = await client.run(needRunId(args.id));
+  return { ...r, summary: runStatusWords(r) };
+}
+
+export async function runCancel(client, args = {}) {
+  const r = await client.cancelRun(needRunId(args.id));
+  return { ...r, summary: runStatusWords(r) };
+}
+
+export async function runResume(client, args = {}) {
+  const id = needRunId(args.id);
+  if (args.max_credits !== undefined && (!Number.isInteger(args.max_credits) || args.max_credits < 0)) throw new LocalRefusal('request.invalid', 'max_credits must be a whole number, 0 or more.', 'Give the new cap for the whole run, as a whole number of credits.');
+  const cap = args.source_spend_cap_usd;
+  if (cap !== undefined && (!Number.isFinite(cap) || cap < 0 || cap > 50)) throw new LocalRefusal('request.invalid', 'The paid-data budget is 0 to 50 USD.', 'Leave it out to give the run the same budget again.');
+  const r = await client.resumeRun(id, compact({ max_credits: args.max_credits, source_spend_cap_usd: cap }));
+  return { ...r, summary: runStatusWords(r) };
+}
+
+export async function runExport(client, args = {}) {
+  const format = args.format ?? 'csv';
+  if (!['csv', 'ndjson'].includes(format)) throw new LocalRefusal('request.invalid', 'format is csv or ndjson.', 'Leave it out for CSV.');
+  const r = await client.exportRun(needRunId(args.id), format);
+  return { ...r, summary: `A download link for every result of run ${r.run_id} as ${String(r.format ?? format).toUpperCase()}, good until ${String(r.expires_at ?? '').slice(0, 16).replace('T', ' ')} UTC. Anyone with the link can download this run's results until then: share it only with people who may see them.${r.note ? ` ${r.note}` : ''}` };
+}
+
+/**
+ * Every result of a run that is ready, page by page. With `wait`, follows the run with long polls
+ * until it is finished or paused. Reading again never charges again.
+ */
+export async function runResults(client, args = {}) {
+  const id = needRunId(args.id);
+  const records = [];
+  let after = Number.isInteger(args.after) && args.after > 0 ? args.after : 0;
+  let run;
+  for (let pages = 0; pages < 100_000; pages += 1) {
+    const page = await client.runResults(id, { after, wait: args.wait ? 20 : undefined });
+    run = page.run;
+    records.push(...(page.results ?? []));
+    const moved = page.after !== undefined && page.after !== after;
+    after = page.after ?? after;
+    if (page.next === null) break;
+    if (run?.status === 'paused') break;
+    // Without --wait, stop once nothing new is ready: the run carries on by itself.
+    if (!args.wait && !moved) break;
+  }
+  const finished = run && run.status !== 'running';
+  return {
+    run_id: id,
+    run,
+    summary: `${plural(records.length, 'result')} read from run ${id}. ${run ? runStatusWords(run) : ''}${!finished ? ` Read again later (from after ${after}) or add --wait to follow it to the end.` : ''} Reading results is free.`.trim(),
+    results: records,
+    after,
+    finished: Boolean(finished),
+  };
+}
+
+// ------------------------------------------------------------------ API keys
+/** This workspace's API keys: prefix, name and dates; the key itself is never shown again. Free. */
+export async function keys(client) {
+  const r = await client.keys();
+  const list = r.keys ?? [];
+  const active = list.filter((k) => !k.revoked_at).length;
+  return { summary: list.length ? `${plural(active, 'active key')}${list.length > active ? `, ${list.length - active} revoked` : ''}. Only the first characters of each key are shown; the key itself was shown once, when it was made.` : 'No API keys in this workspace yet. Make one with: agentic-id keys create --name <label>', keys: list };
+}
+
+/** Keys are made and revoked by a signed-in user only: refused here, before anything is sent, when a key is in use. */
+function needSignIn(client) {
+  if (client.authMode === 'key' || (client.authMode === undefined && client.apiKey)) {
+    const e = new LocalRefusal('auth.sign_in_required', 'Only a signed-in user can make or revoke API keys, and this command is using an API key.', 'Run `agentic-id login`, and unset AGENTIC_ID_API_KEY (or AGENTIC_ID_API_KEY_FILE) for this command: a configured key is used instead of a sign-in.');
+    e.status = 403;
+    throw e;
+  }
+}
+
+/** A new API key for this workspace. The answer holds the key once; it is never shown again. */
+export async function createKey(client, args = {}) {
+  const name = args.name === undefined ? undefined : String(args.name).trim();
+  if (name !== undefined && (name.length < 1 || name.length > 64)) throw new LocalRefusal('request.invalid', 'A key name is 1 to 64 characters.', 'Give a short label such as "laptop" or "ci", or leave it out.');
+  needSignIn(client);
+  const r = await client.createKey(compact({ name }));
+  return { ...r, summary: `API key "${r.name ?? name ?? 'api key'}" made (${r.prefix}).` };
+}
+
+/** Revoke a key by its prefix. It stops working within 30 seconds. */
+export async function revokeKey(client, args = {}) {
+  const prefix = typeof args.prefix === 'string' ? args.prefix.trim() : '';
+  // A whole key pasted here would be sent in the address and land in logs: refused, and never repeated.
+  if (!KEY_PREFIX_RE.test(prefix)) throw new LocalRefusal('request.invalid', prefix.length > 28 ? 'That looks like a whole key, not its prefix, so it was not sent.' : 'That is not a key prefix.', 'Give the prefix `agentic-id keys` shows, such as ic-live-AbC12_x. Never paste a whole key into a command.');
+  needSignIn(client);
+  const r = await client.revokeKey(prefix);
+  return { ...r, prefix: r.prefix ?? prefix, summary: `Key ${r.prefix ?? prefix} revoked. It stops working within 30 seconds.` };
 }
 
 // ------------------------------------------------------------------ free reads
@@ -645,6 +861,8 @@ export async function workspace(client, args = {}) {
     // or domain; a person is an ID only.
     delivered: (c.recent_ids ?? []).map((d) => ({ ...d, charged: d.credits > 0 })),
     delivered_note: 'An entry with 0 credits was free (an ID already held): do not count it as a charge.',
+    // The latest credit purchases, when the server reports them (older servers do not).
+    ...(Array.isArray(c.topups) ? { topups: c.topups } : {}),
     times_are: 'UTC',
     utc_today: new Date().toISOString().slice(0, 10),
     contributes: w.contributes,
@@ -653,6 +871,25 @@ export async function workspace(client, args = {}) {
     ids_held: w.ids_held,
     contact_values: w.scopes?.includes('pii:read') ? 'readable' : 'emails in full; phones and LinkedIn partly hidden',
     summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today, counted since ${utcDayStartLocal()} on this machine's clock (the day is the UTC day ${new Date().toISOString().slice(0, 10)}, whatever the local date), ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
+  };
+}
+
+/**
+ * Buy credits: asks the server for a payment link. Nothing is charged here and nothing is opened:
+ * the user opens the link and pays there; the credits land seconds after. Free to ask.
+ */
+export async function topup(client, args = {}) {
+  const credits = typeof args.credits === 'string' && /^\s*\d+\s*$/.test(args.credits) ? Number(args.credits) : args.credits;
+  if (!Number.isInteger(credits) || credits <= 0) throw new LocalRefusal('request.invalid', 'credits must be a whole number above 0.', 'Say how many credits to buy, for example 1000 (one credit is $0.05).');
+  for (const k of ['success_url', 'cancel_url']) {
+    if (args[k] !== undefined && !/^https:\/\/\S+$/i.test(String(args[k]))) throw new LocalRefusal('request.invalid', `${k} must be an https:// address.`, `Leave ${k} out, or give a full https:// address.`);
+  }
+  const r = await client.topup(compact({ credits, success_url: args.success_url, cancel_url: args.cancel_url }));
+  const usd = typeof r.amount_usd === 'number' ? ` ($${r.amount_usd.toFixed(2)})` : '';
+  return {
+    ...r,
+    summary: r.summary ?? `A payment page for ${credit(r.credits ?? credits)}${usd} is ready. Open the link to pay.`,
+    note: 'Nothing is charged until the payment page is paid. The credits land seconds after payment: check the balance with agentic-id workspace (or the credits tool). Never say the payment went through before the balance shows it.',
   };
 }
 
@@ -747,7 +984,7 @@ export async function estimateCall(_client, args = {}, catalog) {
     }
   }
   const asked = Number(planned.max_accounts);
-  if ((tool === 'discover' || tool === 'lookalike') && asked > 500) throw new LocalRefusal('request.invalid', `${asked} accounts in one call; the limit is 500.`, `Plan ${Math.ceil(asked / 500)} calls of up to 500 accounts each (${asked} credits in all for accounts). Companies already delivered are skipped, so each call returns new ones.`);
+  if ((tool === 'discover' || tool === 'lookalike') && asked > RUN_MAX_TARGET) throw new LocalRefusal('request.invalid', `${asked} accounts in one search; the most is ${RUN_MAX_TARGET.toLocaleString('en-US')}.`, `Ask for at most ${RUN_MAX_TARGET.toLocaleString('en-US')}. More than 500 carry on as a run.`);
   // Run the call's own checks with a client that sends nothing. A refusal there is the answer.
   try {
     await PLANNED[tool](planClient, { ...planned, max_credits: planned.max_credits ?? 100000 });

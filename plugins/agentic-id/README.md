@@ -24,12 +24,14 @@ local server, no hooks, no scripts and no bundled command-line tool.
 | `resolve` | Who is this? A work email, LinkedIn URL, name with a company, or a domain, resolved to one stable ID | 1 per ID; 0 for one your workspace already holds |
 | `enrich` | Title, company and work email for a person; industry, size, revenue and more for a company | 2 per person, 1 per company; nothing found, nothing charged |
 | `find` | Who holds a role at a known company | 2 per person |
-| `discover` | Which companies and people match your ideal customer profile | 1 per company plus 2 per person; a count is free |
+| `discover` | Which companies and people match your ideal customer profile, from filters or in plain words | 1 per company plus 2 per person; a count or a preview is free |
 | `lookalike` | Which companies look like these seed companies | 1 per company |
 | `facts` | How sure is Agentic ID about each value of this ID, and why | Free |
 | `ledger` | What happened to this ID, with its hash chain re-checked | Free |
 | `credits` | How many credits you have, what you spent and on what | Free |
 | `feedback` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, left the company, confirmed | Free |
+| `topup` | A secure payment link to buy credits. Nothing is charged until you pay | Free to ask |
+| `run_status`, `run_results`, `run_export`, `run_cancel`, `run_resume` | Follow a big ask that carries on as a run (more than 25 people, 500 companies or 1,000 emails): where it stands, the next results, a CSV link, stop it, carry on after a pause | Free (resuming spends again) |
 
 Every value comes with a level: **verified** (proved by a direct check or something the person
 did), **corroborated** (independent sources agree), **claimed** (one source said so) or
@@ -110,7 +112,7 @@ doesn't load them when you use the plugin.
 | --- | --- |
 | Not signed in, sign-in expired | `/mcp`, select agentic-id, **Authenticate** |
 | The tools are missing | `/mcp`: check that agentic-id is connected |
-| `credits.insufficient` | The workspace balance can't cover the call. Top up with your iCustomer team |
+| `credits.insufficient` | The workspace balance can't cover the call. Ask Claude to buy credits: you get a secure payment link, and nothing is charged until you pay |
 | `rate_limited` | Wait a moment and try again |
 | `source.unavailable` | A data source behind Agentic ID was down. Nothing was charged for it; try later |
 

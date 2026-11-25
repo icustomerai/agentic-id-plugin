@@ -122,14 +122,18 @@ The hosted MCP server, which the Claude Code plugin connects to:
 | `resolve` | Who is this? A work email, LinkedIn URL, name with a company, or a domain, resolved to one stable ID | 1 per ID; 0 for one your workspace already holds |
 | `enrich` | Title, company and work email for a person; industry, size, revenue and more for a company | 2 per person, 1 per company; nothing found, nothing charged |
 | `find` | Who holds a role at a known company | 2 per person |
-| `discover` | Which companies and people match your ideal customer profile | 1 per company plus 2 per person; a count is free |
+| `discover` | Which companies and people match your ideal customer profile, from filters or in plain words ("mid-size imaging centres in Texas") | 1 per company plus 2 per person; a count or a preview is free |
 | `lookalike` | Which companies look like these seed companies | 1 per company |
 | `facts` | How sure is Agentic ID about each value of this ID, and why | Free |
 | `ledger` | What happened to this ID, with its hash chain re-checked | Free |
 | `feedback` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, left the company, confirmed | Free |
 | `credits` | How many credits you have, what you spent and on what | Free |
+| `topup` | A secure payment link to buy credits ($0.05 each, 100 to 200,000 at a time). Nothing is charged until you pay; the credits land seconds after | Free to ask |
+| `run_status`, `run_results`, `run_export`, `run_cancel`, `run_resume` | Follow a big ask that carries on as a run: where it stands, the next results, a CSV link, stop it, carry on after a pause | Free (resuming spends again) |
 
-The CLI adds what a remote server cannot do on your computer: whole CSV files in and out (`--file`), free worst-case estimates (`agentic-id estimate`) and many-row de-duplication.
+Every paid tool takes `preview: true`: free, it says what the call would do and the most it could cost, with a plan you can run within 30 minutes. A call bigger than one answer (more than 25 people, 500 accounts or 1,000 emails, up to 50,000) or slower than a few seconds carries on as a run: you get the first results and a run ID right away, and the rest keeps coming.
+
+The CLI adds what a remote server cannot do on your computer: whole CSV files in and out (`--file`), free worst-case estimates (`agentic-id estimate`), many-row de-duplication, a run's results written to a CSV file, and API keys for scripts (`agentic-id keys`).
 
 The `cost` block in every answer is authoritative. Exact arguments for every tool: [references/tools.md](plugins/agentic-id/skills/agentic-id/references/tools.md).
 
@@ -178,7 +182,8 @@ The Claude Code plugin does not bundle the command. With both installed, the plu
 ```bash
 agentic-id login      # browser sign-in with your iCustomer account
 agentic-id doctor     # checks Node, the sign-in or key, the server and what the caller can read
-agentic-id workspace  # credits available, what was spent, the last charges (free)
+agentic-id workspace  # credits available, what was spent, the last charges, recent credit purchases (free)
+agentic-id topup 1000 # a payment link for 1,000 credits ($50); printed, not opened. Nothing is charged until you pay
 ```
 
 Single lookups:
@@ -187,7 +192,33 @@ Single lookups:
 agentic-id resolve --domain hubspot.com
 agentic-id find hubspot.com --role "VP Marketing" --limit 2 --max-credits 4
 agentic-id discover --country DE --industry software --min 100 --max 2000 --count    # a count is free
+agentic-id discover "mid-size diagnostic imaging centres in Texas" --preview    # how it was read, what it could cost (free)
+agentic-id discover --plan <plan id from the preview> --max-credits 200          # run exactly what was previewed
+agentic-id discover --naics 621512 --country US --min-trust B --max-accounts 50 --max-credits 50
 agentic-id estimate find hubspot.com --role "VP Marketing" --limit 5        # the most it could cost
+```
+
+Each company shows its industry, NAICS codes when known, whether its size rests on one source only, and Agentic ID's trust grade (A best, D worst) with a one-line reason. `--min-trust B` leaves out anything below B, free.
+
+Big asks carry on as runs. More than 25 people, 500 companies or 1,000 emails (up to 50,000), or anything slower than about 20 seconds, prints its first results and a run ID, and keeps going on the server:
+
+```bash
+agentic-id runs                                   # your runs, newest first (free)
+agentic-id runs show <run id>                     # where it stands, in plain words (free)
+agentic-id runs results <run id> --out list.csv --wait   # follow it to the end and write every result (free)
+agentic-id runs cancel <run id>                   # stop it; what came stays delivered
+agentic-id runs resume <run id> --max-credits 3000       # carry on after it paused for credits or its cap
+agentic-id runs export <run id>                   # a download link for every result, good for an hour
+```
+
+A run is `completed` (everything asked for came), `exhausted` (fewer exist than you asked for, and it says why), `running`, `paused` (credits or its cap ran out: top up or raise the cap, then resume), `cancelled` or `failed`.
+
+API keys for scripts and CI, made by you while signed in (an API key cannot make or revoke keys):
+
+```bash
+agentic-id keys                     # this workspace's keys, by prefix (free)
+agentic-id keys create --name ci    # a new key, shown once: copy it then, it is not shown again
+agentic-id keys revoke ic-live-...  # stops working within 30 seconds
 ```
 
 People whose employer Agentic ID cannot confirm yet come back flagged (a `!` line under the person) and are charged. Add `--confirmed-only` to `find` or `discover` to leave them out, free.
@@ -204,7 +235,7 @@ agentic-id resolve  --file leads.checked.csv --max-credits 500 --out leads.clean
 - **Your file is kept.** The result is a new file with every original column and row, plus verdict, ID and duplicate columns. Repeated rows are paid once. Cells that would run as spreadsheet formulas are neutralised.
 - **Personal emails never leave your machine.** They are held back and counted in the answer.
 - **Machine output.** `--json` prints the full answer.
-- **Exit codes.** 0 ok, 1 bad input (nothing sent), 2 key or sign-in problem, 3 credits or cap, 4 refused by the API, 5 unreachable.
+- **Exit codes.** 0 ok, 1 bad input (nothing sent), 2 key or sign-in problem, 3 credits or cap (also a run paused for them), 4 refused by the API, 5 unreachable.
 
 `agentic-id --help` lists everything. More: [references/cli.md](plugins/agentic-id/skills/agentic-id/references/cli.md).
 
@@ -228,7 +259,11 @@ curl -s https://agenticid.icustomer.ai/v1/resolve \
 | report an outcome | `POST /v1/feedback` |
 | facts, history | `GET /v1/facts/{id}`, `GET /v1/ledger/{id}` |
 | workspace, credits | `GET /v1/workspace`, `GET /v1/credits` |
+| buy credits | `POST /v1/credits/topup` with `{"credits": 1000}`: returns a payment `url` |
+| runs | `GET /v1/runs`, `GET /v1/runs/{id}`, `GET /v1/runs/{id}/results`, `GET /v1/runs/{id}/stream`, `POST /v1/runs/{id}/cancel`, `POST /v1/runs/{id}/resume`, `GET /v1/runs/{id}/export` |
+| API keys (signed in) | `GET /v1/keys`, `POST /v1/keys` with `{"name": "ci"}`, `DELETE /v1/keys/{prefix}` |
 
+A paid call answers `202` with a run (`run_id`, `status`, first `results`, `links`) when it is bigger than one answer or slower than `Prefer: wait=N` seconds (10 by default, at most 20).
 The full description is served at `https://agenticid.icustomer.ai/v1/openapi.json`. Reusing an `Idempotency-Key` with a different body is refused (`idempotency.key_reused`); reusing it with the same body returns the first answer and charges once.
 
 ## Authentication
@@ -239,7 +274,7 @@ Every surface accepts a signed-in iCustomer account or an API key. Each signed-i
 |---|---|---|
 | A person in Claude Code | Sign-in | Ask Claude to sign you in, or type `/agentic-id:agentic-id-login` |
 | A person at a terminal | Sign-in | `agentic-id login`. Kept in `~/.agentic-id/session.json`, readable by you only; renews itself for 30 days |
-| A script, CI job or headless agent | API key (`ic-live-...`) | `AGENTIC_ID_API_KEY`, or the file named in `AGENTIC_ID_API_KEY_FILE`. A key, when set, is used instead of a sign-in |
+| A script, CI job or headless agent | API key (`ic-live-...`) | Make one while signed in: `agentic-id keys create --name ci` (shown once). Then `AGENTIC_ID_API_KEY`, or the file named in `AGENTIC_ID_API_KEY_FILE`. A key, when set, is used instead of a sign-in |
 
 Never put an API key in a URL, prompt, chat message or committed file. The skills tell agents never to ask for one in chat.
 
@@ -261,8 +296,13 @@ JSON with a machine-readable code and a `fix` the agent can act on.
 | `request.invalid` | 400 | A missing, unknown or contradictory argument; `issues` names each one |
 | `auth.missing_key`, `auth.invalid_key`, `auth.token_expired` | 401 | Not signed in, a wrong or revoked key, or a sign-in that ran out |
 | `cap_required` | (not sent) | The call could cost more than 10 credits and has no `max_credits` |
-| `credits.insufficient` | 402 | The wallet cannot cover the call; `available_credits` says what is left. Stop, do not retry |
+| `credits.insufficient` | 402 | The wallet cannot cover the call; `available_credits` says what is left. Stop, do not retry; buy credits with `topup` |
+| `topup.unavailable` | 503 | Buying credits is not available on this server; add credits through your iCustomer account |
 | `purpose.not_allowed`, `pii.scope_required` | 403 | The data may not be used for this purpose, or the key cannot read contact values |
+| `auth.sign_in_required` | 403 | Making or revoking API keys needs a signed-in user, not an API key: `agentic-id login` |
+| `intent.ambiguous` | 409 | A plain-language ask can mean more than one search; `readings` lists each. Nothing was charged: preview and pick one |
+| `plan.expired` | 409 | A preview's plan is good for 30 minutes; a fresh one comes with the error |
+| `run.not_found`, `key.not_found` | 404 | No run, or no active key, with that ID or prefix in this workspace |
 | `identity.merge_blocked` | 409 | Two records disagree on a strong identifier. Nothing is merged |
 | `idempotency.key_reused` | 422 | The key was already used with a different request |
 | `rate_limited` | 429 | Retry after `retry_after_seconds` |

@@ -1,6 +1,6 @@
 ---
 name: agentic-id
-description: Use for any B2B people or company data task, including plain questions such as "identify notion.so", "how many fintech companies are there in Germany", "find 50 companies like these", "is this email real", "how many credits do I have" and "what did I spend" - never answer those from memory - resolving a person or company (from a work email, LinkedIn URL, name plus company, or a domain) to one stable Agentic ID from a verified identity ledger, checking a mailbox before sending, filling in a contact's title / company / work email, listing the people in a role at a known company, building a net-new account list from ICP filters, finding companies like the user's best customers, de-duplicating a CRM export, or checking how sure Agentic ID is about a value. Covers the hosted Agentic ID tools (validate, resolve, enrich, find, discover, lookalike, facts, ledger, feedback) and the optional agentic-id CLI, with the credit and B2B-only rules for every call.
+description: Use for any B2B people or company data task, including plain questions such as "identify notion.so", "how many fintech companies are there in Germany", "find 50 companies like these", "is this email real", "how many credits do I have", "what did I spend" and "buy more credits" - never answer those from memory - resolving a person or company (from a work email, LinkedIn URL, name plus company, or a domain) to one stable Agentic ID from a verified identity ledger, checking a mailbox before sending, filling in a contact's title / company / work email, listing the people in a role at a known company, building a net-new account list from ICP filters, finding companies like the user's best customers, de-duplicating a CRM export, or checking how sure Agentic ID is about a value. Covers the hosted Agentic ID tools (validate, resolve, enrich, find, discover, lookalike, facts, ledger, feedback, credits, topup, and the run tools for big asks) and the optional agentic-id CLI, with the credit and B2B-only rules for every call.
 ---
 
 # Agentic ID
@@ -18,15 +18,18 @@ and every value comes with a **level** that says how far to trust it.
 | Which rows in this list are the same person or company? | `resolve`, once per row (a file: the CLI) | 1 per ID |
 | What is their title, company, work email? | `enrich` | 2 per person, 1 per company |
 | Who holds role X at company Y? | `find` | 2 per person |
-| Which companies (and people) match my ICP? | `discover` | 1 per account + 2 per person; `count_only` is free |
+| Which companies (and people) match my ICP? Also asked in plain words ("mid-size imaging centres in Texas") | `discover` (filters, or `ask`) | 1 per account + 2 per person; `count_only` is free |
 | Which companies look like my best customers? | `lookalike` | 1 per account |
 | How sure are we about this ID's values? | `facts` | free |
 | Why are these two records the same ID? | `ledger` | free |
 | This email bounced / they replied / wrong person / left the company / our CRM confirms it | `feedback` | free |
 | How many credits are left? What did I spend, and on what? | `credits` | free |
-| What would this cost? | the prices in `agentic-id-credits`, or `discover` with `count_only`; the CLI: `agentic-id estimate` | free |
+| A big ask came back with a `run_id`: how far along is it, give me the rest, stop it | `run_status`, `run_results`, `run_export`, `run_cancel` (CLI: `agentic-id runs`) | free |
+| I want more credits / a call failed for lack of credits | `topup` (CLI: `agentic-id topup <credits>`): a payment link | free to ask |
+| What would this cost? | `preview: true` on the call itself (any paid tool), or `discover` with `count_only`; the prices in `agentic-id-credits`; the CLI: `agentic-id estimate` | free |
 | Work a whole CSV file | the CLI with `--file` | as the action; `--dry-run` is free |
 | Is it connected? Sign in | `/mcp` (see below) | free |
+| I need an API key for a script or CI | the user makes it in a terminal: `agentic-id keys create` (signed in) | free |
 
 Use the cheapest tool that answers the question and stop as soon as it is answered.
 
@@ -84,8 +87,17 @@ Nothing on the user's machine checks the spend for you any more: these rules are
    enrich call (`contacts`, up to 250). Resolve takes one record per call: call it once per row for
    a short list, and use the CLI for a file.
 6. **Read `excluded` and `rejected`** in every answer and pass them on. They say why candidates
-   were left out and which filter values could not be read.
-7. **Stop on money errors.** `credits.insufficient` means stop and ask; do not retry.
+   were left out and which filter values could not be read. When an account or person carries a
+   `trust` block, repeat its `grade` and `summary` as given; do not judge it again yourself.
+7. **Big asks carry on as runs.** More than 25 people, 500 accounts, 1,000 emails or 250
+   contacts, or a call slower than about 10 seconds, answers with its first results, a `run_id`
+   and a `status`. Say it is still going and how many came so far; read more with `run_results`
+   (free) and stop it with `run_cancel` if the user asks. `exhausted` means fewer exist than asked
+   (`why_fewer` says why), `paused` means credits or a cap ran out (`reason`): ask before
+   `run_resume`, since resuming spends again.
+8. **Stop on money errors.** `credits.insufficient` means stop and ask; do not retry. If the user
+   wants more credits, `topup` returns a link to a secure payment page: give them the link, never
+   say the payment happened, and check the balance with `credits` once they say they paid.
 
 ## After the user acts on a value: send feedback
 
@@ -116,7 +128,9 @@ Errors carry a code, a message and usually a `fix`. Follow `fix`. The full table
 [references/errors.md](references/errors.md).
 
 - Not signed in, or the sign-in expired: the user re-authenticates from `/mcp` (agentic-id,
-  Authenticate). Never ask for a key, a password or a code in the chat.
+  Authenticate). Never ask for a key, a password or a code in the chat. If the user wants an API
+  key, they make it themselves in a terminal (`agentic-id keys create`, after `agentic-id login`);
+  it is shown once to them, never to you. Do not run that command for them or read its output.
 - The tools are missing or the server does not answer: ask the user to open `/mcp` and check that
   agentic-id shows as connected. It is not a reason to answer from memory.
 - `source.unavailable` or `source_unavailable: true`: a data source behind Agentic ID was down.

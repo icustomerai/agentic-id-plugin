@@ -1,7 +1,7 @@
 {
   "name": "agentic-id",
   "displayName": "Agentic ID",
-  "version": "0.7.1",
+  "version": "0.9.0",
   "description": "Resolve B2B people and companies to one stable ID from a verified identity ledger, then validate, enrich, find, discover and find look-alikes, with every value marked verified, corroborated or claimed. Connects to the hosted Agentic ID server (sign in with your iCustomer account from /mcp); credit-aware skills and a lead-qualification agent. Runs nothing on your computer.",
   "author": {
     "name": "iCustomer",

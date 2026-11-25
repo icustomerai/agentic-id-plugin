@@ -8,6 +8,17 @@ it) and an optional `purpose` (`b2b_outbound` by default; `ad_audience`,
 `own_customer_enrichment`, `fraud_check`). Every answer carries a `cost` block
 (`quoted_credits`, `charged_credits`) and a `request_id`. Unknown arguments are refused.
 
+Every paid tool also takes:
+- `preview: true`: free. What the call would do and the most it could cost (`quote.credits_max`,
+  `quote.results_expected`, `quote.runs_as`), with a `plan_id` good for 30 minutes. Nothing is
+  delivered or charged. On `discover`, `count_only: true` is the old name and still works.
+- `plan_id`: runs exactly what a preview quoted. Send it with `max_credits` in place of the other
+  arguments.
+
+A call that is bigger than one answer (more than 25 people, 500 accounts, 1,000 emails or 250
+contacts), or slower than about 10 seconds, carries on as a **run**: the answer has its first
+`results`, a `run_id`, a `status` and a `summary`. See "Runs" below.
+
 `identifiers` (resolve) and `contact` (enrich) are the same object:
 
 ```json
@@ -25,7 +36,7 @@ with it. Do not send personal emails or personal phone numbers.
 { "emails": ["jane.doe@acme.io", "bob@acme.io"], "max_credits": 2 }
 ```
 
-- `email` (one), `emails` (up to 1,000), or `domain` (is the company domain live).
+- `email` (one), `emails` (up to 1,000 in one answer; up to 10,000 carry on as a run), or `domain` (is the company domain live).
 - Read back each result: `email`, `verdict`, `reason`, and whether it is a shared role mailbox
   such as sales@.
 
@@ -99,8 +110,8 @@ Agree the budget first (up to 1 credit per row). For a CSV file, use the CLI's
 - `title` (job titles), `seniority` (`"director+"`, `["vp", "c_suite"]`, `"all"`) and
   `job_function` (`"marketing"`, `["sales", "information_technology"]`). Leave all three out for
   everyone at the company.
-- `country`: where the person is (not the company's head office), as ISO codes. `limit`: 1 to 25,
-  default 5.
+- `country`: where the person is (not the company's head office), as ISO codes. `limit`: default
+  5; up to 25 answer in one call, more (up to 50,000) carry on as a run.
 - `exclude_seen` (default true) skips people already delivered to this workspace, so the same call
   again returns the next people.
 - `include_unconfirmed` (default true): people a source places at the company but whose employer
@@ -119,19 +130,39 @@ Agree the budget first (up to 1 credit per row). For a CSV file, use the CLI's
 { "account_filters": { "industry": ["software"], "country": ["GB"], "employees_min": 100, "employees_max": 2000 }, "count_only": true }
 ```
 
-- `account_filters` (required): `industry`, `country` (ISO codes), `employees_min`,
+Or in the user's own words, previewed first:
+
+```json
+{ "ask": "mid-size diagnostic imaging centres in Texas", "preview": true }
+```
+
+- `ask` (3 to 500 characters): the request in plain words. It is read into `account_filters` for
+  free; `intent.read_as` says how. Filters sent as well win. When it could mean more than one
+  search, a preview lists each reading (`intent.readings`) and a paid call is refused
+  (`intent.ambiguous`, nothing charged) until the user picks one: send that reading's
+  `account_filters`, or run the preview's `plan_id`.
+- `account_filters`: `industry`, `naics` (codes of 2 to 6 digits; a short code covers its
+  children), `sic` (2 to 4 digits), `country` (ISO codes), `employees_min`,
   `employees_max`, `revenue_min`, `revenue_max` (USD), `revenue_range` (e.g. `["10M-50M"]`),
   `founded_from`, `founded_to`, `funding_stage`, `technologies`, `keywords` (rank only, unless
   `keywords_required: true` or they are the only filter).
 - `contact_filters` (optional): `title`, `seniority`, `job_function`, `country`, `per_account`
   (1 to 10), `min_company_size`, `include_unconfirmed` (as in find).
-- `max_accounts`: 1 to 500, default 25. `exclude_seen`: default true.
+- `max_accounts`: default 25; up to 500 answer in one call, more (up to 50,000) carry on as a run.
+  `exclude_seen`: default true.
+- `min_trust` (`A`, `B`, `C` or `D`): deliver only accounts at that trust grade or better; the rest
+  are left out (`excluded.below_min_trust`) and not charged.
 - **Always run with `count_only: true` first**, even when the user already gave a budget. It is
   free and says how many companies match and what the search can filter by itself.
 - Then the paid call with `max_credits`: at most `max_accounts x 1` plus
   `max_accounts x per_account x 2` when people are wanted.
 - Read back `accounts[]`, `contacts[]`, `excluded`, `rejected`. A value in `rejected` was not
-  applied: fix it before buying.
+  applied: fix it before buying. `filters_read_as` says how a plain word was read (an industry
+  word read as a NAICS code, for example).
+- Each account has `domain`, `name`, `country`, `employees`, `industry`, `naics` (when known),
+  `size_check` (`confirmed`: two independent sources agree on the size; `single`: one source
+  only; charged either way) and `trust`: `grade` A to D and a one-line `summary`. Repeat both as
+  given. People carry the same `trust` block.
 
 ## lookalike
 
@@ -141,7 +172,8 @@ Agree the budget first (up to 1 credit per row). For a CSV file, use the CLI's
 
 - `seeds` (required): 1 to 50 company domains. Three or more of a similar kind give a usable
   profile. Seeds are never returned.
-- `max_accounts` (default 25), `exclude_seen` (default true). 1 credit per account.
+- `max_accounts` (default 25; more than 500 carry on as a run), `exclude_seen` (default true),
+  `min_trust` (as in discover). 1 credit per account.
 - Read back the shared profile (what the seeds share: the search that was run), the accounts with
   how alike they are and why, and `bigger_than_seeds`.
 - Show the user the profile before the list. If `bigger_than_seeds` is above 0.5, say the list
@@ -207,6 +239,48 @@ still running). Spent 3 credits today and 41 credits in the last 30 days.", then
 
 It is the billing record. Use it for "how many credits do I have", "what did I spend" and "what was
 that charge for". Never answer those from memory or from the `cost` blocks of this conversation.
+Newer servers add `topups`: the latest credit purchases (`credits`, `amount_usd`, `status`
+pending, paid, expired or failed, `created_at`, `paid_at`).
+
+## topup
+
+Free to call; it charges nothing. Returns a link to a secure payment page where the user buys
+credits.
+
+- `credits` (required): a whole number, 100 to 200,000. One credit is $0.05.
+
+```json
+{ "credits": 1000 }
+```
+
+The answer has `summary`, `url` (the payment page), `credits`, `amount_usd`, `topup_id` and
+sometimes `expires_at`. Give the user the `url`. Nothing is charged until they pay there; the
+credits land seconds after. `topup.unavailable` means this server cannot sell credits: the user
+adds them through their iCustomer account or team.
+
+## Runs
+
+Free. For a call that answered with a `run_id`. The run carries on by itself whether or not
+anyone reads it; reading its results again never charges again.
+
+| Tool | Arguments | What it does |
+| --- | --- | --- |
+| `run_status` | `run_id` | Where it stands: `status`, `progress`, credits charged |
+| `run_results` | `run_id`, `after` (from the last answer) | The next results, waiting up to 10 seconds for new ones |
+| `run_export` | `run_id` | A download link for every result as CSV, good for an hour. Anyone with the link can open it: give it only to the user |
+| `run_cancel` | `run_id` | Stops it: nothing more is spent; what was delivered stays delivered and charged |
+| `run_resume` | `run_id`, `max_credits` | Carries on with a paused run. It spends again: only with the user's yes and their number |
+
+What `status` means, in words the user understands:
+
+| Status | Means |
+| --- | --- |
+| `completed` | Everything asked for was delivered |
+| `exhausted` | Finished with fewer than asked: fewer exist that pass the checks. `why_fewer` has the numbers and the reasons |
+| `running` | Still going; more is coming. `waiting` says why nothing is running right now and when it carries on |
+| `paused` | Stopped for now. `reason`: `credits` (the workspace ran out: buy more, then resume), `max_credits` (its own cap: resume with a higher one), `source_cap` (its budget for paid data) |
+| `cancelled` | It was stopped; what came stays delivered and charged |
+| `failed` | It could not run (`error.code`) |
 
 ## Not on the hosted server
 
@@ -215,6 +289,7 @@ that charge for". Never answer those from memory or from the `cost` blocks of th
 | A cost estimate before calling | The prices in the `agentic-id-credits` skill; `discover` with `count_only`; `agentic-id estimate` (CLI) |
 | A whole CSV file (validate, resolve, enrich, report) | `agentic-id <command> --file ... --dry-run`, then with `--max-credits` (CLI) |
 | Sign in, check the connection | `/mcp` in Claude Code; for the CLI, `agentic-id login` and `agentic-id doctor` |
+| Make, list or revoke API keys | `agentic-id keys` (CLI, signed in). The user runs it; the key is shown to them once |
 
 Check the CLI is installed with `agentic-id --version` before relying on it. If it is not, the
 user can install it from npm: https://www.npmjs.com/package/agentic-id.

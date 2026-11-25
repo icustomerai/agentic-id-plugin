@@ -7,7 +7,7 @@ export const RATES = {
   enrich_company: 1,
   enrich_phone: 5,
   find: 2, // per person delivered
-  discover_account: 1, // per account delivered; an account whose size only one source confirms is free
+  discover_account: 1, // per account delivered; only an account this workspace already paid for is free
   lookalike_account: 1,
 };
 
@@ -16,6 +16,8 @@ const n = (v, d) => (Number.isFinite(Number(v)) && v !== undefined && v !== null
 /** { max_credits, arithmetic, free } for a tool name (validate, resolve, ...) and its arguments. */
 export function estimate(tool, args = {}) {
   const free = (why) => ({ max_credits: 0, arithmetic: why, free: true });
+  // A preview (count_only is its old name on discover) delivers nothing and charges nothing.
+  if (args.preview === true) return free('a preview is free');
   switch (tool) {
     case 'validate': {
       const emails = (args.emails?.length ?? 0) + (args.email ? 1 : 0);
@@ -46,7 +48,7 @@ export function estimate(tool, args = {}) {
       return { max_credits: limit * RATES.find, arithmetic: `up to ${limit} people x ${RATES.find}`, free: false };
     }
     case 'discover': {
-      if (args.count_only) return free('count_only is free');
+      if (args.count_only) return free('a count (count_only) is free');
       const accounts = n(args.max_accounts, 25);
       const per = args.contact_filters ? n(args.contact_filters.per_account, 1) : 0;
       const people = accounts * per;

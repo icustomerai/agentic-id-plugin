@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 import { parseArgs } from 'node:util';
 import { AuthError, login, logout } from './lib/auth.mjs';
-import { AgenticId, AgenticIdError, CLIENT, keyFromEnv, urlFromEnv } from './lib/client.mjs';
+import { AgenticId, AgenticIdError, CLIENT, isRun, keyFromEnv, urlFromEnv } from './lib/client.mjs';
 import { cellFor, columnName, decodeText, mapColumns, parseCsv, rowIdentifiers, toCsv, unmappedEmailColumns } from './lib/csv.mjs';
 import { estimate } from './lib/estimate.mjs';
 import { cleanEmail, cleanIdentifiers, identityKey } from './lib/guards.mjs';
@@ -17,13 +17,25 @@ export const HELP = `agentic-id <command> [flags]      Agentic ID from a termina
   resolve  [--email e] [--linkedin url] [--name n] [--company c] [--domain d] [--spend]
   enrich   [--email e] [--linkedin url] [--name n] [--company c] [--domain d] [--fields title,work_email]
   find     <domain> [--role "VP Marketing"]... [--seniority director+] [--country GB] [--limit 5] [--confirmed-only]
-  discover [--industry software]... [--country GB]... [--min 100] [--max 2000] [--tech Snowflake] [--keyword k]
-           [--title CTO]... [--seniority vp] [--per-account 1] [--max-accounts 25] [--count] [--confirmed-only]
-  lookalike <domain...> [--max-accounts 25]
+  discover ["plain words, e.g. mid-size imaging centres in Texas"] [--ask "..."]
+           [--industry software]... [--naics 621512]... [--sic 8071]... [--country GB]... [--min 100] [--max 2000]
+           [--tech Snowflake] [--keyword k] [--title CTO]... [--seniority vp] [--per-account 1]
+           [--max-accounts 25] [--min-trust B] [--confirmed-only]
+  lookalike <domain...> [--max-accounts 25] [--min-trust B]
   facts    <id>          every fact's level and the evidence behind it (free)
   ledger   <id>          the ID's history, hash chain re-checked (free)
   estimate <command> [the same flags]     the most it could cost, without calling (free)
-  workspace [n]          credits available, what was spent, the last n charges, how this workspace shares (free)
+  workspace [n]          credits available, what was spent, the last n charges, recent credit purchases (free)
+  topup    <credits>     a payment link to buy credits ($0.05 each, 100 to 200,000); nothing is charged until you pay
+  runs     [--status running|paused|finished] [--limit 20]    big or slow asks carry on as runs; list them (free)
+  runs show <id>         where a run stands, in plain words (free)
+  runs results <id> [--out results.csv] [--wait]   what it delivered so far; --wait follows it to the end (free)
+  runs cancel <id>       stop it: nothing more is spent; what was delivered stays delivered
+  runs resume <id> [--max-credits N] [--source-cap USD]   carry on with a paused run
+  runs export <id> [--format csv|ndjson]   a download link for every result, good for an hour (free)
+  keys                   this workspace's API keys: prefix, name, dates; never the key itself (free)
+  keys create [--name laptop]   a new API key, shown once (signed-in users only: agentic-id login)
+  keys revoke <prefix>   stop a key working (signed-in users only)
   report   <id> --outcome bounced|replied|wrong_person|confirmed [--field work_email]   what happened to a value (free)
   login                  sign in with your iCustomer account in the browser (no API key needed)
   logout                 end that sign-in on this machine and on the server
@@ -38,11 +50,18 @@ Lists (CSV in, CSV out; repeats are paid once; personal emails never leave this 
 
 Everywhere:
   --max-credits N   the most the call may charge. Needed for anything over 10 credits and for every --file run.
+  --preview         free: what the call would do and could cost, with a plan ID good for 30 minutes (--count: old name, discover)
+  --plan <id>       run exactly what a preview quoted; needs --max-credits
   --dry-run         show what would be sent and the estimate; send nothing
   --json            the full answer as JSON          --purpose b2b_outbound|ad_audience|own_customer_enrichment|fraud_check
 
-Setup:  AGENTIC_ID_API_KEY (or AGENTIC_ID_API_KEY_FILE=path), AGENTIC_ID_URL (default ${urlFromEnv({})})
-Exit:   0 ok · 1 bad input (nothing sent) · 2 key problem · 3 credits or cap · 4 refused by the API · 5 unreachable`;
+Setup:  agentic-id login, or AGENTIC_ID_API_KEY (or AGENTIC_ID_API_KEY_FILE=path; make a key with agentic-id keys create)
+        AGENTIC_ID_URL (default ${urlFromEnv({})})
+
+Big asks (more than 25 people, 500 accounts, 1,000 emails, or slower than 20 seconds) carry on as a run: the
+command prints its first results and its ID, and the run goes on by itself. Follow it with agentic-id runs.
+
+Exit:   0 ok · 1 bad input (nothing sent) · 2 sign-in or key problem · 3 credits or cap · 4 refused by the API · 5 unreachable`;
 
 const OPTIONS = {
   json: { type: 'boolean' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' }, spend: { type: 'boolean' }, count: { type: 'boolean' }, 'dry-run': { type: 'boolean' },
@@ -52,6 +71,8 @@ const OPTIONS = {
   tech: { type: 'string', multiple: true }, keyword: { type: 'string', multiple: true }, title: { type: 'string', multiple: true },
   'per-account': { type: 'string' }, 'max-accounts': { type: 'string' }, 'max-credits': { type: 'string' }, purpose: { type: 'string' }, kind: { type: 'string' },
   outcome: { type: 'string' }, field: { type: 'string' }, 'confirmed-only': { type: 'boolean' },
+  preview: { type: 'boolean' }, plan: { type: 'string' }, ask: { type: 'string' }, 'min-trust': { type: 'string' }, naics: { type: 'string', multiple: true }, sic: { type: 'string', multiple: true },
+  status: { type: 'string' }, wait: { type: 'boolean' }, format: { type: 'string' }, 'source-cap': { type: 'string' },
   file: { type: 'string', short: 'f' }, out: { type: 'string', short: 'o' }, column: { type: 'string' }, 'limit-rows': { type: 'string' },
   'email-column': { type: 'string' }, 'linkedin-column': { type: 'string' }, 'name-column': { type: 'string' }, 'company-column': { type: 'string' }, 'domain-column': { type: 'string' },
 };
@@ -71,7 +92,7 @@ const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v 
 export function toArgs(cmd, args, f) {
   const max_credits = num(f['max-credits'], 'max-credits');
   const who = clean({ email: f.email, linkedin_url: f.linkedin, name: f.name, company_name: f.company, company_domain: f.domain });
-  const common = clean({ purpose: f.purpose, max_credits });
+  const common = clean({ purpose: f.purpose, max_credits, preview: f.preview || undefined });
   switch (cmd) {
     case 'validate':
       return { ...common, ...clean({ emails: args.length ? args : undefined, domain: f.domain }) };
@@ -86,15 +107,18 @@ export function toArgs(cmd, args, f) {
       return { ...common, account: clean({ domain: args[0] ?? f.domain }), ...clean({ roles: many(f.role), seniority: f.seniority, countries: many(f.country), limit: num(f.limit, 'limit'), include_unconfirmed: f['confirmed-only'] ? false : undefined }) };
     case 'discover': {
       const contact = clean({ job_title: many(f.title), job_level: f.seniority, per_account: num(f['per-account'], 'per-account'), include_unconfirmed: f['confirmed-only'] ? false : undefined });
+      // Words after "discover" are a plain-language ask, the same as --ask.
+      const ask = f.ask ?? (args.length ? args.join(' ') : undefined);
       return {
         ...common,
-        account_filters: clean({ industry: many(f.industry), country: many(f.country), employees_min: num(f.min, 'min'), employees_max: num(f.max, 'max'), technologies: many(f.tech), keywords: many(f.keyword) }),
+        ...clean({ ask }),
+        account_filters: clean({ industry: many(f.industry), naics: many(f.naics), sic: many(f.sic), country: many(f.country), employees_min: num(f.min, 'min'), employees_max: num(f.max, 'max'), technologies: many(f.tech), keywords: many(f.keyword) }),
         ...(Object.keys(contact).length ? { contact_filters: contact } : {}),
-        ...clean({ max_accounts: num(f['max-accounts'], 'max-accounts'), count_only: f.count || undefined }),
+        ...clean({ max_accounts: num(f['max-accounts'], 'max-accounts'), min_trust: f['min-trust'], count_only: f.count || undefined }),
       };
     }
     case 'lookalike':
-      return { ...common, seeds: args, ...clean({ max_accounts: num(f['max-accounts'], 'max-accounts') }) };
+      return { ...common, seeds: args, ...clean({ max_accounts: num(f['max-accounts'], 'max-accounts'), min_trust: f['min-trust'] }) };
     case 'facts':
     case 'ledger':
       return { id: args[0] };
@@ -116,11 +140,79 @@ const dryClient = (real) =>
 
 // ------------------------------------------------------------------ the human view
 const pad = (v, n) => String(v ?? '').padEnd(n);
+const utc = (t) => String(t ?? '').slice(0, 16).replace('T', ' ');
+const sizeOf = (e) => (e ? `${e.min}${e.max ? `-${e.max}` : '+'}` : '');
+/** Agentic ID's own verdict on a record, repeated as given: "trust B: <its one-line summary>". */
+const trustLine = (t) => (t?.grade ? `trust ${t.grade}${t.summary ? `: ${t.summary}` : ''}` : '');
+
+function accountLines(a) {
+  const out = [`  ${a.similarity !== undefined ? pad(a.similarity, 5) : ''}${pad(a.domain, 28)} ${pad(a.country, 3)} ${pad(sizeOf(a.employees), 12)} ${pad(a.industry, 24)}${a.trust?.grade ? ` [${a.trust.grade}]` : ''}${a.why ? ` ${a.why.join(', ')}` : ''}${a.charged === false ? '  (not charged)' : ''}`.trimEnd()];
+  const more = [a.naics?.length ? `NAICS ${a.naics.join(', ')}` : '', a.size_check === 'single' ? 'size from one source only' : '', trustLine(a.trust)].filter(Boolean);
+  if (more.length) out.push(`    ${more.join(' · ')}`);
+  return out;
+}
+function personLines(p) {
+  const out = [`  ${pad(p.name, 24)} ${pad(p.title, 32)} ${pad(p.email, 28)} ${p.level ?? ''}  ${p.id ?? ''}${p.trust?.grade ? `  [${p.trust.grade}]` : ''}`.trimEnd()];
+  if (p.employment?.status === 'unconfirmed') out.push(`    ! ${p.employment.flag ?? 'unconfirmed: the employer is not confirmed yet'}`);
+  if (p.trust?.summary) out.push(`    ${trustLine(p.trust)}`);
+  return out;
+}
+/** One record of a run, whatever it is: an account, a person, an email checked, an ID. */
+function recordLines(x) {
+  if (x.type === 'account') return accountLines(x);
+  if (x.type === 'person' || x.type === 'contact') return personLines(x);
+  if (x.type === 'email' || (x.email && x.verdict)) return [`  ${pad(x.verdict, 9)} ${x.email}${x.reason ? `  (${x.reason})` : ''}`];
+  const { type, ...rest } = x;
+  return [`  ${type ?? 'result'}: ${JSON.stringify(rest)}`];
+}
+
+/** A call that carries on as a run: its first results, where it stands, and how to follow it. */
+export function renderRun(cmd, r, words) {
+  const lines = [];
+  if (typeof r.summary === 'string') lines.push(r.summary.replace(/ Read the rest at \S+, follow \S+, or export it when it is done\./, '').replace(/ Follow \/v1\/runs\/\S+ or check back later\./, ''));
+  lines.push(`  This carries on as run ${r.run_id}. ${words}`);
+  for (const x of r.results ?? []) lines.push(...recordLines(x));
+  if (r.intent) lines.push(...intentLines(r.intent));
+  lines.push(`  credits charged so far: ${r.credits?.charged ?? 0}${r.credits?.max !== null && r.credits?.max !== undefined ? ` (cap ${r.credits.max})` : ''}`);
+  lines.push('  Follow it (free):');
+  lines.push(`    where it stands:  agentic-id runs show ${r.run_id}`);
+  lines.push(`    every result:     agentic-id runs results ${r.run_id} --out ${cmd}.csv --wait`);
+  lines.push(`    stop it:          agentic-id runs cancel ${r.run_id}`);
+  return lines.join('\n');
+}
+
+/** How a plain-language ask was read; every reading when it could mean more than one search. */
+function intentLines(i) {
+  const lines = [];
+  if (i.read_as) lines.push(`  read "${i.ask}" as: ${i.read_as}`);
+  if (Array.isArray(i.readings) && i.readings.length > 1) {
+    lines.push(`  it could also mean (${i.readings.length} readings; the first is shown):`);
+    i.readings.forEach((x, k) => lines.push(`    ${k + 1}. ${x.read_as}  ${JSON.stringify(x.account_filters)}`));
+  } else if (i.account_filters) lines.push(`  filters: ${JSON.stringify(i.account_filters)}`);
+  return lines;
+}
+
+/** A preview: free, nothing delivered. What it would do, what it could cost, and the plan to run it. */
+function previewLines(cmd, r) {
+  const lines = [];
+  const q = r.quote ?? {};
+  lines.push(`  could cost at most ${q.credits_max ?? '?'} credits${q.results_expected !== undefined ? `, about ${q.results_expected} result${q.results_expected === 1 ? '' : 's'}${q.count_is_upper_bound || r.count_is_upper_bound ? ' (an upper bound: fewer may pass the checks)' : ''}` : ''}; ${q.runs_as === 'run' ? 'it would carry on as a run' : 'it would answer in one call'}`);
+  for (const x of r.refused ?? []) lines.push(`  refused before anything is charged: ${x.value} (${x.reason})`);
+  if (r.plan_id) {
+    lines.push(`  plan ${r.plan_id}, good until ${utc(r.expires_at)} UTC. To run exactly this:`);
+    lines.push(`    agentic-id ${cmd} --plan ${r.plan_id} --max-credits ${q.credits_max ?? '<credits>'}`);
+  }
+  return lines;
+}
+
 export function render(cmd, r) {
   const lines = [];
   if (typeof r.summary === 'string') lines.push(r.summary);
   const rows = (k) => (Array.isArray(r[k]) ? r[k] : []);
   if (r.dry_run) lines.push(JSON.stringify(r.would_send, null, 2));
+  if (r.intent) lines.push(...intentLines(r.intent));
+  if (r.preview === true) lines.push(...previewLines(cmd, r));
+  for (const x of rows('filters_read_as')) lines.push(`  "${x.given}" (${x.field}) read as ${x.read_as}`);
   if (cmd === 'validate') for (const x of rows('results')) lines.push(`  ${pad(x.verdict, 9)} ${x.email}${x.reason ? `  (${x.reason})` : ''}${x.role ? '  [shared mailbox]' : ''}`);
   if (cmd === 'validate' && r.domain) lines.push(`  domain ${r.domain.domain}: ${r.domain.status}${r.domain.reason ? ` (${r.domain.reason})` : ''}`);
   if (cmd === 'resolve' && r.outcome) {
@@ -130,18 +222,17 @@ export function render(cmd, r) {
   if (cmd === 'enrich') for (const x of [...rows('results'), ...rows('company_results')]) {
     lines.push(`  ${x.id ?? x.domain ?? x.name ?? '-'}  ${x.status}${x.reason ? `: ${x.reason}` : ''}`);
     for (const fld of x.fields ?? []) lines.push(`    ${pad(fld.field, 16)} ${pad(typeof fld.value === 'object' ? JSON.stringify(fld.value) : fld.value, 36)} ${pad(fld.level, 13)} ${fld.source}`);
+    if (x.trust?.grade) lines.push(`    ${trustLine(x.trust)}`);
   }
-  if (cmd === 'find' || cmd === 'discover') for (const p of rows(cmd === 'find' ? 'people' : 'contacts')) {
-    lines.push(`  ${pad(p.name, 24)} ${pad(p.title, 32)} ${pad(p.email, 28)} ${p.level ?? ''}  ${p.id}`);
-    if (p.employment?.status === 'unconfirmed') lines.push(`    ! ${p.employment.flag ?? 'unconfirmed: the employer is not confirmed yet'}`);
-  }
+  if (cmd === 'find' || cmd === 'discover') for (const p of rows(cmd === 'find' ? 'people' : 'contacts')) lines.push(...personLines(p));
   if (cmd === 'discover' || cmd === 'lookalike') {
     if (r.profile) lines.push(`  profile: ${[...(r.profile.industries ?? []), ...(r.profile.countries ?? [])].join(', ')}${r.profile.employees ? `, ${r.profile.employees.min}+ employees` : ''} (from ${r.profile.seeds_used} seeds)`);
-    for (const a of rows('accounts')) lines.push(`  ${a.similarity !== undefined ? pad(a.similarity, 5) : ''}${pad(a.domain, 28)} ${pad(a.country, 3)} ${pad(a.employees ? `${a.employees.min}${a.employees.max ? `-${a.employees.max}` : '+'}` : '', 12)}${a.why ? a.why.join(', ') : ''}${a.charged === false ? '  (not charged)' : ''}`);
+    for (const a of rows('accounts')) lines.push(...accountLines(a));
     for (const x of rows('seeds_rejected')) lines.push(`  seed ignored: ${x.domain} (${x.reason})`);
     if (rows('plan')[0]?.why) lines.push(`  search: ${rows('plan')[0].why}`);
     if (typeof r.bigger_than_seeds === 'number' && r.bigger_than_seeds > 0.5) lines.push(`  note: ${Math.round(r.bigger_than_seeds * 100)}% of results are bigger than your largest seed`);
   }
+  if (typeof r.fewer_than_asked === 'string') lines.push(`  fewer than asked: ${r.fewer_than_asked}`);
   for (const [k, v] of Object.entries(r.excluded ?? {})) lines.push(`  left out: ${v} ${k}`);
   if (rows('rejected').length) lines.push(`  filter values not understood: ${rows('rejected').map((x) => `${x.field}="${x.value}"`).join(', ')}`);
   if (cmd === 'ledger') {
@@ -402,12 +493,120 @@ async function doctor(client, io) {
   return keyed && s.ok && major >= 18 ? 0 : s.reachable === false ? 5 : s.status === 401 || !keyed ? 2 : 5;
 }
 
+// ------------------------------------------------------------------ runs
+/** A run's results as CSV rows: one column per field seen, lists joined, small objects spread, trust as grade and summary. */
+function flatRecord(r) {
+  const out = {};
+  for (const [k, v] of Object.entries(r)) {
+    if (k === 'trust' && v && typeof v === 'object') {
+      out.trust_grade = v.grade;
+      out.trust_summary = v.summary;
+    } else if (Array.isArray(v) && v.every((x) => x === null || typeof x !== 'object')) out[k] = v.join('; ');
+    else if (v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((x) => x === null || typeof x !== 'object')) for (const [kk, vv] of Object.entries(v)) out[`${k}_${kk}`] = vv;
+    else out[k] = v && typeof v === 'object' ? JSON.stringify(v) : v;
+  }
+  return out;
+}
+
+const runLine = (x) => `  ${pad(x.run_id, 37)} ${pad(x.type, 10)} ${pad(x.status, 10)} ${pad(x.progress?.asked !== undefined ? `${x.progress.delivered ?? 0}/${x.progress.asked}` : x.progress?.parts ? `${x.progress.parts.done}/${x.progress.parts.total} parts` : '', 14)} ${pad(`${x.credits?.charged ?? 0} credits`, 12)} ${utc(x.created_at)}`;
+
+async function runsCommand(client, args, f, io) {
+  const [sub, id] = args;
+  const show = (r, extra = []) => io.out(f.json ? JSON.stringify(r, null, 2) : [r.summary, ...extra].join('\n'));
+  if (sub === undefined || sub === 'list') {
+    const r = await ops.runs(client, { status: f.status, limit: num(f.limit, 'limit') });
+    show(r, r.runs.length ? ['  run ID                                type       status     done           charged      started (UTC)', ...r.runs.map(runLine)] : []);
+    return 0;
+  }
+  // "agentic-id runs <id>" is "runs show <id>".
+  const [verb, runId] = /^[0-9a-f]{8}-/i.test(sub) ? ['show', sub] : [sub, id];
+  if (!runId && verb !== 'list') throw new Usage(`runs ${verb} needs a run ID: agentic-id runs ${verb} <id> (agentic-id runs lists them)`);
+  const detail = (r) => [
+    `  ${r.type ?? ''} run ${r.run_id}, started ${utc(r.started_at ?? r.created_at)} UTC${r.finished_at ? `, finished ${utc(r.finished_at)} UTC` : ''}`,
+    `  credits charged: ${r.credits?.charged ?? 0}${r.credits?.max !== null && r.credits?.max !== undefined ? ` (cap ${r.credits.max})` : ''}`,
+    ...(r.progress?.parts ? [`  parts: ${r.progress.parts.done} done, ${r.progress.parts.running} running, ${r.progress.parts.waiting} waiting, ${r.progress.parts.failed} failed${r.progress.parts.cancelled ? `, ${r.progress.parts.cancelled} cancelled` : ''} (of ${r.progress.parts.total})`] : []),
+  ];
+  switch (verb) {
+    case 'show': {
+      const r = await ops.runShow(client, { id: runId });
+      show(r, detail(r));
+      return r.status === 'paused' ? 3 : r.status === 'failed' ? 4 : 0;
+    }
+    case 'cancel': {
+      const r = await ops.runCancel(client, { id: runId });
+      show(r, detail(r));
+      return 0;
+    }
+    case 'resume': {
+      const cap = f['source-cap'] === undefined ? undefined : Number(f['source-cap']);
+      if (cap !== undefined && !Number.isFinite(cap)) throw new Usage(`--source-cap needs a number of US dollars, got "${f['source-cap']}"`);
+      const r = await ops.runResume(client, { id: runId, max_credits: num(f['max-credits'], 'max-credits'), source_spend_cap_usd: cap });
+      show(r, detail(r));
+      return r.status === 'paused' ? 3 : 0;
+    }
+    case 'export': {
+      const r = await ops.runExport(client, { id: runId, format: f.format });
+      show(r, [`  ${r.url}`]);
+      return 0;
+    }
+    case 'results': {
+      const r = await ops.runResults(client, { id: runId, wait: f.wait });
+      if (f.out) {
+        const flat = r.results.map(flatRecord);
+        const header = [...new Set(flat.flatMap((x) => Object.keys(x)))];
+        writeFileSync(f.out, toCsv(header, flat));
+        io.err(`Wrote ${flat.length} result${flat.length === 1 ? '' : 's'} to ${f.out}`);
+        io.out(f.json ? JSON.stringify({ ...r, results: undefined, out_file: f.out, rows: flat.length }, null, 2) : r.summary);
+      } else show(r, f.json ? [] : r.results.flatMap(recordLines));
+      return r.run?.status === 'paused' ? 3 : 0;
+    }
+    default:
+      throw new Usage(`Unknown runs command "${verb}". Use: runs, runs show|results|cancel|resume|export <id>.`);
+  }
+}
+
+// ------------------------------------------------------------------ API keys
+async function keysCommand(client, args, f, io) {
+  const [sub, prefix] = args;
+  if (sub === undefined || sub === 'list') {
+    const r = await ops.keys(client);
+    if (f.json) io.out(JSON.stringify(r, null, 2));
+    else {
+      io.out(r.summary);
+      for (const k of r.keys) io.out(`  ${pad(k.prefix, 24)} ${pad(k.name, 24)} made ${utc(k.created_at)} UTC${k.revoked_at ? `  revoked ${utc(k.revoked_at)} UTC` : ''}`);
+    }
+    return 0;
+  }
+  if (sub === 'create' || sub === 'new') {
+    // The key is printed here once and goes nowhere else: no log, no file, no summary passed on.
+    const r = await ops.createKey(client, { name: f.name });
+    if (f.json) io.out(JSON.stringify({ ...r, note: 'Copy the key now: it will not be shown again.' }, null, 2));
+    else {
+      io.out(r.summary);
+      io.out(`  key: ${r.key}`);
+      io.out('  Copy it now: it will not be shown again. Keep it out of chats, code and shared files.');
+      io.out('  Use it as AGENTIC_ID_API_KEY, or put it in a file and point AGENTIC_ID_API_KEY_FILE at that file.');
+      io.out(`  Revoke it any time with: agentic-id keys revoke ${r.prefix}`);
+    }
+    return 0;
+  }
+  if (sub === 'revoke' || sub === 'delete') {
+    if (!prefix) throw new Usage('keys revoke needs the key\'s prefix: agentic-id keys revoke ic-live-... (agentic-id keys lists them)');
+    const r = await ops.revokeKey(client, { prefix });
+    io.out(f.json ? JSON.stringify(r, null, 2) : r.summary);
+    return 0;
+  }
+  throw new Usage(`Unknown keys command "${sub}". Use: keys, keys create [--name label], keys revoke <prefix>.`);
+}
+
 // ------------------------------------------------------------------ entry
 export const exitCodeFor = (e) => {
   if (e instanceof Usage) return 1;
   if (!(e instanceof AgenticIdError)) return 1;
   if (e.code === 'cap_required' || e.status === 402 || /credit/.test(e.code ?? '')) return 3;
+  if (e.code === 'auth.sign_in_required') return 2; // a key where a sign-in is needed: a credential matter, local or not
   if (e.local) return 1;
+  if (e.code === 'topup.unavailable') return 4; // the server cannot sell credits: a refusal, not an outage
   if (e.status === 401 || e.status === 403) return 2;
   if (e.status === 0 || e.status >= 500) return 5;
   return 4;
@@ -460,6 +659,21 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       io.out(f.json ? JSON.stringify(s, null, 2) : `${s.summary}${s.ok ? `\n  contact values: ${s.contact_values}` : `\n  fix: ${s.fix ?? 'run agentic-id doctor'}`}`);
       return s.ok ? 0 : s.reachable === false || s.key_configured ? 5 : 2;
     }
+    if (cmd === 'buy-credits') cmd = 'topup';
+    if (cmd === 'topup') {
+      const n = args[0];
+      if (!n || !/^\d+$/.test(n) || Number(n) < 1) throw new Usage(`topup needs a whole number of credits above 0${n ? `, got "${n}"` : ''}: agentic-id topup 1000`);
+      // The link is printed, never opened: paying is the user's own step.
+      const t = await ops.topup(real, { credits: Number(n) });
+      if (f.json) io.out(JSON.stringify(t, null, 2));
+      else {
+        io.out(t.summary);
+        io.out(`  pay here: ${t.url}`);
+        if (t.expires_at) io.out(`  the link works until ${String(t.expires_at).slice(0, 16).replace('T', ' ')} UTC`);
+        io.out('  Nothing is charged until you pay. The credits land seconds after; check with: agentic-id workspace');
+      }
+      return 0;
+    }
     if (cmd === 'credits') cmd = 'workspace';
     if (cmd === 'workspace') {
       const w = await ops.workspace(real, { recent: args[0] === undefined ? undefined : Number(args[0]) });
@@ -470,6 +684,8 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
         for (const l of w.recent) io.out(`  ${l.at.slice(0, 16).replace('T', ' ')}  ${l.kind === 'grant' ? '+' : '-'}${l.credits}  ${l.tool ?? l.note ?? l.kind}`);
         if (w.delivered?.length) io.out('  delivered (what each charge was for):');
         for (const d of w.delivered ?? []) io.out(`    ${d.at.slice(0, 16).replace('T', ' ')}  ${d.id}  ${(d.company ?? (d.kind === 'person' ? 'a person' : '')).padEnd(24)} ${d.tool}  ${d.credits} credit${d.credits === 1 ? '' : 's'}`);
+        if (w.topups?.length) io.out('  credits bought (latest first):');
+        for (const t of w.topups ?? []) io.out(`    ${String(t.paid_at ?? t.created_at ?? '').slice(0, 16).replace('T', ' ').padEnd(16)}  +${t.credits} credits  ${typeof t.amount_usd === 'number' ? `$${t.amount_usd.toFixed(2)}` : ''}  ${t.status}  ${t.topup_id}`);
         io.out('  times and "today" are in UTC');
       }
       return 0;
@@ -510,9 +726,21 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       } else io.out(f.json ? JSON.stringify(out[0], null, 2) : `${out[0].summary}${results[0]?.note ? `\n  ${results[0].note}` : ''}`);
       return recorded === reports.length ? 0 : 4;
     }
+    if (cmd === 'run') cmd = 'runs';
+    if (cmd === 'runs') return await runsCommand(real, args, f, io);
+    if (cmd === 'key') cmd = 'keys';
+    if (cmd === 'keys') return await keysCommand(real, args, f, io);
     if (!OPS[cmd]) throw new Usage(`Unknown command "${cmd}". Run agentic-id --help.`);
+    if (f.file && (f.preview || f.plan)) throw new Usage('--preview and --plan work on one call, not a --file run. For a file, --dry-run prices every row on this machine, for free.');
     if (f.file) return await runFile(cmd, real, f, io);
-    const reply = await OPS[cmd](f['dry-run'] ? dryClient(real) : real, toArgs(cmd, args, f));
+    const target = f['dry-run'] ? dryClient(real) : real;
+    if (f.plan && f.preview) throw new Usage('--plan runs a preview\'s plan; leave out --preview.');
+    const reply = f.plan ? await ops.runPlan(target, { verb: cmd, plan_id: f.plan, max_credits: num(f['max-credits'], 'max-credits') }) : await OPS[cmd](target, toArgs(cmd, args, f));
+    if (isRun(reply)) {
+      // A big or slow ask carries on by itself: say so, show what came first, and how to follow it.
+      io.out(f.json ? JSON.stringify(reply, null, 2) : renderRun(cmd, reply, ops.runStatusWords(reply)));
+      return reply.status === 'paused' ? 3 : reply.status === 'failed' ? 4 : 0;
+    }
     io.out(f.json ? JSON.stringify(reply, null, 2) : render(cmd, reply));
     return 0;
   } catch (e) {
@@ -523,7 +751,7 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
     if (e instanceof AgenticIdError) {
       const body = e.toJSON();
       if (f.json) io.err(JSON.stringify(body, null, 2));
-      else io.err(`${e.local ? 'Not sent' : e.status ? `Agentic ID refused (${e.status}${e.code ? ` ${e.code}` : ''})` : 'Agentic ID did not answer'}: ${body.message}${body.issues ? `\n${body.issues.map((i) => `  ${i.path}: ${i.message}`).join('\n')}` : ''}${body.fix ? `\n  fix: ${body.fix}` : ''}`);
+      else io.err(`${e.local ? 'Not sent' : e.status ? `Agentic ID refused (${e.status}${e.code ? ` ${e.code}` : ''})` : 'Agentic ID did not answer'}: ${body.message}${body.issues ? `\n${body.issues.map((i) => `  ${i.path}: ${i.message}`).join('\n')}` : ''}${body.readings ? `\n${body.readings.map((x, k) => `  ${k + 1}. ${x.read_as}  ${JSON.stringify(x.account_filters)}`).join('\n')}` : ''}${body.fresh_plan_id ? `\n  fresh plan: ${body.fresh_plan_id}${body.fresh_quote?.credits_max !== undefined ? ` (at most ${body.fresh_quote.credits_max} credits)` : ''}` : ''}${body.fix ? `\n  fix: ${body.fix}` : ''}`);
     } else if (e instanceof Usage || e?.code === 'ENOENT') io.err(e.code === 'ENOENT' ? `No such file: ${e.path}` : e.message);
     else throw e;
     return exitCodeFor(e);

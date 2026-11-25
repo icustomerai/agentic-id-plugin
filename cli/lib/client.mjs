@@ -15,14 +15,27 @@ import { isSourceFailure, shieldProblem, shieldReply, SOURCE_DOWN, SOURCE_FIX } 
 // The hosted Agentic ID service. A local V3 stack is http://127.0.0.1:3100: set it in the plugin
 // options or as AGENTIC_ID_URL.
 export const DEFAULT_URL = 'https://agenticid.icustomer.ai';
-export const CLIENT = 'agentic-id-plugin/0.7.1';
+export const CLIENT = 'agentic-id-plugin/0.9.0';
+
+/** How long a paid call may take before the server hands it over as a run (Prefer: wait=N, at most 20). */
+export const PAID_WAIT_S = 20;
+const RUN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A key prefix as the server shows it: ic-live-AbC12_x. Never a whole key. */
+export const KEY_PREFIX_RE = /^ic-[a-z]+-[A-Za-z0-9_-]{1,20}$/;
+
+/**
+ * True when a paid call's answer is a run that carries on (202), not the call's own reply: a run has
+ * its links and progress. A call that finished in time may carry a run_id too, but neither of those.
+ */
+export const isRun = (r) => Boolean(r && typeof r === 'object' && typeof r.run_id === 'string' && r.links && r.progress);
 
 const FIXES = {
   'auth.invalid_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set a valid API key in the plugin options. Never ask for a key in the chat.',
   'auth.missing_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set an API key in the plugin options. Never ask for a key in the chat.',
   'auth.token_expired': 'The sign-in has run out. Call agentic_id_login to sign in again (terminal: `agentic-id login`).',
   signed_out: 'Call agentic_id_login to sign in again (terminal: `agentic-id login`).',
-  'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap.',
+  'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap. If they want more credits, `agentic-id topup <credits>` (the topup tool) returns a payment link for them to open.',
+  'topup.unavailable': 'Buying credits is not available on this server. The user can add credits through their iCustomer account or team. Nothing was charged.',
   'credits.cap_too_low': 'max_credits is below the cheapest result. Ask the user before raising it.',
   rate_limited: 'Too many requests for this key. Wait for retry_after_seconds, then send the same call once.',
   'id.not_held': 'Facts and history are shown only for IDs this workspace holds. Resolve, enrich, find or discover it first; an ID copied from elsewhere will not open.',
@@ -44,6 +57,17 @@ const FIXES = {
   bad_url: 'The server address must be a full web address such as https://agenticid.icustomer.ai. Fix it in the plugin options (api_url) or AGENTIC_ID_URL, or clear it to use the hosted service.',
   'source.unavailable': SOURCE_FIX,
   timeout: 'The call took too long. Discover and lookalike can take minutes: narrow the filters or lower max_accounts, then retry once.',
+  'intent.ambiguous': 'That request can be read more than one way, so nothing was run or charged. Run it again with --preview (preview: true) to see each reading, then send the filters of the one you mean, or run the preview\'s plan.',
+  'intent.unclear': 'Say it another way (what kind of company, where, how big), or use filters instead. Nothing was charged.',
+  'intent.unavailable': 'Plain-language requests cannot be read right now. Use filters instead (industry, country, size), or try again later. Nothing was charged.',
+  'plan.not_found': 'No such plan. Ask again with --preview (preview: true) for a new one.',
+  'plan.expired': 'A plan is good for 30 minutes. Run the fresh plan shown here, or preview again. Nothing was charged.',
+  'run.not_found': 'No run with that ID in this workspace. `agentic-id runs` lists them.',
+  'run.not_finished': 'The run is still going. Read what is ready with `agentic-id runs results <id>`, or add --wait to follow it to the end.',
+  'auth.sign_in_required': 'Only a signed-in user can make or revoke API keys, not an API key. Run `agentic-id login`, and unset AGENTIC_ID_API_KEY (or AGENTIC_ID_API_KEY_FILE) for this command: a configured key is used instead of a sign-in.',
+  'key.not_found': 'No active key with that prefix in this workspace. `agentic-id keys` lists them.',
+  'key.limit_reached': 'This workspace has as many active keys as it may. Revoke one you no longer use (`agentic-id keys revoke <prefix>`), then try again.',
+  'export.link_invalid': 'Export links last an hour. Ask for a new one with `agentic-id runs export <id>`.',
 };
 
 export class AgenticIdError extends Error {
@@ -59,7 +83,7 @@ export class AgenticIdError extends Error {
 
   /** The shape tools and the CLI print: { error, message, fix, ... }. Never includes the request body. */
   toJSON() {
-    const { issues, rejected, retryAfterSeconds, available, request_id: requestId } = this.problem;
+    const { issues, rejected, retryAfterSeconds, available, request_id: requestId, readings, preview } = this.problem;
     return {
       error: this.code ?? `http_${this.status}`,
       status: this.status,
@@ -70,6 +94,10 @@ export class AgenticIdError extends Error {
       ...(typeof retryAfterSeconds === 'number' ? { retry_after_seconds: retryAfterSeconds } : {}),
       ...(typeof available === 'number' ? { available_credits: available } : {}),
       ...(typeof requestId === 'string' ? { request_id: requestId } : {}),
+      // A plain-language ask that can mean more than one search: each way it was read.
+      ...(Array.isArray(readings) && readings.length ? { readings } : {}),
+      // An expired plan comes back with a fresh preview to run instead.
+      ...(typeof preview?.plan_id === 'string' ? { fresh_plan_id: preview.plan_id, ...(preview.quote ? { fresh_quote: preview.quote } : {}) } : {}),
     };
   }
 }
@@ -164,7 +192,7 @@ export class AgenticId {
     }
   }
 
-  async call(method, path, body) {
+  async call(method, path, body, headers = {}) {
     let bearer = await this.credential();
     if (!bearer) {
       // A mistyped server address would otherwise read as "not signed in", and signing in cannot fix it.
@@ -190,6 +218,7 @@ export class AgenticId {
             'x-agentic-id-client': this.client,
             ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
             ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+            ...headers,
           },
           ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
           signal: AbortSignal.timeout(this.timeoutMs),
@@ -205,7 +234,9 @@ export class AgenticId {
         throw new AgenticIdError(0, timedOut ? 'timeout' : 'unreachable', timedOut ? `No answer from ${this.baseUrl} within ${Math.round(this.timeoutMs / 1000)}s.` : `Cannot reach the Agentic ID server at ${this.baseUrl} (${netReason(e)}).`);
       }
       const json = await res.json().catch(() => ({}));
-      if (res.ok) return shieldReply(json);
+      // The wallet's own answers (balance, top-ups) speak of payments: they are not a data source's bill.
+      const ownWallet = path.startsWith('/v1/credits');
+      if (res.ok) return shieldReply(json, { ownWallet });
       // A 401 is refused before any work, so renewing the sign-in and sending once more is safe.
       if (res.status === 401 && !this.apiKey && !renewed) {
         renewed = true;
@@ -225,8 +256,8 @@ export class AgenticId {
         continue;
       }
       // A data source's failure or bill is not the user's problem to read: one plain error instead.
-      if (isSourceFailure(json.code, json.detail, res.status)) throw new AgenticIdError(503, 'source.unavailable', SOURCE_DOWN, typeof json.request_id === 'string' ? { request_id: json.request_id } : {});
-      const problem = shieldProblem({ ...json, detail: String(json.detail ?? res.statusText ?? 'Request failed.') }, { ownWallet: json.code === 'credits.insufficient' });
+      if (!ownWallet && isSourceFailure(json.code, json.detail, res.status)) throw new AgenticIdError(503, 'source.unavailable', SOURCE_DOWN, typeof json.request_id === 'string' ? { request_id: json.request_id } : {});
+      const problem = shieldProblem({ ...json, detail: String(json.detail ?? res.statusText ?? 'Request failed.') }, { ownWallet: ownWallet || json.code === 'credits.insufficient' });
       const err = new AgenticIdError(res.status, json.code, problem.detail, problem);
       // A refused key blocks a stored sign-in: signing in again cannot help until the key is fixed or removed.
       if (res.status === 401 && this.apiKey) err.fix = `The configured API key was refused. Replace it or remove it in the plugin options (or AGENTIC_ID_API_KEY)${hasSession(this.baseUrl, this.env) ? '; a sign-in is stored and will be used once the key is removed' : ', or remove it and sign in'}. Never paste a key into the chat.`;
@@ -252,30 +283,86 @@ export class AgenticId {
     return { ok: false, code: 'not_agentic_id', detail: `${this.baseUrl} answered (HTTP ${res.status}), but not as an Agentic ID server.` };
   }
 
+  /**
+   * A paid call. It answers within PAID_WAIT_S seconds when it can; a bigger or slower one answers
+   * with the run it carries on as (see isRun): its first results, its run_id and its links.
+   */
+  paid(verb, body) {
+    return this.call('POST', `/v1/${verb}`, body, { prefer: `wait=${PAID_WAIT_S}` });
+  }
   /** Is this mailbox real? 1 credit per valid, invalid or catch-all answer; unknown and rejected are free. */
   validate(body) {
-    return this.call('POST', '/v1/validate', body);
+    return this.paid('validate', body);
   }
   /** One stable Agentic ID for a person or company. */
   resolve(body) {
-    return this.call('POST', '/v1/resolve', body);
+    return this.paid('resolve', body);
   }
   /** Fill in missing facts; each comes with its level (verified, corroborated, claimed) and source. */
   enrich(body) {
-    return this.call('POST', '/v1/enrich', body);
+    return this.paid('enrich', body);
   }
   /** People in a role inside one company. */
   find(body) {
-    return this.call('POST', '/v1/find', body);
+    return this.paid('find', body);
   }
-  /** New companies (and the people in them) that match filters. count_only: true is free. */
+  /** New companies (and the people in them) that match filters or a plain-language ask. preview: true is free. */
   discover(body) {
-    return this.call('POST', '/v1/discover', body);
+    return this.paid('discover', body);
   }
   /** Companies like the seeds, ranked by how alike they are, seeds excluded. */
   lookalike(body) {
-    return this.call('POST', '/v1/lookalike', body);
+    return this.paid('lookalike', body);
   }
+
+  // ---------------------------------------------------------------- runs (all free)
+  /** This workspace's runs, newest first. status: running, paused or finished; limit 1 to 100. */
+  runs({ status, limit } = {}) {
+    const q = new URLSearchParams({ ...(status ? { status } : {}), ...(limit ? { limit: String(limit) } : {}) }).toString();
+    return this.call('GET', `/v1/runs${q ? `?${q}` : ''}`);
+  }
+  /** Where one run stands: status, progress, credits, and why fewer for an exhausted search. */
+  run(id) {
+    return this.call('GET', `/v1/runs/${encodeURIComponent(id)}`);
+  }
+  /** The next page of a run's results after a cursor. `wait` long-polls up to 20 seconds for new ones. */
+  runResults(id, { after = 0, limit = 100, wait } = {}) {
+    return this.call('GET', `/v1/runs/${encodeURIComponent(id)}/results?after=${encodeURIComponent(after)}&limit=${encodeURIComponent(limit)}`, undefined, wait ? { prefer: `wait=${Math.min(20, Math.max(0, Math.round(wait)))}` } : {});
+  }
+  /** A finished run as the call's own reply (the same shape the call answers inline). */
+  runReply(id) {
+    return this.call('GET', `/v1/runs/${encodeURIComponent(id)}/reply`);
+  }
+  /** Stops new spend; what was delivered stays delivered. */
+  cancelRun(id) {
+    return this.call('POST', `/v1/runs/${encodeURIComponent(id)}/cancel`, {});
+  }
+  /** Carries on with a paused run: { max_credits?, source_spend_cap_usd? }. */
+  resumeRun(id, body = {}) {
+    return this.call('POST', `/v1/runs/${encodeURIComponent(id)}/resume`, body);
+  }
+  /** A signed link to every result of a run, CSV or NDJSON, good for an hour. */
+  exportRun(id, format = 'csv') {
+    return this.call('GET', `/v1/runs/${encodeURIComponent(id)}/export?format=${encodeURIComponent(format)}`);
+  }
+  /**
+   * Follows a run to its end with long polls (never a tight loop) and answers with the call's own
+   * reply, which carries run_status. Used where a list is worked through in parts and each part's
+   * answer is needed whole. Gives up after this client's timeout, saying how to follow the run.
+   */
+  async followRun(id) {
+    if (!RUN_ID_RE.test(String(id))) throw new AgenticIdError(0, 'run.not_found', `"${String(id).slice(0, 40)}" is not a run ID.`);
+    const deadline = Date.now() + this.timeoutMs;
+    let after = 0;
+    for (;;) {
+      const page = await this.runResults(id, { after, wait: 20 });
+      after = page.after ?? after;
+      if (page.next === null) break;
+      if (Date.now() > deadline) throw new AgenticIdError(0, 'timeout', `The call carries on as run ${id} and is not finished yet. Follow it with: agentic-id runs show ${id}`);
+    }
+    return this.runReply(id);
+  }
+
   /** Everything that ever happened to one ID, with the hash chain re-checked. Free. */
   ledger(id) {
     return this.call('GET', `/v1/ledger/${encodeURIComponent(id)}`);
@@ -292,6 +379,13 @@ export class AgenticId {
   credits(limit = 20) {
     return this.call('GET', `/v1/credits?limit=${encodeURIComponent(limit)}`);
   }
+  /**
+   * Buy credits: a payment link for `credits` credits (whole number). Nothing is charged until the
+   * user pays on that page; the credits land seconds after. Not retried on a fault (POST, keyed).
+   */
+  topup(body) {
+    return this.call('POST', '/v1/credits/topup', body);
+  }
   /** What happened after a value was used: bounced, replied, wrong_person, confirmed. Free. */
   feedback(body) {
     return this.call('POST', '/v1/feedback', body);
@@ -299,5 +393,19 @@ export class AgenticId {
   /** Which workspace and scopes this key has. Free. */
   me() {
     return this.call('GET', '/v1/me');
+  }
+
+  // ---------------------------------------------------------------- API keys
+  /** This workspace's API keys: prefix, name and dates, never the key itself. Any caller. */
+  keys() {
+    return this.call('GET', '/v1/keys');
+  }
+  /** A new API key, shown once in the answer (`key`). Signed-in users only (403 auth.sign_in_required). */
+  createKey(body = {}) {
+    return this.call('POST', '/v1/keys', body);
+  }
+  /** Revoke a key by its prefix. Signed-in users only. */
+  revokeKey(prefix) {
+    return this.call('DELETE', `/v1/keys/${encodeURIComponent(prefix)}`);
   }
 }

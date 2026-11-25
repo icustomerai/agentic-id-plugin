@@ -84,9 +84,9 @@ const delivered = (r) => ['results', 'accounts', 'contacts', 'people', 'rows', '
  * An API answer, cleaned. When a data source failed, `source_unavailable: true` is set and the
  * summary says so plainly; when nothing at all came back, the summary is replaced.
  */
-export function shieldReply(reply) {
+export function shieldReply(reply, { ownWallet = false } = {}) {
   if (!reply || typeof reply !== 'object' || Array.isArray(reply)) return reply;
-  const state = { down: false, ownWallet: false };
+  const state = { down: false, ownWallet };
   const out = walk(reply, state);
   if (!state.down) return out;
   const charged = out.cost?.charged_credits ?? 0;

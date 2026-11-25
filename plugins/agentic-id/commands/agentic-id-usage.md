@@ -15,5 +15,8 @@ The user wants to know how many Agentic ID credits they have and what was spent.
    installed (check with `agentic-id --version`), or tell the user they can see their balance in
    their iCustomer account.
 
+If the user wants more credits, see "Buying credits" in the `agentic-id-credits` skill: the `topup`
+tool returns a payment link; nothing is charged until they pay.
+
 That answer is the billing record. Never guess a balance, and never conclude "nothing was spent"
 from the `cost` blocks of this conversation.
