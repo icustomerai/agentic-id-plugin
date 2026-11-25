@@ -48,6 +48,7 @@ write one into a file in the repository.
 | `feedback` | `agentic-id report <id> --outcome bounced [--field work_email]` |
 | (none) | `agentic-id estimate discover --max-accounts 50 --title CTO --per-account 2` |
 | (none) | `agentic-id workspace [n]` |
+| `topup` | `agentic-id topup 1000` (also `buy-credits`): prints a payment link; nothing is charged until the user pays |
 
 Always pass `--json` when you will read the answer yourself.
 
@@ -59,7 +60,8 @@ Workspace and outcomes (both free):
 
 ```bash
 agentic-id workspace            # credits available, spend by tool, the last 10 movements
-agentic-id workspace 50 --json  # the last 50, as JSON
+agentic-id workspace 50 --json  # the last 50, as JSON (and the latest credit purchases, when the server reports them)
+agentic-id topup 1000           # a payment link for 1,000 credits ($0.05 each, 100 to 200,000); the link is printed, not opened
 agentic-id report ic-... --outcome bounced            # the work email bounced
 agentic-id report ic-... --outcome confirmed --field title
 agentic-id report --file outcomes.csv --out reported.csv   # columns agentic_id, outcome[, field]; adds report_status

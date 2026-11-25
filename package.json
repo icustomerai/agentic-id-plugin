@@ -1,6 +1,6 @@
 {
   "name": "agentic-id",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Agentic ID from any terminal: resolve people and companies to one stable ID, then validate, enrich, find and discover, with CSV lists in and out.",
   "keywords": ["agentic-id", "identity", "identity-resolution", "enrichment", "email-validation", "prospecting", "gtm", "cli"],
   "homepage": "https://github.com/icustomerai/agentic-id-plugin#cli",

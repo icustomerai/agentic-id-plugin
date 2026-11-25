@@ -24,6 +24,7 @@ export const HELP = `agentic-id <command> [flags]      Agentic ID from a termina
   ledger   <id>          the ID's history, hash chain re-checked (free)
   estimate <command> [the same flags]     the most it could cost, without calling (free)
   workspace [n]          credits available, what was spent, the last n charges, how this workspace shares (free)
+  topup    <credits>     a payment link to buy credits ($0.05 each, 100 to 200,000); nothing is charged until you pay
   report   <id> --outcome bounced|replied|wrong_person|confirmed [--field work_email]   what happened to a value (free)
   login                  sign in with your iCustomer account in the browser (no API key needed)
   logout                 end that sign-in on this machine and on the server
@@ -408,6 +409,7 @@ export const exitCodeFor = (e) => {
   if (!(e instanceof AgenticIdError)) return 1;
   if (e.code === 'cap_required' || e.status === 402 || /credit/.test(e.code ?? '')) return 3;
   if (e.local) return 1;
+  if (e.code === 'topup.unavailable') return 4; // the server cannot sell credits: a refusal, not an outage
   if (e.status === 401 || e.status === 403) return 2;
   if (e.status === 0 || e.status >= 500) return 5;
   return 4;
@@ -460,6 +462,21 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
       io.out(f.json ? JSON.stringify(s, null, 2) : `${s.summary}${s.ok ? `\n  contact values: ${s.contact_values}` : `\n  fix: ${s.fix ?? 'run agentic-id doctor'}`}`);
       return s.ok ? 0 : s.reachable === false || s.key_configured ? 5 : 2;
     }
+    if (cmd === 'buy-credits') cmd = 'topup';
+    if (cmd === 'topup') {
+      const n = args[0];
+      if (!n || !/^\d+$/.test(n) || Number(n) < 1) throw new Usage(`topup needs a whole number of credits above 0${n ? `, got "${n}"` : ''}: agentic-id topup 1000`);
+      // The link is printed, never opened: paying is the user's own step.
+      const t = await ops.topup(real, { credits: Number(n) });
+      if (f.json) io.out(JSON.stringify(t, null, 2));
+      else {
+        io.out(t.summary);
+        io.out(`  pay here: ${t.url}`);
+        if (t.expires_at) io.out(`  the link works until ${String(t.expires_at).slice(0, 16).replace('T', ' ')} UTC`);
+        io.out('  Nothing is charged until you pay. The credits land seconds after; check with: agentic-id workspace');
+      }
+      return 0;
+    }
     if (cmd === 'credits') cmd = 'workspace';
     if (cmd === 'workspace') {
       const w = await ops.workspace(real, { recent: args[0] === undefined ? undefined : Number(args[0]) });
@@ -470,6 +487,8 @@ export async function main(argv = process.argv.slice(2), io = { out: (s) => cons
         for (const l of w.recent) io.out(`  ${l.at.slice(0, 16).replace('T', ' ')}  ${l.kind === 'grant' ? '+' : '-'}${l.credits}  ${l.tool ?? l.note ?? l.kind}`);
         if (w.delivered?.length) io.out('  delivered (what each charge was for):');
         for (const d of w.delivered ?? []) io.out(`    ${d.at.slice(0, 16).replace('T', ' ')}  ${d.id}  ${(d.company ?? (d.kind === 'person' ? 'a person' : '')).padEnd(24)} ${d.tool}  ${d.credits} credit${d.credits === 1 ? '' : 's'}`);
+        if (w.topups?.length) io.out('  credits bought (latest first):');
+        for (const t of w.topups ?? []) io.out(`    ${String(t.paid_at ?? t.created_at ?? '').slice(0, 16).replace('T', ' ').padEnd(16)}  +${t.credits} credits  ${typeof t.amount_usd === 'number' ? `$${t.amount_usd.toFixed(2)}` : ''}  ${t.status}  ${t.topup_id}`);
         io.out('  times and "today" are in UTC');
       }
       return 0;

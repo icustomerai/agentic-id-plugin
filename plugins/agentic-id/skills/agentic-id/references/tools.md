@@ -207,6 +207,24 @@ still running). Spent 3 credits today and 41 credits in the last 30 days.", then
 
 It is the billing record. Use it for "how many credits do I have", "what did I spend" and "what was
 that charge for". Never answer those from memory or from the `cost` blocks of this conversation.
+Newer servers add `topups`: the latest credit purchases (`credits`, `amount_usd`, `status`
+pending, paid, expired or failed, `created_at`, `paid_at`).
+
+## topup
+
+Free to call; it charges nothing. Returns a link to a secure payment page where the user buys
+credits.
+
+- `credits` (required): a whole number, 100 to 200,000. One credit is $0.05.
+
+```json
+{ "credits": 1000 }
+```
+
+The answer has `summary`, `url` (the payment page), `credits`, `amount_usd`, `topup_id` and
+sometimes `expires_at`. Give the user the `url`. Nothing is charged until they pay there; the
+credits land seconds after. `topup.unavailable` means this server cannot sell credits: the user
+adds them through their iCustomer account or team.
 
 ## Not on the hosted server
 

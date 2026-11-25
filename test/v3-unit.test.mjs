@@ -22,7 +22,7 @@ function fake(replies = {}) {
     const r = replies[name];
     return typeof r === 'function' ? r(body, calls.filter((c) => c.verb === name).length) : r ?? { request_id: `req_${calls.length}`, summary: `${name} ok`, cost: { quoted_credits: 0, charged_credits: 0 }, results: [] };
   };
-  return { calls, apiKey: 'k', baseUrl: 'http://fake', validate: verb('validate'), resolve: verb('resolve'), enrich: verb('enrich'), find: verb('find'), discover: verb('discover'), lookalike: verb('lookalike'), facts: verb('facts'), ledger: verb('ledger'), me: verb('me'), workspace: verb('workspace'), credits: verb('credits'), feedback: verb('feedback') };
+  return { calls, apiKey: 'k', baseUrl: 'http://fake', validate: verb('validate'), resolve: verb('resolve'), enrich: verb('enrich'), find: verb('find'), discover: verb('discover'), lookalike: verb('lookalike'), facts: verb('facts'), ledger: verb('ledger'), me: verb('me'), workspace: verb('workspace'), credits: verb('credits'), feedback: verb('feedback'), topup: verb('topup') };
 }
 const refused = async (fn) => {
   try {
@@ -960,4 +960,93 @@ test('the sign-in helper runs a command that exists (cli/agentic-id)', async () 
   const { existsSync } = await import('node:fs');
   const { CLI_SCRIPT } = await import('../cli/lib/operations.mjs');
   assert.ok(existsSync(CLI_SCRIPT), CLI_SCRIPT);
+});
+
+// ------------------------------------------------------------------ buying credits
+const TOPUP = { summary: 'A payment page for 1000 credits ($50.00) is ready.', topup_id: 'tu_1', url: 'https://pay.example/c/abc', credits: 1000, amount_usd: 50, expires_at: '2026-11-26T10:00:00Z' };
+
+test('topup: a whole number above 0, checked before anything is sent', async () => {
+  const c = fake({ topup: TOPUP });
+  for (const bad of [0, -5, 1.5, 'ten', undefined, NaN]) {
+    const e = await refused(() => ops.topup(c, { credits: bad }));
+    assert.equal(e.local, true, String(bad));
+  }
+  await refused(() => ops.topup(c, { credits: 100, success_url: 'http://insecure.example' }));
+  assert.equal(c.calls.length, 0, 'nothing sent for bad input');
+  const t = await ops.topup(c, { credits: '1000' });
+  assert.deepEqual(c.calls[0].body, { credits: 1000 });
+  assert.equal(t.url, TOPUP.url);
+  assert.match(t.note, /Nothing is charged until/);
+});
+
+test('cli topup: prints the summary and the link, never opens it; bad numbers exit 1', async () => {
+  const ok = await cli(['topup', '1000'], fake({ topup: TOPUP }));
+  assert.equal(ok.code, 0);
+  assert.deepEqual(ok.client.calls[0], { verb: 'topup', body: { credits: 1000 } });
+  assert.match(ok.out, /payment page for 1000 credits/);
+  assert.match(ok.out, /pay here: https:\/\/pay\.example\/c\/abc/);
+  assert.match(ok.out, /Nothing is charged until you pay/);
+  const alias = await cli(['buy-credits', '500', '--json'], fake({ topup: { ...TOPUP, credits: 500, summary: undefined, amount_usd: 25 } }));
+  assert.equal(JSON.parse(alias.out).url, TOPUP.url);
+  assert.match(JSON.parse(alias.out).summary, /500 credits \(\$25\.00\)/);
+  for (const bad of [[], ['0'], ['-3'], ['1.5'], ['lots']]) {
+    const r = await cli(['topup', ...bad]);
+    assert.equal(r.code, 1, bad.join(' '));
+    assert.equal(r.client.calls.length, 0);
+    if (bad[0] !== '-3') assert.match(r.err, /whole number of credits/); // '-3' reads as a flag: still exit 1, nothing sent
+  }
+  assert.match((await cli(['--help'])).out, /topup\s+<credits>/);
+});
+
+test('client topup: POST /v1/credits/topup; 400 and 503 topup.unavailable are refusals, payment words are not scrubbed', async () => {
+  await withApi(
+    (req, res) => {
+      if (req.method !== 'POST' || req.url !== '/v1/credits/topup') return json(res, 404, { code: 'not_found', detail: 'no' });
+      return json(res, 200, { ...TOPUP, summary: 'Open the payment page to pay. Payment required before credits are added.' });
+    },
+    async (baseUrl, seen) => {
+      const r = await cli(['topup', '1000'], new AgenticId({ apiKey: 'k', baseUrl }));
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(seen[0].body, { credits: 1000 });
+      assert.match(seen[0].headers['idempotency-key'], /^[0-9a-f-]{36}$/);
+      assert.match(r.out, /Payment required before credits are added/, 'the wallet\'s own payment words are kept');
+    },
+  );
+  await withApi(
+    (req, res) => json(res, 400, { code: 'request.invalid', detail: 'credits must be between 100 and 200000.', issues: [{ path: 'credits', message: 'too small' }] }),
+    async (baseUrl, seen) => {
+      const r = await cli(['topup', '5'], new AgenticId({ apiKey: 'k', baseUrl }));
+      assert.equal(r.code, 4);
+      assert.equal(seen.length, 1);
+      assert.match(r.err, /refused \(400 request\.invalid\)[\s\S]*credits: too small/);
+    },
+  );
+  await withApi(
+    (req, res) => json(res, 503, { code: 'topup.unavailable', detail: 'Buying credits is not set up on this server.' }),
+    async (baseUrl, seen) => {
+      const r = await cli(['topup', '1000'], new AgenticId({ apiKey: 'k', baseUrl }));
+      assert.equal(r.code, 4, 'a server that cannot sell credits is a refusal, not an outage');
+      assert.equal(seen.length, 1, 'not retried');
+      assert.match(r.err, /topup\.unavailable[\s\S]*fix: .*iCustomer account/);
+    },
+  );
+});
+
+test('workspace: recent top-ups shown when the server sends them, ignored when it does not', async () => {
+  const base = {
+    workspace: { workspace_id: 'ws_1', scopes: [], credits: { balance: 1090, held: 0, available: 1090 }, contributes: false, ids_held: 0 },
+    credits: { credits: { available: 1090 }, spent: { today: 0, last_30_days: 0, by_tool: [] }, recent: [] },
+  };
+  const old = await cli(['workspace'], fake(base));
+  assert.equal(old.code, 0);
+  assert.doesNotMatch(old.out, /credits bought/);
+  const topups = [
+    { topup_id: 'tu_2', credits: 1000, amount_usd: 50, status: 'paid', created_at: '2026-11-25T09:00:00Z', paid_at: '2026-11-25T09:01:00Z' },
+    { topup_id: 'tu_1', credits: 500, amount_usd: 25, status: 'expired', created_at: '2026-11-24T08:00:00Z' },
+  ];
+  const now = await cli(['workspace'], fake({ ...base, credits: { ...base.credits, topups } }));
+  assert.match(now.out, /credits bought/);
+  assert.match(now.out, /2026-11-25 09:01\s+\+1000 credits\s+\$50\.00\s+paid\s+tu_2/);
+  assert.match(now.out, /2026-11-24 08:00\s+\+500 credits\s+\$25\.00\s+expired\s+tu_1/);
+  assert.deepEqual((await ops.workspace(fake({ ...base, credits: { ...base.credits, topups } }))).topups, topups);
 });

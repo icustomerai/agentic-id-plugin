@@ -1,6 +1,6 @@
 ---
 name: agentic-id-credits
-description: Estimate and control Agentic ID credit spend - what each tool costs, how to work out the most a call can cost and get a free count before buying, how to size max_credits, and how to read quoted_credits versus charged_credits afterwards. Use before any paid Agentic ID call that touches more than a handful of records, and whenever the user asks "how much will this cost", "how many credits do I have", "how many credits did that use", "why was I charged", "why was that free" or "set a budget".
+description: Estimate and control Agentic ID credit spend - what each tool costs, how to work out the most a call can cost and get a free count before buying, how to size max_credits, and how to read quoted_credits versus charged_credits afterwards. Use before any paid Agentic ID call that touches more than a handful of records, and whenever the user asks "how much will this cost", "how many credits do I have", "how many credits did that use", "why was I charged", "why was that free", "set a budget" or "buy more credits".
 ---
 
 # Agentic ID credits
@@ -57,7 +57,8 @@ tighten the filters, not raise the budget.
   `contact_filters.per_account` on discover, `max_accounts` on lookalike.
 - For a large job, run a sample first (one account, `limit: 3`, or `--limit-rows 20` on a file
   with the CLI), read the real price, then scale with the user's yes.
-- `credits.insufficient`: the wallet cannot cover it. Stop; do not retry.
+- `credits.insufficient`: the wallet cannot cover it. Stop; do not retry. Offer to buy credits
+  (below).
 
 ## 4. Read back: quoted vs charged
 
@@ -87,3 +88,16 @@ and cap the call at no more than that. When the budget is spent, stop and ask.
   installed, or the user's iCustomer account.
 - Never guess a balance, and never conclude "nothing was spent" from your own memory of the
   session. Before a job over about 50 credits, check the balance if you can.
+
+## Buying credits
+
+When the user wants more credits, or a call stopped on `credits.insufficient`:
+
+- Ask how many if they did not say (100 to 200,000; one credit is $0.05, so 1,000 is $50).
+- Call the `topup` tool with `credits` (CLI: `agentic-id topup <credits>`). It charges nothing and
+  returns a link to a secure payment page. Give the user the link and the amount; do not open it
+  for them.
+- Never say the payment went through, or that credits were added, until the `credits` tool shows
+  them. After the user says they paid, check the balance (they land within seconds).
+- `topup.unavailable`: buying is not set up on this server; they add credits through their
+  iCustomer account or team.

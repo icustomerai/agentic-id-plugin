@@ -645,6 +645,8 @@ export async function workspace(client, args = {}) {
     // or domain; a person is an ID only.
     delivered: (c.recent_ids ?? []).map((d) => ({ ...d, charged: d.credits > 0 })),
     delivered_note: 'An entry with 0 credits was free (an ID already held): do not count it as a charge.',
+    // The latest credit purchases, when the server reports them (older servers do not).
+    ...(Array.isArray(c.topups) ? { topups: c.topups } : {}),
     times_are: 'UTC',
     utc_today: new Date().toISOString().slice(0, 10),
     contributes: w.contributes,
@@ -653,6 +655,25 @@ export async function workspace(client, args = {}) {
     ids_held: w.ids_held,
     contact_values: w.scopes?.includes('pii:read') ? 'readable' : 'emails in full; phones and LinkedIn partly hidden',
     summary: `Workspace ${w.workspace_id}: ${credit(w.credits.available)} available${w.credits.held ? ` (${w.credits.held} held by running calls)` : ''}. Spent ${c.spent.today} today, counted since ${utcDayStartLocal()} on this machine's clock (the day is the UTC day ${new Date().toISOString().slice(0, 10)}, whatever the local date), ${c.spent.last_30_days} in 30 days${top ? ` (${top})` : ''}. ${w.ids_held} ID${w.ids_held === 1 ? '' : 's'} held. ${w.contributes ? 'Contributing: identifiers it sends help everyone resolve, and re-resolving an ID it holds is free.' : 'Private: identifiers it sends stay in this workspace.'}`,
+  };
+}
+
+/**
+ * Buy credits: asks the server for a payment link. Nothing is charged here and nothing is opened:
+ * the user opens the link and pays there; the credits land seconds after. Free to ask.
+ */
+export async function topup(client, args = {}) {
+  const credits = typeof args.credits === 'string' && /^\s*\d+\s*$/.test(args.credits) ? Number(args.credits) : args.credits;
+  if (!Number.isInteger(credits) || credits <= 0) throw new LocalRefusal('request.invalid', 'credits must be a whole number above 0.', 'Say how many credits to buy, for example 1000 (one credit is $0.05).');
+  for (const k of ['success_url', 'cancel_url']) {
+    if (args[k] !== undefined && !/^https:\/\/\S+$/i.test(String(args[k]))) throw new LocalRefusal('request.invalid', `${k} must be an https:// address.`, `Leave ${k} out, or give a full https:// address.`);
+  }
+  const r = await client.topup(compact({ credits, success_url: args.success_url, cancel_url: args.cancel_url }));
+  const usd = typeof r.amount_usd === 'number' ? ` ($${r.amount_usd.toFixed(2)})` : '';
+  return {
+    ...r,
+    summary: r.summary ?? `A payment page for ${credit(r.credits ?? credits)}${usd} is ready. Open the link to pay.`,
+    note: 'Nothing is charged until the payment page is paid. The credits land seconds after payment: check the balance with agentic-id workspace (or the credits tool). Never say the payment went through before the balance shows it.',
   };
 }
 

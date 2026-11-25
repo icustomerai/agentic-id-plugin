@@ -3,6 +3,28 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.8.0 - 2026-11-25
+
+### Added
+- **Buy credits from the CLI: `agentic-id topup <credits>`** (alias `buy-credits`). It calls
+  `POST /v1/credits/topup` and prints the summary and a link to a secure payment page; the link is
+  never opened for you. Nothing is charged until you pay there, and the credits land seconds after.
+  One credit is $0.05; the server takes 100 to 200,000 at a time. A number that is not a whole
+  number above 0 is refused before anything is sent (exit 1); the server's range check comes back
+  as `request.invalid` (exit 4); `topup.unavailable` (a server that cannot sell credits) exits 4
+  with a fix that points to the iCustomer account.
+- **`agentic-id workspace` lists recent credit purchases** (credits, amount, status, ID) when the
+  server sends `topups` in `GET /v1/credits`; older servers are unaffected.
+- **Skills say how to buy credits**: when the user wants more credits or a call stopped on
+  `credits.insufficient`, the hosted `topup` tool (or the CLI) returns a payment link; the model
+  gives the user the link, never says the payment happened, and checks the balance with `credits`
+  afterwards. `agentic-id-credits` has a new "Buying credits" section; `agentic-id`, its tools,
+  CLI and errors references, and `/agentic-id:agentic-id-usage` point to it.
+
+### Changed
+- The wallet's own answers (`/v1/credits*`) are no longer read as a data source's bill: words such
+  as "payment" in a top-up answer are passed on as sent.
+
 ## 0.7.1 - 2026-11-19
 
 ### Changed

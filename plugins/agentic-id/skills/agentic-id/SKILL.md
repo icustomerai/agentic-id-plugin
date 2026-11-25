@@ -1,6 +1,6 @@
 ---
 name: agentic-id
-description: Use for any B2B people or company data task, including plain questions such as "identify notion.so", "how many fintech companies are there in Germany", "find 50 companies like these", "is this email real", "how many credits do I have" and "what did I spend" - never answer those from memory - resolving a person or company (from a work email, LinkedIn URL, name plus company, or a domain) to one stable Agentic ID from a verified identity ledger, checking a mailbox before sending, filling in a contact's title / company / work email, listing the people in a role at a known company, building a net-new account list from ICP filters, finding companies like the user's best customers, de-duplicating a CRM export, or checking how sure Agentic ID is about a value. Covers the hosted Agentic ID tools (validate, resolve, enrich, find, discover, lookalike, facts, ledger, feedback) and the optional agentic-id CLI, with the credit and B2B-only rules for every call.
+description: Use for any B2B people or company data task, including plain questions such as "identify notion.so", "how many fintech companies are there in Germany", "find 50 companies like these", "is this email real", "how many credits do I have", "what did I spend" and "buy more credits" - never answer those from memory - resolving a person or company (from a work email, LinkedIn URL, name plus company, or a domain) to one stable Agentic ID from a verified identity ledger, checking a mailbox before sending, filling in a contact's title / company / work email, listing the people in a role at a known company, building a net-new account list from ICP filters, finding companies like the user's best customers, de-duplicating a CRM export, or checking how sure Agentic ID is about a value. Covers the hosted Agentic ID tools (validate, resolve, enrich, find, discover, lookalike, facts, ledger, feedback, credits, topup) and the optional agentic-id CLI, with the credit and B2B-only rules for every call.
 ---
 
 # Agentic ID
@@ -24,6 +24,7 @@ and every value comes with a **level** that says how far to trust it.
 | Why are these two records the same ID? | `ledger` | free |
 | This email bounced / they replied / wrong person / left the company / our CRM confirms it | `feedback` | free |
 | How many credits are left? What did I spend, and on what? | `credits` | free |
+| I want more credits / a call failed for lack of credits | `topup` (CLI: `agentic-id topup <credits>`): a payment link | free to ask |
 | What would this cost? | the prices in `agentic-id-credits`, or `discover` with `count_only`; the CLI: `agentic-id estimate` | free |
 | Work a whole CSV file | the CLI with `--file` | as the action; `--dry-run` is free |
 | Is it connected? Sign in | `/mcp` (see below) | free |
@@ -85,7 +86,9 @@ Nothing on the user's machine checks the spend for you any more: these rules are
    a short list, and use the CLI for a file.
 6. **Read `excluded` and `rejected`** in every answer and pass them on. They say why candidates
    were left out and which filter values could not be read.
-7. **Stop on money errors.** `credits.insufficient` means stop and ask; do not retry.
+7. **Stop on money errors.** `credits.insufficient` means stop and ask; do not retry. If the user
+   wants more credits, `topup` returns a link to a secure payment page: give them the link, never
+   say the payment happened, and check the balance with `credits` once they say they paid.
 
 ## After the user acts on a value: send feedback
 

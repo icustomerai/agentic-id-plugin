@@ -15,14 +15,15 @@ import { isSourceFailure, shieldProblem, shieldReply, SOURCE_DOWN, SOURCE_FIX } 
 // The hosted Agentic ID service. A local V3 stack is http://127.0.0.1:3100: set it in the plugin
 // options or as AGENTIC_ID_URL.
 export const DEFAULT_URL = 'https://agenticid.icustomer.ai';
-export const CLIENT = 'agentic-id-plugin/0.7.1';
+export const CLIENT = 'agentic-id-plugin/0.8.0';
 
 const FIXES = {
   'auth.invalid_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set a valid API key in the plugin options. Never ask for a key in the chat.',
   'auth.missing_key': 'Sign the user in now: call agentic_id_login (it opens the browser and returns a link); in a terminal, `agentic-id login`. Or they set an API key in the plugin options. Never ask for a key in the chat.',
   'auth.token_expired': 'The sign-in has run out. Call agentic_id_login to sign in again (terminal: `agentic-id login`).',
   signed_out: 'Call agentic_id_login to sign in again (terminal: `agentic-id login`).',
-  'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap.',
+  'credits.insufficient': 'The wallet cannot cover this call. Stop and tell the user; do not retry or raise the cap. If they want more credits, `agentic-id topup <credits>` (the topup tool) returns a payment link for them to open.',
+  'topup.unavailable': 'Buying credits is not available on this server. The user can add credits through their iCustomer account or team. Nothing was charged.',
   'credits.cap_too_low': 'max_credits is below the cheapest result. Ask the user before raising it.',
   rate_limited: 'Too many requests for this key. Wait for retry_after_seconds, then send the same call once.',
   'id.not_held': 'Facts and history are shown only for IDs this workspace holds. Resolve, enrich, find or discover it first; an ID copied from elsewhere will not open.',
@@ -205,7 +206,9 @@ export class AgenticId {
         throw new AgenticIdError(0, timedOut ? 'timeout' : 'unreachable', timedOut ? `No answer from ${this.baseUrl} within ${Math.round(this.timeoutMs / 1000)}s.` : `Cannot reach the Agentic ID server at ${this.baseUrl} (${netReason(e)}).`);
       }
       const json = await res.json().catch(() => ({}));
-      if (res.ok) return shieldReply(json);
+      // The wallet's own answers (balance, top-ups) speak of payments: they are not a data source's bill.
+      const ownWallet = path.startsWith('/v1/credits');
+      if (res.ok) return shieldReply(json, { ownWallet });
       // A 401 is refused before any work, so renewing the sign-in and sending once more is safe.
       if (res.status === 401 && !this.apiKey && !renewed) {
         renewed = true;
@@ -225,8 +228,8 @@ export class AgenticId {
         continue;
       }
       // A data source's failure or bill is not the user's problem to read: one plain error instead.
-      if (isSourceFailure(json.code, json.detail, res.status)) throw new AgenticIdError(503, 'source.unavailable', SOURCE_DOWN, typeof json.request_id === 'string' ? { request_id: json.request_id } : {});
-      const problem = shieldProblem({ ...json, detail: String(json.detail ?? res.statusText ?? 'Request failed.') }, { ownWallet: json.code === 'credits.insufficient' });
+      if (!ownWallet && isSourceFailure(json.code, json.detail, res.status)) throw new AgenticIdError(503, 'source.unavailable', SOURCE_DOWN, typeof json.request_id === 'string' ? { request_id: json.request_id } : {});
+      const problem = shieldProblem({ ...json, detail: String(json.detail ?? res.statusText ?? 'Request failed.') }, { ownWallet: ownWallet || json.code === 'credits.insufficient' });
       const err = new AgenticIdError(res.status, json.code, problem.detail, problem);
       // A refused key blocks a stored sign-in: signing in again cannot help until the key is fixed or removed.
       if (res.status === 401 && this.apiKey) err.fix = `The configured API key was refused. Replace it or remove it in the plugin options (or AGENTIC_ID_API_KEY)${hasSession(this.baseUrl, this.env) ? '; a sign-in is stored and will be used once the key is removed' : ', or remove it and sign in'}. Never paste a key into the chat.`;
@@ -291,6 +294,13 @@ export class AgenticId {
   /** Balance, spend by tool, and the latest grants and charges. Free. */
   credits(limit = 20) {
     return this.call('GET', `/v1/credits?limit=${encodeURIComponent(limit)}`);
+  }
+  /**
+   * Buy credits: a payment link for `credits` credits (whole number). Nothing is charged until the
+   * user pays on that page; the credits land seconds after. Not retried on a fault (POST, keyed).
+   */
+  topup(body) {
+    return this.call('POST', '/v1/credits/topup', body);
   }
   /** What happened after a value was used: bounced, replied, wrong_person, confirmed. Free. */
   feedback(body) {

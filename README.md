@@ -128,6 +128,7 @@ The hosted MCP server, which the Claude Code plugin connects to:
 | `ledger` | What happened to this ID, with its hash chain re-checked | Free |
 | `feedback` | Tell Agentic ID what happened to a value: bounced, replied, wrong person, left the company, confirmed | Free |
 | `credits` | How many credits you have, what you spent and on what | Free |
+| `topup` | A secure payment link to buy credits ($0.05 each, 100 to 200,000 at a time). Nothing is charged until you pay; the credits land seconds after | Free to ask |
 
 The CLI adds what a remote server cannot do on your computer: whole CSV files in and out (`--file`), free worst-case estimates (`agentic-id estimate`) and many-row de-duplication.
 
@@ -179,6 +180,7 @@ The Claude Code plugin does not bundle the command. With both installed, the plu
 agentic-id login      # browser sign-in with your iCustomer account
 agentic-id doctor     # checks Node, the sign-in or key, the server and what the caller can read
 agentic-id workspace  # credits available, what was spent, the last charges (free)
+agentic-id topup 1000 # a payment link for 1,000 credits ($50); printed, not opened. Nothing is charged until you pay
 ```
 
 Single lookups:
@@ -228,6 +230,7 @@ curl -s https://agenticid.icustomer.ai/v1/resolve \
 | report an outcome | `POST /v1/feedback` |
 | facts, history | `GET /v1/facts/{id}`, `GET /v1/ledger/{id}` |
 | workspace, credits | `GET /v1/workspace`, `GET /v1/credits` |
+| buy credits | `POST /v1/credits/topup` with `{"credits": 1000}`: returns a payment `url` |
 
 The full description is served at `https://agenticid.icustomer.ai/v1/openapi.json`. Reusing an `Idempotency-Key` with a different body is refused (`idempotency.key_reused`); reusing it with the same body returns the first answer and charges once.
 
@@ -261,7 +264,8 @@ JSON with a machine-readable code and a `fix` the agent can act on.
 | `request.invalid` | 400 | A missing, unknown or contradictory argument; `issues` names each one |
 | `auth.missing_key`, `auth.invalid_key`, `auth.token_expired` | 401 | Not signed in, a wrong or revoked key, or a sign-in that ran out |
 | `cap_required` | (not sent) | The call could cost more than 10 credits and has no `max_credits` |
-| `credits.insufficient` | 402 | The wallet cannot cover the call; `available_credits` says what is left. Stop, do not retry |
+| `credits.insufficient` | 402 | The wallet cannot cover the call; `available_credits` says what is left. Stop, do not retry; buy credits with `topup` |
+| `topup.unavailable` | 503 | Buying credits is not available on this server; add credits through your iCustomer account |
 | `purpose.not_allowed`, `pii.scope_required` | 403 | The data may not be used for this purpose, or the key cannot read contact values |
 | `identity.merge_blocked` | 409 | Two records disagree on a strong identifier. Nothing is merged |
 | `idempotency.key_reused` | 422 | The key was already used with a different request |

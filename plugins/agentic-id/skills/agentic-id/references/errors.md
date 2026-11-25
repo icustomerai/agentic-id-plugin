@@ -11,7 +11,8 @@ to do. In MCP the result is marked as an error; the CLI prints the same JSON and
 | `request.invalid` | 400 | A missing, unknown or contradictory argument; `issues` lists each one | Fix what it names and call again |
 | `find.persona_unreadable` | 400 | No job title, seniority or function could be read | Ask which roles matter |
 | `lookalike.no_profile` | 400 | The seeds share nothing readable | Use 3 or more domains of a similar kind |
-| `credits.insufficient` | 402 | The wallet cannot cover the call (`available_credits` says what is left) | Stop and tell the user. Do not retry. They can top up through their iCustomer account or team |
+| `credits.insufficient` | 402 | The wallet cannot cover the call (`available_credits` says what is left) | Stop and tell the user. Do not retry. Offer to buy credits: the `topup` tool (CLI: `agentic-id topup <credits>`) returns a payment link for the user to open |
+| `topup.unavailable` | 503 | Buying credits is not available on this server | The user adds credits through their iCustomer account or team. Nothing was charged |
 | `purpose.not_allowed` / `purpose.mismatch` | 403 | The data may not be used for this purpose | Use the right `purpose`; do not relabel to get around it |
 | `pii.scope_required` | 403 | This workspace cannot read contact values | Values stay masked; the workspace owner can change that with iCustomer |
 | `identity.merge_blocked` | 409 | Two records disagree on a strong identifier | Report both to the user; do not force it |

@@ -110,7 +110,7 @@ doesn't load them when you use the plugin.
 | --- | --- |
 | Not signed in, sign-in expired | `/mcp`, select agentic-id, **Authenticate** |
 | The tools are missing | `/mcp`: check that agentic-id is connected |
-| `credits.insufficient` | The workspace balance can't cover the call. Top up with your iCustomer team |
+| `credits.insufficient` | The workspace balance can't cover the call. Ask Claude to buy credits: you get a secure payment link, and nothing is charged until you pay |
 | `rate_limited` | Wait a moment and try again |
 | `source.unavailable` | A data source behind Agentic ID was down. Nothing was charged for it; try later |
 
