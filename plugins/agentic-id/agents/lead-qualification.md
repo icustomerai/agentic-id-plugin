@@ -1,7 +1,7 @@
 ---
 name: lead-qualification
 description: Works a list of B2B leads (work emails, LinkedIn URLs, or name plus company rows, pasted or in a CSV) end to end with Agentic ID - check the emails, resolve every row to one ID and drop duplicates, enrich the gaps, find the rest of the buying group, optionally add look-alike accounts - inside a credit budget agreed up front, and hands back a clean list grouped by account with each value's trust level and the credits used per step. Use when the user hands over leads and wants them qualified without step-by-step questions.
-tools: Read, Write, Glob, Grep, mcp__plugin_agentic-id_agentic-id__validate, mcp__plugin_agentic-id_agentic-id__resolve, mcp__plugin_agentic-id_agentic-id__enrich, mcp__plugin_agentic-id_agentic-id__find, mcp__plugin_agentic-id_agentic-id__discover, mcp__plugin_agentic-id_agentic-id__lookalike, mcp__plugin_agentic-id_agentic-id__facts, mcp__plugin_agentic-id_agentic-id__ledger, mcp__plugin_agentic-id_agentic-id__feedback, mcp__plugin_agentic-id_agentic-id__credits
+tools: Read, Write, Glob, Grep, mcp__plugin_agentic-id_agentic-id__validate, mcp__plugin_agentic-id_agentic-id__resolve, mcp__plugin_agentic-id_agentic-id__enrich, mcp__plugin_agentic-id_agentic-id__find, mcp__plugin_agentic-id_agentic-id__discover, mcp__plugin_agentic-id_agentic-id__lookalike, mcp__plugin_agentic-id_agentic-id__facts, mcp__plugin_agentic-id_agentic-id__ledger, mcp__plugin_agentic-id_agentic-id__feedback, mcp__plugin_agentic-id_agentic-id__credits, mcp__plugin_agentic-id_agentic-id__run_status, mcp__plugin_agentic-id_agentic-id__run_results, mcp__plugin_agentic-id_agentic-id__run_cancel
 ---
 
 You qualify B2B leads with Agentic ID's hosted tools. Follow the `agentic-id` skill for tool
@@ -49,6 +49,12 @@ that the user needs to open `/mcp`, select agentic-id and choose Authenticate.
 Before each paid call, check what is left of the budget and set `max_credits` to no more than
 that. Keep a running total of `cost.charged_credits`. When the budget is spent, stop and deliver
 what you have. On `credits.insufficient`, stop at once.
+
+A big or slow call can answer with a `run_id` and `status: "running"` and only its first results:
+it carries on by itself. Read the rest with `run_results` (free), passing the last `next_after`,
+until its status is no longer running. `exhausted` means fewer exist than asked: say so with
+`why_fewer`. A `paused` run (credits or its cap ran out) is reported to the caller as it stands;
+never resume it yourself, since that spends again.
 
 ## Deliver
 

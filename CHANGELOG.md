@@ -3,6 +3,73 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.9.0 - 2026-11-25
+
+Brings the CLI and the skills up to the server's discover v2 API.
+
+### Added
+- **Previews and plans on every paid command.** `--preview` is free: what the call would do, the
+  most it could cost, about how many results, whether it answers in one call or carries on as a
+  run, and a plan ID good for 30 minutes. `--plan <id> --max-credits N` runs exactly that plan
+  (a plan always needs `--max-credits`; exit 3 without one). `--count` on discover still works
+  (it sends `count_only`, the old name). A preview is never capped and never charged.
+- **Discover in plain words.** `agentic-id discover "mid-size diagnostic imaging centres in
+  Texas" --preview` (or `--ask "..."`). The answer says how the request was read, and lists every
+  reading when it could mean more than one search; a paid call on such a request is refused by
+  the server, nothing charged, and the readings are printed. Filters given as well win.
+- **New discover filters:** `--naics 621512` (2 to 6 digits; a short code covers its children)
+  and `--sic 8071` (2 to 4 digits), checked on this machine before anything is sent.
+  `--min-trust A|B|C|D` on discover and lookalike delivers only records at that grade or better;
+  the rest are left out and not charged.
+- **What each company is, and how far to trust it.** Accounts now show their industry, NAICS codes
+  when known, "size from one source only" when only one source gives the size, and Agentic ID's
+  trust grade and one-line summary, repeated as the server gives them. People and enriched rows
+  show their trust grade too. How a plain word in a filter was read (`filters_read_as`) and why
+  fewer came back than asked (`fewer_than_asked`) are printed.
+- **Runs.** Asks bigger than one answer (more than 25 people, 500 accounts, 1,000 emails, up to
+  50,000) or slower than 20 seconds carry on as a run. discover, find and lookalike print the
+  first results, the run ID, where it stands in plain words and the commands to follow it (exit 0;
+  3 when it is already paused for credits or its cap). New commands, all free except what a
+  resumed run then delivers:
+  - `agentic-id runs [--status running|paused|finished] [--limit N]`: this workspace's runs.
+  - `agentic-id runs show <id>` (or `runs <id>`): status, progress, credits, parts.
+  - `agentic-id runs results <id> [--out file.csv] [--wait]`: every result ready so far; `--wait`
+    follows the run to its end with long polls. `--out` writes one CSV row per result, with trust
+    as `trust_grade` and `trust_summary`.
+  - `agentic-id runs cancel <id>`, `agentic-id runs resume <id> [--max-credits N] [--source-cap USD]`.
+  - `agentic-id runs export <id> [--format csv|ndjson]`: a download link, good for an hour.
+  Status in words: completed (everything asked for came), exhausted (fewer exist than asked, with
+  the numbers and the reasons), running (with why it is waiting, if it is), paused (credits ran
+  out, its own cap, or its paid-data budget, with what to run next), cancelled, failed.
+- **API keys from the CLI.** `agentic-id keys` lists this workspace's keys by prefix, name and
+  dates. `agentic-id keys create [--name laptop]` makes one and prints it once, with "copy it now:
+  it will not be shown again"; it is printed to the terminal only, never to a log or a file.
+  `agentic-id keys revoke <prefix>` stops one within 30 seconds. Making and revoking keys needs a
+  sign-in: with an API key configured, the CLI says to run `agentic-id login` (and unset the key)
+  before sending anything (exit 2); the server's own `auth.sign_in_required` exits 2 as well. A
+  whole key given to `keys revoke` is refused on this machine and never repeated back.
+- New fixes for `intent.ambiguous`, `intent.unclear`, `intent.unavailable`, `plan.not_found`,
+  `plan.expired` (the fresh plan the server sends is printed), `run.not_found`,
+  `run.not_finished`, `auth.sign_in_required`, `key.not_found`, `key.limit_reached` and
+  `export.link_invalid`.
+- The `lead-qualification` agent may use the hosted `run_status`, `run_results` and `run_cancel`
+  tools, and reads a run to its end instead of treating its first page as the answer. It never
+  resumes a paused run.
+
+### Changed
+- Paid calls ask the server to wait up to 20 seconds (`Prefer: wait=20`) before handing over a
+  run. In file runs and other lists worked through in parts (validate, resolve, enrich), a part
+  that carries on as a run is followed to its end and merged as before; a part whose run pauses
+  (credits or a cap) stops the list there, marked partial.
+- `find --limit` is no longer lowered to 25 on this machine: up to 50,000 is sent, and more than
+  25 carries on as a run. `max_accounts` above 500 is no longer refused by the estimate.
+- discover's filter names accepted on this machine now also include `revenue_min`, `revenue_max`,
+  `founded_from`, `founded_to`, `funding_stage`, `revenue_range` and `job_function`, which the
+  server already took.
+- The skills, the tools, errors and CLI references and both READMEs describe previews, plans,
+  plain-language discover, trust grades, runs and API keys. The rule that a discover count comes
+  before any paid discover is unchanged.
+
 ## 0.8.0 - 2026-11-25
 
 ### Added

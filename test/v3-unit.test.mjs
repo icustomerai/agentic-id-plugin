@@ -22,7 +22,7 @@ function fake(replies = {}) {
     const r = replies[name];
     return typeof r === 'function' ? r(body, calls.filter((c) => c.verb === name).length) : r ?? { request_id: `req_${calls.length}`, summary: `${name} ok`, cost: { quoted_credits: 0, charged_credits: 0 }, results: [] };
   };
-  return { calls, apiKey: 'k', baseUrl: 'http://fake', validate: verb('validate'), resolve: verb('resolve'), enrich: verb('enrich'), find: verb('find'), discover: verb('discover'), lookalike: verb('lookalike'), facts: verb('facts'), ledger: verb('ledger'), me: verb('me'), workspace: verb('workspace'), credits: verb('credits'), feedback: verb('feedback'), topup: verb('topup') };
+  return { calls, apiKey: 'k', baseUrl: 'http://fake', validate: verb('validate'), resolve: verb('resolve'), enrich: verb('enrich'), find: verb('find'), discover: verb('discover'), lookalike: verb('lookalike'), facts: verb('facts'), ledger: verb('ledger'), me: verb('me'), workspace: verb('workspace'), credits: verb('credits'), feedback: verb('feedback'), topup: verb('topup'), runs: verb('runs'), run: verb('run'), runResults: verb('runResults'), runReply: verb('runReply'), cancelRun: verb('cancelRun'), resumeRun: verb('resumeRun'), exportRun: verb('exportRun'), keys: verb('keys'), createKey: verb('createKey'), revokeKey: verb('revokeKey'), followRun: verb('followRun') };
 }
 const refused = async (fn) => {
   try {
@@ -241,9 +241,12 @@ test('find: needs a company and a persona; the limit and cap are bounded', async
   assert.equal((await refused(() => ops.find(c, { account: { domain: 'acme.io' }, roles: ['CTO'], limit: 20 }))).code, 'cap_required');
   await ops.find(c, { account: { domain: 'https://Acme.io/team' }, roles: 'CTO, VP Eng', countries: ['UK'], limit: 3 });
   assert.deepEqual(c.calls[0].body, { account: { domain: 'acme.io' }, roles: ['CTO', 'VP Eng'], countries: ['GB'], limit: 3, max_credits: 6 });
-  const r = await ops.find(c, { account: { domain: 'acme.io' }, seniority: 'director+', limit: 99, max_credits: 50 });
-  assert.equal(c.calls[1].body.limit, 25);
-  assert.match(r.input_notes[0], /lowered to 25/);
+  // More than 25 people carry on as a run on the server: the limit is sent as asked, up to 50,000.
+  await ops.find(c, { account: { domain: 'acme.io' }, seniority: 'director+', limit: 99, max_credits: 50 });
+  assert.equal(c.calls[1].body.limit, 99);
+  const r = await ops.find(c, { account: { domain: 'acme.io' }, seniority: 'director+', limit: 60000, max_credits: 50 });
+  assert.equal(c.calls[2].body.limit, 50000);
+  assert.match(r.input_notes[0], /lowered to 50,000/);
 });
 
 test('discover: count_only is free and never capped; a real run points to it first', async () => {
@@ -1049,4 +1052,284 @@ test('workspace: recent top-ups shown when the server sends them, ignored when i
   assert.match(now.out, /2026-11-25 09:01\s+\+1000 credits\s+\$50\.00\s+paid\s+tu_2/);
   assert.match(now.out, /2026-11-24 08:00\s+\+500 credits\s+\$25\.00\s+expired\s+tu_1/);
   assert.deepEqual((await ops.workspace(fake({ ...base, credits: { ...base.credits, topups } }))).topups, topups);
+});
+
+// ------------------------------------------------------------------ preview, plans, plain-language asks
+const PLAN = '3f2b8c1e-0a4d-4e8f-9b6a-1c2d3e4f5a6b';
+const RUN = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+const PREVIEW = { summary: 'About 812 companies match.', preview: true, plan_id: PLAN, expires_at: '2026-11-25T10:30:00Z', quote: { credits_max: 200, results_expected: 200, runs_as: 'inline' } };
+
+test('preview: free on every paid call, no cap needed, and it says how to run the plan', async () => {
+  const c = fake({ discover: PREVIEW, find: PREVIEW, enrich: PREVIEW, lookalike: PREVIEW, validate: PREVIEW, resolve: PREVIEW });
+  await ops.discover(c, { account_filters: { country: ['GB'] }, max_accounts: 2000, preview: true });
+  assert.deepEqual(c.calls[0].body, { account_filters: { country: ['GB'] }, max_accounts: 2000, preview: true });
+  await ops.find(c, { account: { domain: 'acme.io' }, roles: ['CTO'], limit: 400, preview: true });
+  assert.equal(c.calls[1].body.preview, true);
+  assert.equal('max_credits' in c.calls[1].body, false, 'a preview needs no cap');
+  await ops.lookalike(c, { seeds: ['acme.io'], max_accounts: 900, preview: true });
+  await ops.enrich(c, { contacts: Array.from({ length: 300 }, (_, i) => ({ email: `p${i}@acme.io` })), preview: true });
+  assert.equal(c.calls.at(-1).body.contacts.length, 300, 'one preview call, not batches');
+  await ops.validate(c, { emails: ['a@acme.io', 'b@acme.io'], preview: true });
+  assert.deepEqual(c.calls.at(-1).body, { emails: ['a@acme.io', 'b@acme.io'], preview: true });
+  assert.equal(estimate('find', { limit: 400, preview: true }).free, true);
+  const r = await cli(['discover', '--country', 'GB', '--max-accounts', '2000', '--preview']);
+  assert.equal(r.code, 0, 'a preview needs no --max-credits, however big the ask');
+  const shown = await cli(['discover', '--country', 'GB', '--max-accounts', '200', '--preview'], fake({ discover: PREVIEW }));
+  assert.equal(shown.code, 0, shown.err);
+  assert.match(shown.out, /could cost at most 200 credits, about 200 results; it would answer in one call/);
+  assert.match(shown.out, new RegExp(`agentic-id discover --plan ${PLAN} --max-credits 200`));
+  // --count is the old name: it still sends count_only, which the server reads as a preview.
+  const count = await cli(['discover', '--country', 'GB', '--count']);
+  assert.equal(count.client.calls[0].body.count_only, true);
+});
+
+test('plan: runs exactly what a preview quoted, needs a cap, and only the plan and cap are sent', async () => {
+  const c = fake({ discover: { request_id: 'r', summary: '200 accounts delivered. 200 credits charged.', cost: { quoted_credits: 200, charged_credits: 200 }, accounts: [] } });
+  const ok = await cli(['discover', '--plan', PLAN, '--max-credits', '200'], c);
+  assert.equal(ok.code, 0, ok.err);
+  assert.deepEqual(c.calls[0].body, { plan_id: PLAN, max_credits: 200 });
+  const noCap = await cli(['discover', '--plan', PLAN]);
+  assert.equal(noCap.code, 3);
+  assert.match(noCap.err, /needs max_credits/);
+  assert.equal(noCap.client.calls.length, 0);
+  const bad = await cli(['find', '--plan', 'not-a-plan', '--max-credits', '5']);
+  assert.equal(bad.code, 1);
+  assert.equal(bad.client.calls.length, 0);
+  assert.equal((await cli(['validate', '--file', 'x.csv', '--preview'])).code, 1, 'no preview for a file run: --dry-run prices it');
+  // An expired plan comes back with a fresh one to run.
+  const expired = fake({ discover: () => { throw new AgenticIdError(409, 'plan.expired', 'The plan is more than 30 minutes old.', { preview: { plan_id: PLAN, quote: { credits_max: 150 } } }); } });
+  const e = await cli(['discover', '--plan', PLAN, '--max-credits', '200'], expired);
+  assert.equal(e.code, 4);
+  assert.match(e.err, new RegExp(`fresh plan: ${PLAN} \\(at most 150 credits\\)`));
+});
+
+test('discover: a plain-language ask, NAICS and SIC codes, and a minimum trust grade', async () => {
+  const c = fake();
+  const r = await cli(['discover', 'mid-size', 'diagnostic imaging centres in Texas', '--preview'], c);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(c.calls[0].body, { ask: 'mid-size diagnostic imaging centres in Texas', preview: true });
+  const both = await cli(['discover', '--ask', 'imaging centres', '--country', 'US', '--naics', '621512,6215', '--sic', '8071', '--min-trust', 'b', '--max-accounts', '5']);
+  assert.deepEqual(both.client.calls[0].body, { ask: 'imaging centres', account_filters: { naics: ['621512', '6215'], sic: ['8071'], country: ['US'] }, max_accounts: 5, min_trust: 'B', max_credits: 5 });
+  for (const bad of [['discover', '--ask', 'hi', '--preview'], ['discover', '--naics', 'imaging', '--preview'], ['discover', '--sic', '12345', '--preview'], ['lookalike', 'acme.io', '--min-trust', 'E']]) {
+    const x = await cli(bad);
+    assert.equal(x.code, 1, bad.join(' '));
+    assert.equal(x.client.calls.length, 0, bad.join(' '));
+  }
+  const l = await cli(['lookalike', 'acme.io', 'globex.com', '--min-trust', 'A', '--max-accounts', '5']);
+  assert.equal(l.client.calls[0].body.min_trust, 'A');
+  // How the ask was read, and every reading when it could mean more than one search.
+  const intent = { ask: 'imaging in Texas', read_as: 'Diagnostic imaging centres in Texas, US', readings: [{ read_as: 'Diagnostic imaging centres in Texas, US', account_filters: { naics: ['621512'] } }, { read_as: 'Imaging software companies in Texas', account_filters: { industry: ['software'] } }], account_filters: { naics: ['621512'] } };
+  const read = await cli(['discover', 'imaging in Texas', '--preview'], fake({ discover: { ...PREVIEW, intent, filters_read_as: [{ field: 'industry', given: 'imaging', read_as: 'NAICS 621512' }] } }));
+  assert.match(read.out, /read "imaging in Texas" as: Diagnostic imaging centres in Texas, US/);
+  assert.match(read.out, /2\. Imaging software companies in Texas/);
+  assert.match(read.out, /"imaging" \(industry\) read as NAICS 621512/);
+  // Not previewed, an ask with several readings is refused by the server, nothing charged: the readings are shown.
+  const amb = fake({ discover: () => { throw new AgenticIdError(409, 'intent.ambiguous', 'That ask can be read 2 ways, so nothing was run or charged.', { readings: intent.readings }); } });
+  const a = await cli(['discover', 'imaging in Texas', '--max-credits', '25'], amb);
+  assert.equal(a.code, 4);
+  assert.match(a.err, /1\. Diagnostic imaging centres[\s\S]*2\. Imaging software[\s\S]*fix: .*--preview/);
+});
+
+test('accounts and people show industry, NAICS, the size check and Agentic ID\'s trust verdict as given', async () => {
+  const accounts = [
+    { id: 'ic-a1', domain: 'acme-imaging.com', country: 'US', industry: 'Diagnostic imaging', naics: ['621512'], employees: { min: 51, max: 200 }, size_check: 'single', charged: true, trust: { grade: 'C', score: 55, summary: 'Size rests on one source.', rubric: 'v1' } },
+    { id: 'ic-a2', domain: 'globex-scan.com', country: 'US', industry: 'Diagnostic imaging', employees: { min: 201, max: 500 }, size_check: 'confirmed', charged: true, trust: { grade: 'A', score: 95, summary: 'Identity verified; key fields corroborated.', rubric: 'v1' } },
+  ];
+  const contacts = [{ id: 'ic-p1', name: 'Ann Lee', title: 'CTO', email: 'ann@acme-imaging.com', level: 'corroborated', trust: { grade: 'B', summary: 'Title and employer corroborated.' } }];
+  const r = await cli(['discover', '--naics', '621512', '--max-accounts', '2'], fake({ discover: { summary: '2 accounts delivered. 2 credits charged.', cost: { quoted_credits: 2, charged_credits: 2 }, accounts, contacts, excluded: { below_min_trust: 3 }, rejected: [] } }));
+  assert.match(r.out, /acme-imaging\.com\s+US\s+51-200\s+Diagnostic imaging\s+\[C\]/);
+  assert.match(r.out, /NAICS 621512 · size from one source only · trust C: Size rests on one source\./);
+  assert.match(r.out, /globex-scan\.com[^\n]*\[A\]\n\s+trust A: Identity verified/);
+  assert.match(r.out, /Ann Lee[^\n]*\[B\]\n\s+trust B: Title and employer corroborated\./);
+  assert.match(r.out, /left out: 3 below_min_trust/);
+});
+
+// ------------------------------------------------------------------ runs
+const RUN_LINKS = { self: `/v1/runs/${RUN}`, results: `/v1/runs/${RUN}/results`, stream: `/v1/runs/${RUN}/stream`, cancel: `/v1/runs/${RUN}/cancel`, resume: `/v1/runs/${RUN}/resume`, export: `/v1/runs/${RUN}/export` };
+const runOf = (over = {}) => ({ run_id: RUN, type: 'discover', status: 'running', progress: { asked: 2000, delivered: 2, parts: { total: 4, done: 1, failed: 0, waiting: 2, running: 1 } }, credits: { charged: 2, max: 2000 }, created_at: '2026-11-25T09:00:00Z', links: RUN_LINKS, ...over });
+
+test('a big search carries on as a run: its ID, its first results and how to follow it', async () => {
+  const accepted = { ...runOf(), summary: `2 results so far, about 1,998 more on the way. Read the rest at /v1/runs/${RUN}/results?after=3, follow /v1/runs/${RUN}/stream, or export it when it is done.`, results: [{ type: 'account', domain: 'acme.io', country: 'GB', trust: { grade: 'B', summary: 'ok' } }], next: `/v1/runs/${RUN}/results?after=3` };
+  const r = await cli(['discover', '--country', 'GB', '--industry', 'software', '--max-accounts', '2000', '--max-credits', '2000'], fake({ discover: accepted }));
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /2 results so far, about 1,998 more on the way\./);
+  assert.doesNotMatch(r.out, /\/v1\/runs/, 'the CLI says its own commands, not API paths');
+  assert.match(r.out, new RegExp(`carries on as run ${RUN}\\. Running: more results are on the way \\(2 of 2000 delivered so far\\)`));
+  assert.match(r.out, /acme\.io\s+GB/);
+  assert.match(r.out, new RegExp(`agentic-id runs results ${RUN} --out discover\\.csv --wait`));
+  assert.match(r.out, new RegExp(`agentic-id runs cancel ${RUN}`));
+  const paused = await cli(['find', 'acme.io', '--role', 'CTO', '--limit', '100', '--max-credits', '10'], fake({ find: { ...runOf({ type: 'find', status: 'paused', reason: 'credits' }), summary: 'Paused with 0 results so far.', results: [], next: null } }));
+  assert.equal(paused.code, 3, 'out of credits is a budget matter');
+  assert.match(paused.out, /ran out of credits[\s\S]*agentic-id topup[\s\S]*agentic-id runs resume/);
+  assert.equal(JSON.parse((await cli(['lookalike', 'acme.io', '--max-accounts', '900', '--max-credits', '900', '--json'], fake({ lookalike: { ...runOf({ type: 'lookalike' }), summary: 's', results: [], next: null } }))).out).run_id, RUN);
+});
+
+test('run status in plain words: completed, exhausted, running, paused, cancelled, failed', () => {
+  assert.match(ops.runStatusWords(runOf({ status: 'completed', progress: { asked: 10, delivered: 10 } })), /^Completed: everything asked for was delivered \(10 of 10 delivered\)/);
+  assert.match(ops.runStatusWords(runOf({ status: 'exhausted', why_fewer: { asked: 500, delivered: 312, excluded: { below_min_trust: 40, size_unconfirmed: 8 }, detail: 'Too few passed the checks.' } })), /fewer than asked \(312 of 500 delivered\)\. Too few passed the checks\. Left out: 40 below min trust, 8 size unconfirmed\./);
+  assert.match(ops.runStatusWords(runOf({ waiting: { reason: 'daily_source_budget', until: 'x', detail: 'Waiting: it carries on by itself after midnight UTC.' } })), /Running[\s\S]*carries on by itself/);
+  assert.match(ops.runStatusWords(runOf({ status: 'paused', reason: 'max_credits' })), /own credit cap[\s\S]*--max-credits/);
+  assert.match(ops.runStatusWords(runOf({ status: 'paused', reason: 'source_cap' })), /budget for paid data/);
+  assert.match(ops.runStatusWords(runOf({ status: 'cancelled' })), /stays delivered and charged; nothing more is spent/);
+  assert.match(ops.runStatusWords(runOf({ status: 'failed', error: { code: 'refused' } })), /could not run \(refused\)/);
+});
+
+test('lists worked through in parts: a part that carries on as a run is followed to its end', async () => {
+  const reply = { request_id: 'r', run_id: RUN, run_status: 'completed', summary: '2 emails checked.', cost: { quoted_credits: 2, charged_credits: 2 }, results: [{ email: 'a@acme.io', verdict: 'valid' }, { email: 'b@acme.io', verdict: 'invalid' }] };
+  const c = fake({ validate: { ...runOf({ type: 'validate' }), summary: 's', results: [], next: 'x' }, followRun: reply });
+  const r = await ops.validate(c, { emails: ['a@acme.io', 'b@acme.io'], max_credits: 2 });
+  assert.equal(c.calls.find((x) => x.verb === 'followRun').body, RUN);
+  assert.deepEqual(r.results.map((x) => x.verdict), ['valid', 'invalid']);
+  // A part whose run paused (credits ran out) stops the list there, marked partial.
+  const p = fake({ validate: { ...runOf({ type: 'validate' }), summary: 's', results: [], next: 'x' }, followRun: { ...reply, run_status: 'paused', results: reply.results.slice(0, 1), cost: { quoted_credits: 1, charged_credits: 1 } } });
+  const emails = Array.from({ length: 1001 }, (_, i) => `p${i}@acme.io`);
+  const part = await ops.validate(p, { emails, max_credits: 2000 });
+  assert.equal(part.partial, true);
+  assert.match(part.summary, /the run paused/);
+  assert.equal(p.calls.filter((x) => x.verb === 'validate').length, 1, 'no further batches after a pause');
+});
+
+test('client: paid calls ask to wait 20 seconds; a run is followed with long polls, then its reply', async () => {
+  let page = 0;
+  await withApi(
+    (req, res) => {
+      if (req.url === '/v1/validate') return json(res, 202, { ...runOf({ type: 'validate' }), summary: 's', results: [], next: 'x' });
+      if (req.url.startsWith(`/v1/runs/${RUN}/results`)) {
+        page += 1;
+        return json(res, 200, { run: runOf({ type: 'validate', status: page < 2 ? 'running' : 'completed' }), results: [], after: page, next: page < 2 ? `/v1/runs/${RUN}/results?after=${page}` : null });
+      }
+      if (req.url === `/v1/runs/${RUN}/reply`) return json(res, 200, { request_id: 'r', run_id: RUN, run_status: 'completed', summary: '1 email checked.', cost: { quoted_credits: 1, charged_credits: 1 }, results: [{ email: 'a@acme.io', verdict: 'valid' }] });
+      return json(res, 404, { code: 'not_found', detail: req.url });
+    },
+    async (baseUrl, seen) => {
+      const r = await cli(['validate', 'a@acme.io'], new AgenticId({ apiKey: 'k', baseUrl }));
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.out, /valid\s+a@acme\.io/);
+      assert.equal(seen[0].headers.prefer, 'wait=20');
+      assert.deepEqual(seen.map((x) => x.url.split('?')[0]), ['/v1/validate', `/v1/runs/${RUN}/results`, `/v1/runs/${RUN}/results`, `/v1/runs/${RUN}/reply`]);
+      assert.equal(seen[1].headers.prefer, 'wait=20', 'a long poll, never a tight loop');
+      assert.match(seen[2].url, /after=1/);
+    },
+  );
+});
+
+test('cli runs: list, show, results to a CSV, cancel, resume and export, all over the API', async () => {
+  let results = 0;
+  await withApi(
+    (req, res) => {
+      const u = req.url;
+      if (u.startsWith('/v1/runs?')) return json(res, 200, { runs: [runOf(), runOf({ run_id: 'b'.repeat(8) + RUN.slice(8), status: 'exhausted', type: 'find', progress: { asked: 50, delivered: 12, parts: { total: 1, done: 1, failed: 0, waiting: 0, running: 0 } }, why_fewer: { asked: 50, delivered: 12, excluded: {} } })] });
+      if (u === `/v1/runs/${RUN}`) return json(res, 200, runOf({ status: 'paused', reason: 'credits' }));
+      if (u.startsWith(`/v1/runs/${RUN}/results`)) {
+        results += 1;
+        const recs = results === 1 ? [{ type: 'account', domain: 'acme.io', country: 'GB', naics: ['5112'], employees: { min: 51, max: 200 }, trust: { grade: 'B', summary: 'Key fields corroborated.' } }] : [{ type: 'account', domain: 'globex.com', country: 'GB', tags: ['a', 'b'] }];
+        return json(res, 200, { run: runOf({ status: results === 1 ? 'running' : 'completed' }), results: recs, after: results, next: results === 1 ? 'more' : null });
+      }
+      if (u === `/v1/runs/${RUN}/cancel`) return json(res, 200, runOf({ status: 'cancelled' }));
+      if (u === `/v1/runs/${RUN}/resume`) return json(res, 200, runOf());
+      if (u.startsWith(`/v1/runs/${RUN}/export`)) return json(res, 200, { run_id: RUN, url: `https://example.test/v1/runs/${RUN}/download?sig=abc`, format: 'csv', expires_at: '2026-11-25T11:00:00Z' });
+      if (u.startsWith('/v1/runs/')) return json(res, 404, { code: 'run.not_found', detail: 'No run with that ID in this workspace.' });
+      return json(res, 404, { code: 'not_found', detail: u });
+    },
+    async (baseUrl, seen) => {
+      const c = new AgenticId({ apiKey: 'k', baseUrl });
+      const list = await cli(['runs', '--status', 'running', '--limit', '5'], c);
+      assert.equal(list.code, 0, list.err);
+      assert.equal(seen[0].url, '/v1/runs?status=running&limit=5');
+      assert.match(list.out, new RegExp(`${RUN}\\s+discover\\s+running\\s+2/2000`));
+      assert.match(list.out, /find\s+exhausted\s+12\/50/);
+      const show = await cli(['runs', 'show', RUN], c);
+      assert.equal(show.code, 3, 'paused for credits is a budget matter');
+      assert.match(show.out, /ran out of credits/);
+      assert.equal((await cli(['runs', RUN], c)).code, 3, 'runs <id> is runs show <id>');
+      const dir = mkdtempSync(join(tmpdir(), 'aid-runs-'));
+      const out = join(dir, 'r.csv');
+      const got = await cli(['runs', 'results', RUN, '--out', out, '--wait'], c);
+      assert.equal(got.code, 0, got.err);
+      const csv = readFileSync(out, 'utf8');
+      assert.match(csv.split('\n')[0], /^type,domain,country,naics,employees_min,employees_max,trust_grade,trust_summary,tags/);
+      assert.match(csv, /account,acme\.io,GB,5112,51,200,B,Key fields corroborated\./);
+      assert.match(csv, /account,globex\.com,GB,,,,,,a; b/);
+      assert.match(got.out, /2 results read/);
+      assert.equal(seen.filter((x) => x.url.includes('/results')).every((x) => x.headers.prefer === 'wait=20'), true);
+      const cancel = await cli(['runs', 'cancel', RUN], c);
+      assert.match(cancel.out, /Cancelled/);
+      assert.equal(seen.at(-1).method, 'POST');
+      await cli(['runs', 'resume', RUN, '--max-credits', '3000', '--source-cap', '10'], c);
+      assert.deepEqual(seen.at(-1).body, { max_credits: 3000, source_spend_cap_usd: 10 });
+      const exp = await cli(['runs', 'export', RUN], c);
+      assert.match(exp.out, /download link[\s\S]*Anyone with the link[\s\S]*https:\/\/example\.test/);
+      const n = seen.length;
+      const bad = await cli(['runs', 'show', 'not-a-run'], c);
+      assert.equal(bad.code, 1);
+      assert.equal(seen.length, n, 'nothing sent for a bad ID');
+      assert.equal((await cli(['runs', 'resume', RUN, '--source-cap', '99'], c)).code, 1);
+      const missing = await cli(['runs', 'show', RUN.replace(/^9/, '1')], c);
+      assert.equal(missing.code, 4);
+      assert.match(missing.err, /run\.not_found[\s\S]*agentic-id runs/);
+    },
+  );
+  assert.equal((await cli(['runs', 'frobnicate', RUN])).code, 1);
+  assert.equal((await cli(['runs', 'cancel'])).code, 1);
+});
+
+// ------------------------------------------------------------------ API keys
+const signedIn = (replies) => Object.assign(fake(replies), { apiKey: undefined, authMode: 'signin' });
+const SECRET = ['ic', 'live', 'unit0test0secret0value'].join('-'); // built here so no key-shaped text sits in the repo
+
+test('keys: listed by prefix only; made once and shown once, to a signed-in user', async () => {
+  const list = await cli(['keys'], fake({ keys: { keys: [{ prefix: 'ic-live-AbC1', name: 'laptop', created_at: '2026-11-20T09:00:00Z' }, { prefix: 'ic-live-XyZ9', name: 'ci', created_at: '2026-11-01T09:00:00Z', revoked_at: '2026-11-10T09:00:00Z' }] } }));
+  assert.equal(list.code, 0, list.err);
+  assert.match(list.out, /1 active key, 1 revoked/);
+  assert.match(list.out, /ic-live-AbC1\s+laptop\s+made 2026-11-20 09:00 UTC/);
+  assert.match(list.out, /ic-live-XyZ9[^\n]*revoked 2026-11-10/);
+  const made = signedIn({ createKey: { key: SECRET, prefix: 'ic-live-unit', name: 'laptop', created_at: '2026-11-25T09:00:00Z' } });
+  const r = await cli(['keys', 'create', '--name', 'laptop'], made);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(made.calls[0], { verb: 'createKey', body: { name: 'laptop' } });
+  assert.equal(r.out.split(SECRET).length - 1, 1, 'the key is printed exactly once');
+  assert.match(r.out, /Copy it now: it will not be shown again/);
+  assert.equal(r.err.includes(SECRET), false);
+  const j = await cli(['keys', 'create', '--json'], signedIn({ createKey: { key: SECRET, prefix: 'ic-live-unit', name: 'api key', created_at: 'x' } }));
+  assert.equal(JSON.parse(j.out).key, SECRET);
+  assert.equal((await cli(['keys', 'create', '--name', 'x'.repeat(65)], signedIn())).code, 1);
+});
+
+test('keys: an API key cannot make or revoke keys: refused before sending, exit 2, with how to sign in', async () => {
+  const keyed = fake();
+  const r = await cli(['keys', 'create'], keyed);
+  assert.equal(r.code, 2);
+  assert.equal(keyed.calls.length, 0, 'nothing sent');
+  assert.match(r.err, /signed-in user[\s\S]*fix: Run `agentic-id login`/);
+  assert.equal((await cli(['keys', 'revoke', 'ic-live-AbC1'], keyed)).code, 2);
+  // The server says the same when it is asked anyway (a sign-in it does not take as one).
+  const srv = signedIn({ createKey: () => { throw new AgenticIdError(403, 'auth.sign_in_required', 'Only a signed-in user can make or revoke API keys.'); } });
+  const s403 = await cli(['keys', 'create'], srv);
+  assert.equal(s403.code, 2);
+  assert.match(s403.err, /refused \(403 auth\.sign_in_required\)[\s\S]*agentic-id login/);
+});
+
+test('keys revoke: by prefix over DELETE; a whole key is never sent; an unknown prefix exits 4', async () => {
+  const c = signedIn({ revokeKey: { revoked: true, prefix: 'ic-live-AbC1' } });
+  const r = await cli(['keys', 'revoke', 'ic-live-AbC1'], c);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /Key ic-live-AbC1 revoked\. It stops working within 30 seconds\./);
+  const whole = await cli(['keys', 'revoke', SECRET + 'x'.repeat(20)], signedIn());
+  assert.equal(whole.code, 1);
+  assert.equal(whole.client.calls.length, 0);
+  assert.match(whole.err, /looks like a whole key/);
+  assert.equal(whole.err.includes(SECRET), false, 'the key is not repeated back');
+  assert.equal((await cli(['keys', 'revoke'], signedIn())).code, 1);
+  await withApi(
+    (req, res) => (req.method === 'DELETE' && req.url === '/v1/keys/ic-live-AbC1' ? json(res, 200, { revoked: true, prefix: 'ic-live-AbC1' }) : json(res, 404, { code: 'key.not_found', detail: 'No active key ic-live-Nope in this workspace.' })),
+    async (baseUrl, seen) => {
+      const api = new AgenticId({ apiKey: 'k', baseUrl });
+      Object.defineProperty(api, 'authMode', { value: 'signin' });
+      assert.equal((await cli(['keys', 'revoke', 'ic-live-AbC1'], api)).code, 0);
+      assert.equal(seen[0].method, 'DELETE');
+      const nf = await cli(['keys', 'revoke', 'ic-live-Nope'], api);
+      assert.equal(nf.code, 4);
+      assert.match(nf.err, /key\.not_found[\s\S]*agentic-id keys/);
+    },
+  );
 });

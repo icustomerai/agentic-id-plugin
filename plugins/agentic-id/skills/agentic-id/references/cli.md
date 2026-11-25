@@ -9,7 +9,9 @@ API as the hosted tools, with the same caps and answers.
 Use it for what the hosted tools do not do:
 - a **CSV file**, or more than about 50 rows;
 - a free worst-case estimate before a call (`agentic-id estimate`);
-- recording a file of outcomes (`agentic-id report --file`).
+- recording a file of outcomes (`agentic-id report --file`);
+- writing a big run's results to a CSV file (`agentic-id runs results <id> --out ...`);
+- API keys for scripts and CI (`agentic-id keys`): the user runs these themselves.
 
 You run it through the ordinary shell, so Claude Code asks the user before each command. Never
 install it yourself unless the user asks; if it is missing, point them to the npm page.
@@ -43,14 +45,48 @@ write one into a file in the repository.
 | `enrich` | `agentic-id enrich --email jane.doe@acme.io --fields title,company_domain --json`; a company: `agentic-id enrich --domain acme.io --json` |
 | `find` | `agentic-id find acme.io --role "VP Marketing" --limit 5 --max-credits 10 --json` |
 | `discover` | `agentic-id discover --industry software --country GB --min 100 --max 2000 --count` then the same with `--max-accounts 25 --max-credits 25 --json` |
+| `discover` with `ask` | `agentic-id discover "mid-size diagnostic imaging centres in Texas" --preview`, then `agentic-id discover --plan <plan id> --max-credits <n> --json` |
 | `lookalike` | `agentic-id lookalike acme.io globex.com initech.com --max-accounts 10 --max-credits 10 --json` |
+| `run_status` | `agentic-id runs show <run id>` (`agentic-id runs` lists them; `--status running\|paused\|finished`) |
+| `run_results` | `agentic-id runs results <run id> --out results.csv [--wait]` |
+| `run_cancel` / `run_resume` | `agentic-id runs cancel <run id>` / `agentic-id runs resume <run id> [--max-credits N]` |
+| `run_export` | `agentic-id runs export <run id>`: a download link, good for an hour |
 | `facts` / `ledger` | `agentic-id facts <id>` / `agentic-id ledger <id>` |
 | `feedback` | `agentic-id report <id> --outcome bounced [--field work_email]` |
 | (none) | `agentic-id estimate discover --max-accounts 50 --title CTO --per-account 2` |
 | (none) | `agentic-id workspace [n]` |
 | `topup` | `agentic-id topup 1000` (also `buy-credits`): prints a payment link; nothing is charged until the user pays |
+| (none) | `agentic-id keys`, `agentic-id keys create [--name laptop]`, `agentic-id keys revoke <prefix>` |
 
 Always pass `--json` when you will read the answer yourself.
+
+## Preview, plans and runs
+
+- `--preview` on any paid command is free: what the call would do and the most it could cost,
+  with a plan ID good for 30 minutes. `--plan <id> --max-credits N` runs exactly that plan.
+  `--count` on discover is the old name for a preview and still works.
+- `discover` takes the request in plain words, as words after `discover` or `--ask "..."`. Always
+  preview it first: the answer says how it was read, and lists every reading when it could mean
+  more than one search. Filters given as well (`--industry`, `--naics`, `--sic`, `--country`,
+  `--min`, `--max`) win over the reading.
+- `--min-trust B` on discover and lookalike delivers only accounts graded B or better; the rest
+  are left out and not charged. Each account shows its industry, NAICS codes when known, whether
+  its size rests on one source, and its trust grade and summary: repeat those as given.
+- A big or slow ask (more than 25 people, 500 accounts, 1,000 emails, or slower than about 20
+  seconds) prints its first results and a run ID, and carries on by itself. `agentic-id runs show
+  <id>` says where it stands in plain words; `agentic-id runs results <id> --out file.csv --wait`
+  follows it to the end and writes every result. Reading is free. `runs resume` spends again: only
+  with the user's yes and their number.
+- A file run (`--file`) works through the list in parts as before; a part that is slow is followed
+  to its end on its own.
+
+## API keys
+
+The user runs these themselves, signed in (`agentic-id login`); an API key cannot make or revoke
+keys (exit 2, `auth.sign_in_required`). `keys create` prints the new key once, with "copy it now,
+it will not be shown again". Never run `keys create` for the user, never read, repeat or store its
+output, and never ask them to paste a key into the chat. `agentic-id keys` lists keys by prefix
+only, and `keys revoke <prefix>` takes the prefix, never the whole key.
 
 `find` and `discover` return people whose employer is not confirmed yet flagged
 (`employment.status` "unconfirmed"; marked with an exclamation mark in the human view) and charge for them. Add
@@ -101,8 +137,8 @@ agentic-id enrich   --file leads.csv --fields title,work_email --max-credits 400
 | --- | --- |
 | 0 | Done |
 | 1 | The command or the file was wrong (a missing column, `--out` equal to the input, a bad flag). Nothing was sent |
-| 2 | Not signed in, or the key was refused |
-| 3 | A budget matter: no `--max-credits` on a paid file run, the cap stopped the run (the result file holds what was done), or the wallet is short |
+| 2 | Not signed in, the key was refused, or a sign-in is needed (making or revoking API keys) |
+| 3 | A budget matter: no `--max-credits` on a paid file run or a plan, the cap stopped the run (the result file holds what was done), the wallet is short, or a run is paused for credits or its cap |
 | 4 | Agentic ID refused the request, or some rows of a report were not recorded |
 | 5 | Agentic ID could not be reached, or an outage stopped a run part way |
 
