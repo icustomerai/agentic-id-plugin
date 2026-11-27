@@ -29,6 +29,24 @@ cost (`quote.credits_max`), with a `plan_id` that runs exactly that for 30 minut
 
 The `cost` block in each answer is the authority, not this table.
 
+## When the Agentic ID card shows the answer
+
+Apps that support MCP Apps (Claude, ChatGPT, VS Code and others) show each Agentic ID answer as
+an interactive card instead of text. For a preview, the card has an **Approve** button and a
+credit cap that the user sets. When the user approves there, the card runs the plan and tells you
+what it charged.
+
+- After a preview in such an app, say what it would do and the most it could cost, then tell the
+  user they can approve it in the card. Do not run its `plan_id` yourself unless the user asks you
+  to in the chat. Otherwise the plan could run twice.
+- When the card reports a run, add what it charged to your running total. Do not call the tool
+  again to confirm.
+- The caps still apply. The user's cap in the card is their budget for that plan. If they ask you
+  in the chat to run it, the rules below apply as usual (a number in their own words above 10
+  credits).
+- Apps without the card show the text answer. There, preview, show the quote, and run the
+  `plan_id` with the user's yes, as before.
+
 ## 1. Estimate
 
 The hosted server has no estimate tool. Work out the most a call can cost from the table and show

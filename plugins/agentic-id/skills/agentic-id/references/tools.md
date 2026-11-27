@@ -13,7 +13,9 @@ Every paid tool also takes:
   `quote.results_expected`, `quote.runs_as`), with a `plan_id` good for 30 minutes. Nothing is
   delivered or charged. On `discover`, `count_only: true` is the old name and still works.
 - `plan_id`: runs exactly what a preview quoted. Send it with `max_credits` in place of the other
-  arguments.
+  arguments. In apps that show the Agentic ID card, the user approves a preview in the card (with
+  their own credit cap) and the card runs it. Run a `plan_id` yourself there only when the user
+  asks in the chat. See "When the Agentic ID card shows the answer" in `agentic-id-credits`.
 
 A call that is bigger than one answer (more than 25 people, 500 accounts, 1,000 emails or 250
 contacts), or slower than about 10 seconds, carries on as a **run**: the answer has its first

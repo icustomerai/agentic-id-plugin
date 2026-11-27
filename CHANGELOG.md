@@ -3,6 +3,19 @@
 All notable changes to this marketplace and the `agentic-id` plugin (named `onesource` before 0.4.0). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## 0.9.1 - 2026-11-27
+
+### Added
+- **The Agentic ID card.** In apps that support MCP Apps (Claude, ChatGPT, VS Code and others),
+  the hosted server now shows each answer as an interactive card. The skills now say how to work
+  with it: after a preview, the user approves the plan in the card with their own credit cap, and
+  Claude does not run that `plan_id` itself unless asked in the chat. Apps without the card work
+  as before. The card comes from the server, so no plugin code changed.
+
+### Changed
+- README: how to update the plugin (`claude plugin marketplace update agentic-id`, then
+  `claude plugin update agentic-id@agentic-id`, or auto-update from `/plugin`).
+
 ## 0.9.0 - 2026-11-25
 
 Brings the CLI and the skills up to the server's discover v2 API.

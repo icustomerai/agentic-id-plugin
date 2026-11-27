@@ -152,7 +152,14 @@ The `cost` block in every answer is authoritative. Exact arguments for every too
 | Agent `lead-qualification` | Works a list of leads end to end inside a credit budget and returns a list grouped by account |
 | Commands | `/agentic-id:agentic-id-login`, `/agentic-id:agentic-id-status`, `/agentic-id:agentic-id-clean-list <csv>`, `/agentic-id:agentic-id-usage` |
 
-Updates are keyed on the version in `plugin.json`; every release bumps it. Get one with `claude plugin marketplace update agentic-id`.
+Updates are keyed on the version in `plugin.json`; every release bumps it. To get one, refresh the marketplace and update the plugin, then restart Claude Code:
+
+```sh
+claude plugin marketplace update agentic-id
+claude plugin update agentic-id@agentic-id
+```
+
+Or in Claude Code: `/plugin`, then **Marketplaces**, `agentic-id`, **Update marketplace**. You can also turn on auto-update for the `agentic-id` marketplace there. The hosted server's changes, such as the Agentic ID card, reach you without an update. The plugin only carries the skills that tell Claude how to use them.
 
 ## Hosted MCP server
 
