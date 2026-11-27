@@ -15,7 +15,7 @@ import { isSourceFailure, shieldProblem, shieldReply, SOURCE_DOWN, SOURCE_FIX } 
 // The hosted Agentic ID service. A local V3 stack is http://127.0.0.1:3100: set it in the plugin
 // options or as AGENTIC_ID_URL.
 export const DEFAULT_URL = 'https://agenticid.icustomer.ai';
-export const CLIENT = 'agentic-id-plugin/0.9.0';
+export const CLIENT = 'agentic-id-plugin/0.9.1';
 
 /** How long a paid call may take before the server hands it over as a run (Prefer: wait=N, at most 20). */
 export const PAID_WAIT_S = 20;

@@ -22,7 +22,7 @@ to do. In MCP the result is marked as an error; the CLI prints the same JSON and
 | `intent.unclear` | 422 | The `ask` could not be read | Ask the user to say it another way, or use filters |
 | `intent.unavailable` | 503 | Plain-language asks cannot be read right now | Use filters instead, or try later |
 | `plan.not_found` | 404 | No such plan | Preview again for a new `plan_id` |
-| `plan.expired` | 409 | The plan is more than 30 minutes old; a fresh preview comes with the error | Show the fresh quote; run its `plan_id` only with the user's yes |
+| `plan.expired` | 409 | The plan is more than 30 minutes old; a fresh preview comes with the error | Show the fresh quote; run its `plan_id` only with the user's yes (in apps that show the card, the user approves it there) |
 | `run.not_found` | 404 | No run with that ID in this workspace | Check the `run_id`; `agentic-id runs` lists them |
 | `run.not_finished` | 409 | The run is still going | Read what is ready with `run_results`, or check back later |
 | `key.not_found` | 404 | No active API key with that prefix | `agentic-id keys` lists them |
